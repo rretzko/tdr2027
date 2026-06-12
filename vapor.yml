@@ -7,7 +7,7 @@ environments:
         cli-timeout: 900
         timeout: 30
         runtime: 'php-8.4:al2023'
-        database: tdr2027p
+        database: mfr-prod
         scheduler: true
         build:
             - 'composer install --no-dev'
@@ -20,7 +20,7 @@ environments:
         cli-timeout: 900
         timeout: 30
         runtime: 'php-8.4:al2023'
-        database: tdr2027s
+        database: mfr-staging
         scheduler: false
         build:
             - 'composer install'
