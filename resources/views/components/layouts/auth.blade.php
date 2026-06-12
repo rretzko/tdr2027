@@ -23,6 +23,6 @@
             </flux:card>
         </div>
 
-        @fluxScript
+        @fluxScripts
     </body>
 </html>

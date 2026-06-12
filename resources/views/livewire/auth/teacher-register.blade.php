@@ -4,6 +4,13 @@
         <flux:subheading>TheDirectorsRoom.com</flux:subheading>
     </div>
 
+    <flux:callout color="blue" icon="information-circle" heading="Are you a student?">
+        <flux:callout.text>
+            This form is for teachers and event managers. Students should register at
+            <flux:callout.link :href="route('sfdi.register')" wire:navigate>StudentFolder.info</flux:callout.link>.
+        </flux:callout.text>
+    </flux:callout>
+
     <form wire:submit="register" class="flex flex-col gap-6">
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <flux:select wire:model="honorific" label="Honorific (optional)" placeholder="Select...">
