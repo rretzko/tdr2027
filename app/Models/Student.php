@@ -1,0 +1,93 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use App\Enums\ShirtSize;
+use App\Models\Pivots\SchoolStudent;
+use App\Models\Pivots\StudentTeacher;
+use App\Support\ClassOfCalculator;
+use Database\Factories\StudentFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+
+#[Fillable(['user_id', 'height', 'birthday', 'shirt_size', 'instrument_id', 'voice_part_id'])]
+class Student extends Model
+{
+    /** @use HasFactory<StudentFactory> */
+    use HasFactory;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'birthday' => 'date',
+            'shirt_size' => ShirtSize::class,
+        ];
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function voicePart(): BelongsTo
+    {
+        return $this->belongsTo(VoicePart::class);
+    }
+
+    public function instrument(): BelongsTo
+    {
+        return $this->belongsTo(Instrument::class);
+    }
+
+    public function schools(): BelongsToMany
+    {
+        return $this->belongsToMany(School::class, 'school_student')
+            ->using(SchoolStudent::class)
+            ->withPivot(['is_active', 'class_of'])
+            ->withTimestamps();
+    }
+
+    public function teachers(): BelongsToMany
+    {
+        return $this->belongsToMany(Teacher::class, 'student_teacher')
+            ->using(StudentTeacher::class)
+            ->withPivot(['school_id', 'subject', 'role', 'is_active'])
+            ->withTimestamps();
+    }
+
+    public function homeAddress(): HasOne
+    {
+        return $this->hasOne(HomeAddress::class);
+    }
+
+    public function emergencyContacts(): HasMany
+    {
+        return $this->hasMany(EmergencyContact::class);
+    }
+
+    public function getCurrentSchoolAttribute(): ?School
+    {
+        return $this->schools()->wherePivot('is_active', true)->first();
+    }
+
+    public function getGradeAttribute(): ?int
+    {
+        $school = $this->current_school;
+
+        if ($school === null) {
+            return null;
+        }
+
+        return ClassOfCalculator::gradeFromClassOf((int) $school->pivot->class_of, $school->senior_year);
+    }
+}
