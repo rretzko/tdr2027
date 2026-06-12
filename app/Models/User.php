@@ -39,21 +39,33 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * @return BelongsTo<Pronoun, $this>
+     */
     public function pronoun(): BelongsTo
     {
         return $this->belongsTo(Pronoun::class);
     }
 
+    /**
+     * @return HasOne<Student, $this>
+     */
     public function student(): HasOne
     {
         return $this->hasOne(Student::class);
     }
 
+    /**
+     * @return HasOne<Teacher, $this>
+     */
     public function teacher(): HasOne
     {
         return $this->hasOne(Teacher::class);
     }
 
+    /**
+     * @return HasMany<Phone, $this>
+     */
     public function phones(): HasMany
     {
         return $this->hasMany(Phone::class);

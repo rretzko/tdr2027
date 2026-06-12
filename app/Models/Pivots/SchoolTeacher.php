@@ -34,16 +34,25 @@ class SchoolTeacher extends Pivot
         ];
     }
 
+    /**
+     * @return BelongsTo<School, $this>
+     */
     public function school(): BelongsTo
     {
         return $this->belongsTo(School::class);
     }
 
+    /**
+     * @return BelongsTo<Teacher, $this>
+     */
     public function teacher(): BelongsTo
     {
         return $this->belongsTo(Teacher::class);
     }
 
+    /**
+     * @return HasMany<SchoolTeacherSubject, $this>
+     */
     public function subjects(): HasMany
     {
         return $this->hasMany(SchoolTeacherSubject::class, 'school_teacher_id');

@@ -32,11 +32,17 @@ class SchoolStudent extends Pivot
         ];
     }
 
+    /**
+     * @return BelongsTo<Student, $this>
+     */
     public function student(): BelongsTo
     {
         return $this->belongsTo(Student::class);
     }
 
+    /**
+     * @return BelongsTo<School, $this>
+     */
     public function school(): BelongsTo
     {
         return $this->belongsTo(School::class);

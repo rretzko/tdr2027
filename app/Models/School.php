@@ -21,21 +21,33 @@ class School extends Model
     /** @use HasFactory<SchoolFactory> */
     use HasFactory;
 
+    /**
+     * @return BelongsTo<County, $this>
+     */
     public function county(): BelongsTo
     {
         return $this->belongsTo(County::class);
     }
 
+    /**
+     * @return BelongsTo<Geostate, $this>
+     */
     public function geostate(): BelongsTo
     {
         return $this->belongsTo(Geostate::class);
     }
 
+    /**
+     * @return HasMany<SchoolGrade, $this>
+     */
     public function grades(): HasMany
     {
         return $this->hasMany(SchoolGrade::class);
     }
 
+    /**
+     * @return BelongsToMany<Student, $this, SchoolStudent>
+     */
     public function students(): BelongsToMany
     {
         return $this->belongsToMany(Student::class, 'school_student')
@@ -44,6 +56,9 @@ class School extends Model
             ->withTimestamps();
     }
 
+    /**
+     * @return BelongsToMany<Teacher, $this, SchoolTeacher>
+     */
     public function teachers(): BelongsToMany
     {
         return $this->belongsToMany(Teacher::class, 'school_teacher')

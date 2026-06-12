@@ -16,6 +16,9 @@ class Geostate extends Model
     /** @use HasFactory<GeostateFactory> */
     use HasFactory;
 
+    /**
+     * @return HasMany<County, $this>
+     */
     public function counties(): HasMany
     {
         return $this->hasMany(County::class);

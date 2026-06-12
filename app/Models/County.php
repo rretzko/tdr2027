@@ -16,6 +16,9 @@ class County extends Model
     /** @use HasFactory<CountyFactory> */
     use HasFactory;
 
+    /**
+     * @return BelongsTo<Geostate, $this>
+     */
     public function geostate(): BelongsTo
     {
         return $this->belongsTo(Geostate::class);

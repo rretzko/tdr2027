@@ -34,21 +34,33 @@ class Student extends Model
         ];
     }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * @return BelongsTo<VoicePart, $this>
+     */
     public function voicePart(): BelongsTo
     {
         return $this->belongsTo(VoicePart::class);
     }
 
+    /**
+     * @return BelongsTo<Instrument, $this>
+     */
     public function instrument(): BelongsTo
     {
         return $this->belongsTo(Instrument::class);
     }
 
+    /**
+     * @return BelongsToMany<School, $this, SchoolStudent>
+     */
     public function schools(): BelongsToMany
     {
         return $this->belongsToMany(School::class, 'school_student')
@@ -57,6 +69,9 @@ class Student extends Model
             ->withTimestamps();
     }
 
+    /**
+     * @return BelongsToMany<Teacher, $this, StudentTeacher>
+     */
     public function teachers(): BelongsToMany
     {
         return $this->belongsToMany(Teacher::class, 'student_teacher')
@@ -65,16 +80,25 @@ class Student extends Model
             ->withTimestamps();
     }
 
+    /**
+     * @return HasOne<HomeAddress, $this>
+     */
     public function homeAddress(): HasOne
     {
         return $this->hasOne(HomeAddress::class);
     }
 
+    /**
+     * @return HasMany<EmergencyContact, $this>
+     */
     public function emergencyContacts(): HasMany
     {
         return $this->hasMany(EmergencyContact::class);
     }
 
+    /**
+     * @return (School&object{pivot: SchoolStudent})|null
+     */
     public function getCurrentSchoolAttribute(): ?School
     {
         return $this->schools()->wherePivot('is_active', true)->first();
@@ -82,7 +106,7 @@ class Student extends Model
 
     public function getGradeAttribute(): ?int
     {
-        $school = $this->current_school;
+        $school = $this->getCurrentSchoolAttribute();
 
         if ($school === null) {
             return null;

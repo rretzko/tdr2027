@@ -16,6 +16,9 @@ class SchoolGrade extends Model
     /** @use HasFactory<SchoolGradeFactory> */
     use HasFactory;
 
+    /**
+     * @return BelongsTo<School, $this>
+     */
     public function school(): BelongsTo
     {
         return $this->belongsTo(School::class);

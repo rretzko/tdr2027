@@ -18,16 +18,25 @@ class Organization extends Model
     /** @use HasFactory<OrganizationFactory> */
     use HasFactory;
 
+    /**
+     * @return BelongsTo<Organization, $this>
+     */
     public function parent(): BelongsTo
     {
         return $this->belongsTo(Organization::class, 'parent_id');
     }
 
+    /**
+     * @return HasMany<Organization, $this>
+     */
     public function children(): HasMany
     {
         return $this->hasMany(Organization::class, 'parent_id');
     }
 
+    /**
+     * @return HasMany<TeacherSupervisor, $this>
+     */
     public function teacherSupervisors(): HasMany
     {
         return $this->hasMany(TeacherSupervisor::class);

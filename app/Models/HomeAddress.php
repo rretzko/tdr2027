@@ -16,6 +16,9 @@ class HomeAddress extends Model
     /** @use HasFactory<HomeAddressFactory> */
     use HasFactory;
 
+    /**
+     * @return BelongsTo<Student, $this>
+     */
     public function student(): BelongsTo
     {
         return $this->belongsTo(Student::class);

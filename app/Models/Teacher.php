@@ -21,11 +21,17 @@ class Teacher extends Model
     /** @use HasFactory<TeacherFactory> */
     use HasFactory;
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * @return BelongsToMany<School, $this, SchoolTeacher>
+     */
     public function schools(): BelongsToMany
     {
         return $this->belongsToMany(School::class, 'school_teacher')
@@ -34,6 +40,9 @@ class Teacher extends Model
             ->withTimestamps();
     }
 
+    /**
+     * @return BelongsToMany<Student, $this, StudentTeacher>
+     */
     public function students(): BelongsToMany
     {
         return $this->belongsToMany(Student::class, 'student_teacher')
@@ -42,6 +51,9 @@ class Teacher extends Model
             ->withTimestamps();
     }
 
+    /**
+     * @return HasMany<TeacherSupervisor, $this>
+     */
     public function teacherSupervisors(): HasMany
     {
         return $this->hasMany(TeacherSupervisor::class);

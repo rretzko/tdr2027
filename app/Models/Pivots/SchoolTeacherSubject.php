@@ -33,6 +33,9 @@ class SchoolTeacherSubject extends Model
         ];
     }
 
+    /**
+     * @return BelongsTo<SchoolTeacher, $this>
+     */
     public function schoolTeacher(): BelongsTo
     {
         return $this->belongsTo(SchoolTeacher::class);

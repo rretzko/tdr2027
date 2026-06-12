@@ -20,11 +20,17 @@ class TeacherSupervisor extends Model
 
     protected $table = 'teacher_supervisors';
 
+    /**
+     * @return BelongsTo<Organization, $this>
+     */
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
     }
 
+    /**
+     * @return BelongsTo<Teacher, $this>
+     */
     public function teacher(): BelongsTo
     {
         return $this->belongsTo(Teacher::class);

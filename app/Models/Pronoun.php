@@ -16,6 +16,9 @@ class Pronoun extends Model
     /** @use HasFactory<PronounFactory> */
     use HasFactory;
 
+    /**
+     * @return HasMany<User, $this>
+     */
     public function users(): HasMany
     {
         return $this->hasMany(User::class);

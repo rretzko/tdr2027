@@ -1,0 +1,50 @@
+name: Tests
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+jobs:
+  phpstan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+
+      - name: Install Composer dependencies
+        env:
+          COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse --memory-limit=1G
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+
+      - name: Install Composer dependencies
+        env:
+          COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Copy environment file
+        run: cp .env.example .env
+
+      - name: Generate application key
+        run: php artisan key:generate
+
+      - name: Run Pest test suite
+        run: php artisan test
