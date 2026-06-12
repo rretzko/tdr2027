@@ -53,10 +53,19 @@ jobs:
           php-version: '8.4'
           tools: composer:v2
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Install Composer dependencies
         env:
           COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
         run: composer install --no-interaction --prefer-dist
+
+      - name: Install npm dependencies and build assets
+        run: |
+          npm ci
+          npm run build
 
       - name: Copy environment file
         run: cp .env.example .env
