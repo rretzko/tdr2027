@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Livewire\Auth;
 
+use App\Actions\Fortify\PasswordValidationRules;
 use App\Enums\PhoneType;
 use App\Models\Phone;
 use App\Models\Pronoun;
 use App\Models\Student;
+use App\Support\EmailVerifiabilityChecker;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
@@ -18,6 +20,8 @@ use Livewire\Component;
 #[Layout('components.layouts.auth')]
 class StudentRegister extends Component
 {
+    use PasswordValidationRules;
+
     public string $honorific = '';
 
     public string $first_name = '';
@@ -38,6 +42,20 @@ class StudentRegister extends Component
 
     public string $cell_phone = '';
 
+    public function updatedPassword(): void
+    {
+        $this->validateOnly('password', ['password' => $this->passwordLiveRules()]);
+    }
+
+    public function updatedPasswordConfirmation(): void
+    {
+        $this->validateOnly('password_confirmation', [
+            'password_confirmation' => ['same:password'],
+        ], [
+            'password_confirmation.same' => 'The passwords do not match.',
+        ]);
+    }
+
     public function register(): void
     {
         $generatedEmail = $this->email === '';
@@ -52,13 +70,17 @@ class StudentRegister extends Component
             'email' => $email,
         ]);
 
-        if ($generatedEmail) {
+        if ($generatedEmail || EmailVerifiabilityChecker::isLikelyUnverifiable($email)) {
             $user->forceFill(['email_unverifiable' => true])->save();
         }
 
         Student::create(['user_id' => $user->id]);
 
         $user->assignRole('Student');
+
+        if (! $user->hasVerifiedEmail()) {
+            $user->sendEmailVerificationNotification();
+        }
 
         if ($this->cell_phone !== '') {
             Phone::create([

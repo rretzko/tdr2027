@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Auth;
 
+use App\Actions\Fortify\PasswordValidationRules;
 use App\Enums\PhoneType;
 use App\Models\Phone;
 use App\Models\Pronoun;
@@ -12,11 +13,14 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Validate;
 use Livewire\Component;
 
 #[Layout('components.layouts.auth')]
 class TeacherRegister extends Component
 {
+    use PasswordValidationRules;
+
     public string $honorific = '';
 
     public string $first_name = '';
@@ -29,6 +33,7 @@ class TeacherRegister extends Component
 
     public int $pronoun_id = 1;
 
+    #[Validate('required|email:rfc,filter|max:255')]
     public string $email = '';
 
     public string $password = '';
@@ -36,6 +41,20 @@ class TeacherRegister extends Component
     public string $password_confirmation = '';
 
     public string $cell_phone = '';
+
+    public function updatedPassword(): void
+    {
+        $this->validateOnly('password', ['password' => $this->passwordLiveRules()]);
+    }
+
+    public function updatedPasswordConfirmation(): void
+    {
+        $this->validateOnly('password_confirmation', [
+            'password_confirmation' => ['same:password'],
+        ], [
+            'password_confirmation.same' => 'The passwords do not match.',
+        ]);
+    }
 
     public function register(): void
     {
@@ -51,6 +70,10 @@ class TeacherRegister extends Component
         Teacher::create(['user_id' => $user->id]);
 
         $user->assignRole('Teacher');
+
+        if (! $user->hasVerifiedEmail()) {
+            $user->sendEmailVerificationNotification();
+        }
 
         Phone::create([
             'user_id' => $user->id,

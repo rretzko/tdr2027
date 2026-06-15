@@ -6,8 +6,10 @@ use App\Enums\PhoneType;
 use App\Livewire\Auth\TeacherRegister;
 use App\Models\Teacher;
 use App\Models\User;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 
 use function Pest\Laravel\get;
@@ -24,8 +26,8 @@ test('new teachers can register', function () {
         ->set('last_name', 'Smith')
         ->set('email', 'jane@example.com')
         ->set('cell_phone', '5551234567')
-        ->set('password', 'password')
-        ->set('password_confirmation', 'password')
+        ->set('password', 'Tdr-Zx9Quokka!')
+        ->set('password_confirmation', 'Tdr-Zx9Quokka!')
         ->call('register')
         ->assertRedirect(route('dashboard'));
 
@@ -48,8 +50,8 @@ test('cell phone is required', function () {
         ->set('first_name', 'Jane')
         ->set('last_name', 'Smith')
         ->set('email', 'jane@example.com')
-        ->set('password', 'password')
-        ->set('password_confirmation', 'password')
+        ->set('password', 'Tdr-Zx9Quokka!')
+        ->set('password_confirmation', 'Tdr-Zx9Quokka!')
         ->call('register')
         ->assertHasErrors('cell_phone');
 });
@@ -57,8 +59,8 @@ test('cell phone is required', function () {
 test('first name, last name, and email are required', function () {
     Livewire::test(TeacherRegister::class)
         ->set('cell_phone', '5551234567')
-        ->set('password', 'password')
-        ->set('password_confirmation', 'password')
+        ->set('password', 'Tdr-Zx9Quokka!')
+        ->set('password_confirmation', 'Tdr-Zx9Quokka!')
         ->call('register')
         ->assertHasErrors(['first_name', 'last_name', 'email']);
 });
@@ -71,8 +73,31 @@ test('email must be unique', function () {
         ->set('last_name', 'Smith')
         ->set('email', 'duplicate@example.com')
         ->set('cell_phone', '5551234567')
-        ->set('password', 'password')
-        ->set('password_confirmation', 'password')
+        ->set('password', 'Tdr-Zx9Quokka!')
+        ->set('password_confirmation', 'Tdr-Zx9Quokka!')
         ->call('register')
         ->assertHasErrors('email');
+});
+
+test('teachers receive a verification email and must verify before reaching the dashboard', function () {
+    Notification::fake();
+
+    Livewire::test(TeacherRegister::class)
+        ->set('first_name', 'Jane')
+        ->set('last_name', 'Smith')
+        ->set('email', 'jane@example.com')
+        ->set('cell_phone', '5551234567')
+        ->set('password', 'Tdr-Zx9Quokka!')
+        ->set('password_confirmation', 'Tdr-Zx9Quokka!')
+        ->call('register')
+        ->assertRedirect(route('dashboard'));
+
+    $user = User::where('email', 'jane@example.com')->first();
+
+    expect($user->email_unverifiable)->toBeFalse();
+    expect($user->hasVerifiedEmail())->toBeFalse();
+
+    Notification::assertSentTo($user, VerifyEmail::class);
+
+    get(route('dashboard'))->assertRedirect(route('verification.notice'));
 });

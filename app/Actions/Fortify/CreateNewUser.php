@@ -32,7 +32,7 @@ class CreateNewUser implements CreatesNewUsers
             'last_name' => ['required', 'string', 'max:255'],
             'suffix_name' => ['nullable', 'string', 'max:50'],
             'pronoun_id' => ['nullable', 'integer', Rule::exists(Pronoun::class, 'id')],
-            'email' => ['required', 'string', 'email', 'max:255', Rule::unique(User::class)],
+            'email' => ['required', 'string', 'email:rfc,filter', 'max:255', Rule::unique(User::class)],
             'password' => $this->passwordRules(),
         ])->validate();
 

@@ -15,7 +15,7 @@ Route::middleware('guest')->group(function () {
     Route::get('/sfdi/register', StudentRegister::class)->name('sfdi.register');
 });
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('/dashboard', 'dashboard')->name('dashboard');
 
     Route::get('/settings/profile', Profile::class)->name('settings.profile');

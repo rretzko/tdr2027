@@ -46,10 +46,10 @@ test('password can be reset with a valid token', function () {
     $token = Password::createToken($user);
 
     Livewire::test(ResetPassword::class, ['token' => $token, 'email' => $user->email])
-        ->set('password', 'new-password')
-        ->set('password_confirmation', 'new-password')
+        ->set('password', 'New-Passw0rd!')
+        ->set('password_confirmation', 'New-Passw0rd!')
         ->call('resetPassword')
         ->assertRedirect(route('login'));
 
-    expect(Hash::check('new-password', $user->refresh()->password))->toBeTrue();
+    expect(Hash::check('New-Passw0rd!', $user->refresh()->password))->toBeTrue();
 });

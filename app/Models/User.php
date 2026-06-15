@@ -6,6 +6,8 @@ namespace App\Models;
 
 use App\Support\NameFormatter;
 use Database\Factories\UserFactory;
+use Illuminate\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
@@ -20,10 +22,23 @@ use Spatie\Permission\Traits\HasRoles;
 
 #[Fillable(['email', 'password', 'pronoun_id', 'honorific', 'first_name', 'middle_name', 'last_name', 'suffix_name'])]
 #[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmailContract
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasRoles, Notifiable, TwoFactorAuthenticatable;
+    use HasFactory, HasRoles, MustVerifyEmail, Notifiable, TwoFactorAuthenticatable;
+
+    /**
+     * Determine if the user has verified their email address.
+     *
+     * Accounts flagged as `email_unverifiable` (e.g. school-issued SFDI
+     * addresses or auto-generated SFDI addresses) are treated as verified
+     * so they are never sent a verification email and are not blocked by
+     * the `verified` middleware.
+     */
+    public function hasVerifiedEmail(): bool
+    {
+        return $this->email_unverifiable || ! is_null($this->email_verified_at);
+    }
 
     /**
      * Get the attributes that should be cast.

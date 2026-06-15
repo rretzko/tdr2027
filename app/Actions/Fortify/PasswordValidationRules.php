@@ -14,6 +14,19 @@ trait PasswordValidationRules
      */
     protected function passwordRules(): array
     {
-        return ['required', 'string', Password::default(), 'confirmed'];
+        return ['required', 'string', Password::default()->mixedCase()->numbers()->uncompromised(), 'confirmed'];
+    }
+
+    /**
+     * Get the validation rules used for live, as-you-type password feedback.
+     *
+     * Excludes the `uncompromised` check, which calls an external API and
+     * isn't suitable to run on every keystroke.
+     *
+     * @return array<int, Rule|array<mixed>|string>
+     */
+    protected function passwordLiveRules(): array
+    {
+        return ['required', 'string', Password::default()->mixedCase()->numbers()];
     }
 }

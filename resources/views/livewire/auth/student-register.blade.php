@@ -42,7 +42,7 @@
         <flux:input wire:model="cell_phone" label="Cell phone (optional)" type="tel" autocomplete="tel" />
 
         <flux:input
-            wire:model="password"
+            wire:model.live.debounce.500ms="password"
             label="Password"
             type="password"
             required
@@ -51,7 +51,7 @@
         />
 
         <flux:input
-            wire:model="password_confirmation"
+            wire:model.live.debounce.500ms="password_confirmation"
             label="Confirm password"
             type="password"
             required
