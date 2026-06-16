@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Auth\SocialAuthController;
+use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
 use App\Livewire\Auth\TeacherRegister;
 use App\Livewire\Settings\Password;
@@ -13,6 +15,12 @@ Route::get('/', function () {
 Route::middleware('guest')->group(function () {
     Route::get('/tdr/register', TeacherRegister::class)->name('tdr.register');
     Route::get('/sfdi/register', StudentRegister::class)->name('sfdi.register');
+
+    Route::get('/auth/{provider}/redirect', [SocialAuthController::class, 'redirect'])
+        ->name('social.redirect');
+    Route::get('/auth/{provider}/callback', [SocialAuthController::class, 'callback'])
+        ->middleware('throttle:social-callback')
+        ->name('social.callback');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
@@ -20,4 +28,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/settings/profile', Profile::class)->name('settings.profile');
     Route::get('/settings/password', Password::class)->name('settings.password');
+
+    Route::get('/tdr/profile/complete', SocialProfileComplete::class)
+        ->name('social.profile.complete');
 });

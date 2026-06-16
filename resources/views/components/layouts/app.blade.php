@@ -37,8 +37,14 @@
                 </flux:navlist.item>
             </flux:navlist>
 
-            <div class="px-2 py-2 text-sm text-zinc-600 dark:text-zinc-300">
-                {{ auth()->user()->sort_name }}
+            <div class="flex items-center gap-2 px-2 py-2">
+                @php $avatar = auth()->user()->avatarUrl(); @endphp
+                @if($avatar)
+                    <img src="{{ $avatar }}" alt="" class="h-7 w-7 rounded-full object-cover">
+                @else
+                    <flux:icon.user-circle class="h-7 w-7 text-zinc-400" />
+                @endif
+                <span class="text-sm text-zinc-600 dark:text-zinc-300">{{ auth()->user()->sort_name }}</span>
             </div>
 
             <form method="POST" action="{{ route('logout') }}">
