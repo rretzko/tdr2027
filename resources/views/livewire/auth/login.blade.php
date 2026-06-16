@@ -1,17 +1,18 @@
 <div class="flex flex-col gap-6">
     <div class="flex flex-col gap-2 text-center">
         <flux:heading size="xl">Log in to your account</flux:heading>
-        <flux:subheading>Enter your email and password below to log in</flux:subheading>
+        <flux:subheading>Enter your cell phone and password below to log in</flux:subheading>
     </div>
 
     <form wire:submit="login" class="flex flex-col gap-6">
         <flux:input
-            wire:model="email"
-            label="Email address"
-            type="email"
+            wire:model="cell_phone"
+            label="Cell phone"
+            type="tel"
             required
             autofocus
-            autocomplete="email"
+            autocomplete="tel"
+            mask:dynamic="$input.replace(/\D/g, '').length > 10 ? '(999) 999-9999 x9999' : '(999) 999-9999'"
         />
 
         <flux:input

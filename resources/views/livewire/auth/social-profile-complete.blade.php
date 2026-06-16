@@ -18,7 +18,7 @@
                 <flux:select.option value="Rev.">Rev.</flux:select.option>
             </flux:select>
 
-            <flux:select wire:model="pronoun_id" label="Pronouns">
+            <flux:select wire:model="pronoun_id" label="Pronouns" placeholder="Select pronoun...">
                 @foreach ($pronouns as $pronoun)
                     <flux:select.option value="{{ $pronoun->id }}">{{ $pronoun->description }}</flux:select.option>
                 @endforeach
@@ -36,19 +36,19 @@
         <flux:separator />
 
         <flux:input
-            wire:model="cell_phone"
-            label="Cell phone"
-            type="tel"
+            wire:model="email"
+            label="Email address"
+            type="email"
             required
-            autocomplete="tel"
-            mask:dynamic="$input.replace(/\D/g, '').length > 10 ? '(999) 999-9999 x9999' : '(999) 999-9999'"
+            autocomplete="email"
+            description="Used for notifications and password recovery. Verification required if changed."
         />
 
         <flux:separator />
 
         <flux:callout color="blue" icon="information-circle" heading="Set a password (optional)">
             <flux:callout.text>
-                You can also log in with a password. Leave blank to continue using social login only.
+                You can also log in with your cell phone and a password. Leave blank to continue using social login only.
             </flux:callout.text>
         </flux:callout>
 

@@ -31,6 +31,23 @@
 
             <flux:input wire:model="email" label="Email address" type="email" required autocomplete="email" />
 
+            <div wire:dirty.class.remove="hidden" class="hidden" wire:target="email">
+                <flux:callout color="yellow" icon="envelope">
+                    <flux:callout.text>
+                        Changing your email address requires re-verification. A link will be sent to your new address when you save.
+                    </flux:callout.text>
+                </flux:callout>
+            </div>
+
+            <flux:input
+                wire:model="cell_phone"
+                label="Cell phone"
+                type="tel"
+                required
+                autocomplete="tel"
+                mask:dynamic="$input.replace(/\D/g, '').length > 10 ? '(999) 999-9999 x9999' : '(999) 999-9999'"
+            />
+
             <div class="flex items-center gap-4">
                 <flux:button type="submit" variant="primary">
                     Save

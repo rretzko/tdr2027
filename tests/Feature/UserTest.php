@@ -66,7 +66,7 @@ test('sort_name omits optional segments when absent', function () {
     expect($user->sort_name)->toBe('Smith, Jane');
 });
 
-test('pronoun_id defaults to 1 when not specified', function () {
+test('pronoun_id is null when not specified', function () {
     $user = User::create([
         'first_name' => 'Default',
         'last_name' => 'Pronoun',
@@ -76,8 +76,8 @@ test('pronoun_id defaults to 1 when not specified', function () {
 
     $user->refresh();
 
-    expect($user->pronoun_id)->toBe(1);
-    expect($user->pronoun->description)->toBe('she/her/hers/herself');
+    expect($user->pronoun_id)->toBeNull();
+    expect($user->pronoun)->toBeNull();
 });
 
 test('email must be unique', function () {

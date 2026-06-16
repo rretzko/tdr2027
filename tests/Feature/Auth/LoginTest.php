@@ -17,10 +17,10 @@ test('login screen can be rendered', function () {
 });
 
 test('users can authenticate using the login screen', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->create(['cell_phone' => '5551234567']);
 
     Livewire::test(Login::class)
-        ->set('email', $user->email)
+        ->set('cell_phone', '5551234567')
         ->set('password', 'password')
         ->call('login')
         ->assertRedirect(route('dashboard'));
@@ -30,13 +30,13 @@ test('users can authenticate using the login screen', function () {
 });
 
 test('users cannot authenticate with an invalid password', function () {
-    $user = User::factory()->create();
+    User::factory()->create(['cell_phone' => '5551234567']);
 
     Livewire::test(Login::class)
-        ->set('email', $user->email)
+        ->set('cell_phone', '5551234567')
         ->set('password', 'wrong-password')
         ->call('login')
-        ->assertHasErrors('email');
+        ->assertHasErrors('cell_phone');
 
     expect(Auth::check())->toBeFalse();
 });

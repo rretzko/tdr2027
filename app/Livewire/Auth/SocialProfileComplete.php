@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace App\Livewire\Auth;
 
 use App\Actions\Fortify\PasswordValidationRules;
-use App\Enums\PhoneType;
-use App\Models\Phone;
 use App\Models\Pronoun;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -23,7 +21,7 @@ class SocialProfileComplete extends Component
 
     public string $honorific = '';
 
-    public int $pronoun_id = 1;
+    public string $pronoun_id = '';
 
     public string $first_name = '';
 
@@ -33,7 +31,7 @@ class SocialProfileComplete extends Component
 
     public string $suffix_name = '';
 
-    public string $cell_phone = '';
+    public string $email = '';
 
     public string $password = '';
 
@@ -43,18 +41,19 @@ class SocialProfileComplete extends Component
     {
         $user = Auth::user();
 
-        if ($user->phones()->where('type', PhoneType::Cell->value)->exists()) {
+        if ($user->pronoun_id !== null) {
             $this->redirect(route('dashboard'), navigate: true);
 
             return;
         }
 
-        $this->honorific  = $user->honorific ?? '';
-        $this->pronoun_id = $user->pronoun_id;
-        $this->first_name = $user->first_name;
+        $this->honorific   = $user->honorific ?? '';
+        $this->pronoun_id  = '';
+        $this->first_name  = $user->first_name;
         $this->middle_name = $user->middle_name ?? '';
-        $this->last_name  = $user->last_name;
+        $this->last_name   = $user->last_name;
         $this->suffix_name = $user->suffix_name ?? '';
+        $this->email       = $user->email ?? '';
     }
 
     public function save(): void
@@ -63,37 +62,39 @@ class SocialProfileComplete extends Component
             ? ['string', Password::default()->mixedCase()->numbers()->uncompromised(), 'confirmed']
             : [];
 
+        $user = Auth::user();
+
         $this->validate([
-            'honorific'    => ['nullable', 'string', 'max:50'],
-            'pronoun_id'   => ['required', 'integer', Rule::exists(Pronoun::class, 'id')],
-            'first_name'   => ['required', 'string', 'max:255'],
-            'middle_name'  => ['nullable', 'string', 'max:255'],
-            'last_name'    => ['required', 'string', 'max:255'],
-            'suffix_name'  => ['nullable', 'string', 'max:50'],
-            'cell_phone'   => ['required', 'string', 'min:10', 'max:20'],
-            'password'     => array_merge(['nullable'], $passwordRules),
+            'honorific'   => ['nullable', 'string', 'max:50'],
+            'pronoun_id'  => ['required', 'integer', Rule::exists(Pronoun::class, 'id')],
+            'first_name'  => ['required', 'string', 'max:255'],
+            'middle_name' => ['nullable', 'string', 'max:255'],
+            'last_name'   => ['required', 'string', 'max:255'],
+            'suffix_name' => ['nullable', 'string', 'max:50'],
+            'email'       => ['required', 'string', 'email:rfc,filter', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'password'    => array_merge(['nullable'], $passwordRules),
         ]);
 
-        $user = Auth::user();
+        $emailChanged = $this->email !== $user->email;
 
         $user->update([
             'honorific'   => $this->honorific ?: null,
-            'pronoun_id'  => $this->pronoun_id,
+            'pronoun_id'  => (int) $this->pronoun_id,
             'first_name'  => $this->first_name,
             'middle_name' => $this->middle_name ?: null,
             'last_name'   => $this->last_name,
             'suffix_name' => $this->suffix_name ?: null,
+            'email'       => $this->email,
         ]);
+
+        if ($emailChanged) {
+            $user->forceFill(['email_verified_at' => null])->save();
+            $user->sendEmailVerificationNotification();
+        }
 
         if (filled($this->password)) {
             $user->update(['password' => Hash::make($this->password)]);
         }
-
-        Phone::create([
-            'user_id'    => $user->id,
-            'type'       => PhoneType::Cell,
-            'raw_number' => preg_replace('/\D/', '', $this->cell_phone),
-        ]);
 
         $this->redirect(route('dashboard'), navigate: true);
     }

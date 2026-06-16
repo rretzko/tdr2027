@@ -5,15 +5,12 @@ declare(strict_types=1);
 namespace App\Livewire\Auth;
 
 use App\Actions\Fortify\PasswordValidationRules;
-use App\Enums\PhoneType;
-use App\Models\Phone;
 use App\Models\Pronoun;
 use App\Models\Teacher;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
 use Livewire\Attributes\Layout;
-use Livewire\Attributes\Validate;
 use Livewire\Component;
 
 #[Layout('components.layouts.auth')]
@@ -31,9 +28,8 @@ class TeacherRegister extends Component
 
     public string $suffix_name = '';
 
-    public int $pronoun_id = 1;
+    public string $pronoun_id = '';
 
-    #[Validate('required|email:rfc,filter|max:255')]
     public string $email = '';
 
     public string $password = '';
@@ -59,13 +55,18 @@ class TeacherRegister extends Component
     public function register(): void
     {
         $this->validate([
-            'cell_phone' => ['required', 'string'],
+            'cell_phone' => ['required', 'string', 'min:10', 'max:20', \Illuminate\Validation\Rule::unique('users', 'cell_phone')],
         ]);
 
-        $user = app(CreatesNewUsers::class)->create($this->only([
+        $data               = $this->only([
             'honorific', 'first_name', 'middle_name', 'last_name', 'suffix_name',
             'pronoun_id', 'email', 'password', 'password_confirmation',
-        ]));
+        ]);
+        $data['pronoun_id'] = (int) $data['pronoun_id'];
+
+        $user = app(CreatesNewUsers::class)->create($data);
+
+        $user->update(['cell_phone' => preg_replace('/\D/', '', $this->cell_phone)]);
 
         Teacher::create(['user_id' => $user->id]);
 
@@ -74,12 +75,6 @@ class TeacherRegister extends Component
         if (! $user->hasVerifiedEmail()) {
             $user->sendEmailVerificationNotification();
         }
-
-        Phone::create([
-            'user_id' => $user->id,
-            'type' => PhoneType::Cell,
-            'raw_number' => $this->cell_phone,
-        ]);
 
         Auth::login($user);
 

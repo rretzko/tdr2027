@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Enums\PhoneType;
 use App\Livewire\Auth\TeacherRegister;
 use App\Models\Teacher;
 use App\Models\User;
@@ -24,6 +23,7 @@ test('new teachers can register', function () {
     Livewire::test(TeacherRegister::class)
         ->set('first_name', 'Jane')
         ->set('last_name', 'Smith')
+        ->set('pronoun_id', '2')
         ->set('email', 'jane@example.com')
         ->set('cell_phone', '5551234567')
         ->set('password', 'Tdr-Zx9Quokka!')
@@ -35,12 +35,9 @@ test('new teachers can register', function () {
 
     expect($user)->not->toBeNull();
     expect($user->hasRole('Teacher'))->toBeTrue();
-    expect($user->pronoun_id)->toBe(1);
+    expect($user->pronoun_id)->toBe(2);
+    expect($user->cell_phone)->toBe('5551234567');
     expect(Teacher::where('user_id', $user->id)->exists())->toBeTrue();
-
-    $phone = $user->phones->first();
-    expect($phone->type)->toBe(PhoneType::Cell);
-    expect($phone->raw_number)->toBe('5551234567');
 
     expect(Auth::id())->toBe($user->id);
 });
@@ -49,7 +46,23 @@ test('cell phone is required', function () {
     Livewire::test(TeacherRegister::class)
         ->set('first_name', 'Jane')
         ->set('last_name', 'Smith')
+        ->set('pronoun_id', '2')
         ->set('email', 'jane@example.com')
+        ->set('password', 'Tdr-Zx9Quokka!')
+        ->set('password_confirmation', 'Tdr-Zx9Quokka!')
+        ->call('register')
+        ->assertHasErrors('cell_phone');
+});
+
+test('cell phone must be unique', function () {
+    User::factory()->create(['cell_phone' => '5551234567']);
+
+    Livewire::test(TeacherRegister::class)
+        ->set('first_name', 'Jane')
+        ->set('last_name', 'Smith')
+        ->set('pronoun_id', '2')
+        ->set('email', 'jane@example.com')
+        ->set('cell_phone', '5551234567')
         ->set('password', 'Tdr-Zx9Quokka!')
         ->set('password_confirmation', 'Tdr-Zx9Quokka!')
         ->call('register')
@@ -59,6 +72,7 @@ test('cell phone is required', function () {
 test('first name, last name, and email are required', function () {
     Livewire::test(TeacherRegister::class)
         ->set('cell_phone', '5551234567')
+        ->set('pronoun_id', '2')
         ->set('password', 'Tdr-Zx9Quokka!')
         ->set('password_confirmation', 'Tdr-Zx9Quokka!')
         ->call('register')
@@ -71,8 +85,9 @@ test('email must be unique', function () {
     Livewire::test(TeacherRegister::class)
         ->set('first_name', 'Jane')
         ->set('last_name', 'Smith')
+        ->set('pronoun_id', '2')
         ->set('email', 'duplicate@example.com')
-        ->set('cell_phone', '5551234567')
+        ->set('cell_phone', '5559876543')
         ->set('password', 'Tdr-Zx9Quokka!')
         ->set('password_confirmation', 'Tdr-Zx9Quokka!')
         ->call('register')
@@ -85,6 +100,7 @@ test('teachers receive a verification email and must verify before reaching the 
     Livewire::test(TeacherRegister::class)
         ->set('first_name', 'Jane')
         ->set('last_name', 'Smith')
+        ->set('pronoun_id', '2')
         ->set('email', 'jane@example.com')
         ->set('cell_phone', '5551234567')
         ->set('password', 'Tdr-Zx9Quokka!')

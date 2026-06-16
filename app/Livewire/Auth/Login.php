@@ -15,7 +15,7 @@ use Livewire\Component;
 
 class Login extends Component
 {
-    public string $email = '';
+    public string $cell_phone = '';
 
     public string $password = '';
 
@@ -24,19 +24,19 @@ class Login extends Component
     public function login(): void
     {
         $this->validate([
-            'email' => ['required', 'string', 'email'],
-            'password' => ['required', 'string'],
+            'cell_phone' => ['required', 'string'],
+            'password'   => ['required', 'string'],
         ]);
 
         $this->ensureIsNotRateLimited();
 
-        $user = User::where('email', $this->email)->first();
+        $user = User::where('cell_phone', preg_replace('/\D/', '', $this->cell_phone))->first();
 
         if (! $user || ! Hash::check($this->password, $user->password)) {
             RateLimiter::hit($this->throttleKey(), 60);
 
             throw ValidationException::withMessages([
-                'email' => trans('auth.failed'),
+                'cell_phone' => trans('auth.failed'),
             ]);
         }
 
@@ -60,7 +60,7 @@ class Login extends Component
         $seconds = RateLimiter::availableIn($this->throttleKey());
 
         throw ValidationException::withMessages([
-            'email' => trans('auth.throttle', [
+            'cell_phone' => trans('auth.throttle', [
                 'seconds' => $seconds,
                 'minutes' => ceil($seconds / 60),
             ]),
@@ -69,6 +69,6 @@ class Login extends Component
 
     protected function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->email).'|'.request()->ip());
+        return Str::transliterate(Str::lower($this->cell_phone).'|'.request()->ip());
     }
 }

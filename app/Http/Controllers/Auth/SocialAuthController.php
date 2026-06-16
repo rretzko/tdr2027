@@ -6,7 +6,6 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\SocialAccount;
-use App\Models\Teacher;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -23,7 +22,7 @@ class SocialAuthController extends Controller
     /** @var list<string> */
     private const ALLOWED_PROVIDERS = ['google', 'facebook'];
 
-    public function redirect(string $provider): SymfonyRedirectResponse
+    public function redirect(string $provider): SymfonyRedirectResponse|RedirectResponse
     {
         if (! in_array($provider, self::ALLOWED_PROVIDERS, strict: true)) {
             return redirect()->route('login')
@@ -50,9 +49,7 @@ class SocialAuthController extends Controller
                 ->withErrors(['email' => 'We could not complete sign-in with '.ucfirst($provider).'. Please try again.']);
         }
 
-        return DB::transaction(function () use ($provider, $socialUser): RedirectResponse {
-            return $this->handleSocialUser($provider, $socialUser);
-        });
+        return DB::transaction(fn () => $this->handleSocialUser($provider, $socialUser));
     }
 
     private function handleSocialUser(string $provider, SocialiteUser $socialUser): RedirectResponse
@@ -82,33 +79,22 @@ class SocialAuthController extends Controller
             }
         }
 
-        $user = $this->registerSocialTeacher($provider, $socialUser);
-        Auth::login($user, remember: true);
-        session()->regenerate();
+        $token        = $socialUser instanceof OAuth2User ? $socialUser->token : null;
+        $refreshToken = $socialUser instanceof OAuth2User ? $socialUser->refreshToken : null;
 
-        return redirect()->route('social.profile.complete');
-    }
-
-    private function registerSocialTeacher(string $provider, SocialiteUser $socialUser): User
-    {
-        $nameParts = $this->parseName((string) ($socialUser->getName() ?? ''));
-
-        $user = User::create([
-            'first_name' => $nameParts['first_name'],
-            'last_name'  => $nameParts['last_name'],
-            'email'      => $socialUser->getEmail(),
-            'password'   => null,
-            'pronoun_id' => 1,
+        session([
+            'social_oauth_payload' => [
+                'provider'         => $provider,
+                'provider_user_id' => (string) $socialUser->getId(),
+                'name'             => $socialUser->getName(),
+                'email'            => $socialUser->getEmail(),
+                'avatar'           => $socialUser->getAvatar(),
+                'token'            => $token,
+                'refresh_token'    => $refreshToken,
+            ],
         ]);
 
-        $user->markEmailAsVerified();
-
-        Teacher::create(['user_id' => $user->id]);
-        $user->assignRole('Teacher');
-
-        $this->createSocialAccount($user, $provider, $socialUser);
-
-        return $user;
+        return redirect()->route('social.phone.check');
     }
 
     private function createSocialAccount(User $user, string $provider, SocialiteUser $socialUser): void
@@ -136,25 +122,5 @@ class SocialAuthController extends Controller
             'provider_refresh_token' => $refreshToken,
             'provider_avatar'        => $socialUser->getAvatar(),
         ]);
-    }
-
-    /**
-     * Naively split "First [Middle] Last" into first_name / last_name.
-     * Social users correct their name on the profile-completion page.
-     *
-     * @return array{first_name: string, last_name: string}
-     */
-    private function parseName(string $fullName): array
-    {
-        $parts = array_values(array_filter(explode(' ', trim($fullName))));
-
-        if (count($parts) === 0) {
-            return ['first_name' => 'Unknown', 'last_name' => 'Unknown'];
-        }
-
-        $last  = array_pop($parts);
-        $first = array_shift($parts) ?? $last;
-
-        return ['first_name' => $first, 'last_name' => $last];
     }
 }

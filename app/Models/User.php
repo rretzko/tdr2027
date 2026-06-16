@@ -20,7 +20,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['email', 'password', 'pronoun_id', 'honorific', 'first_name', 'middle_name', 'last_name', 'suffix_name'])]
+#[Fillable(['email', 'cell_phone', 'password', 'pronoun_id', 'honorific', 'first_name', 'middle_name', 'last_name', 'suffix_name'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmailContract
 {
