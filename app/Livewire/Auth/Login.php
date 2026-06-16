@@ -25,7 +25,7 @@ class Login extends Component
     {
         $this->validate([
             'cell_phone' => ['required', 'string'],
-            'password'   => ['required', 'string'],
+            'password' => ['required', 'string'],
         ]);
 
         $this->ensureIsNotRateLimited();

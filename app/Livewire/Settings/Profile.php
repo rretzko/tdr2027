@@ -35,14 +35,14 @@ class Profile extends Component
     {
         $user = auth()->user();
 
-        $this->honorific   = (string) $user->honorific;
-        $this->first_name  = $user->first_name;
+        $this->honorific = (string) $user->honorific;
+        $this->first_name = $user->first_name;
         $this->middle_name = (string) $user->middle_name;
-        $this->last_name   = $user->last_name;
+        $this->last_name = $user->last_name;
         $this->suffix_name = (string) $user->suffix_name;
-        $this->pronoun_id  = $user->pronoun_id !== null ? (string) $user->pronoun_id : '';
-        $this->email       = (string) $user->email;
-        $this->cell_phone  = (string) $user->cell_phone;
+        $this->pronoun_id = $user->pronoun_id !== null ? (string) $user->pronoun_id : '';
+        $this->email = (string) $user->email;
+        $this->cell_phone = (string) $user->cell_phone;
     }
 
     public function update(): void

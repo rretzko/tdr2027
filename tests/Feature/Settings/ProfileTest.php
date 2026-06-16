@@ -25,7 +25,7 @@ test('profile information can be updated', function () {
 
     $user = User::factory()->create([
         'first_name' => 'Old',
-        'last_name'  => 'Name',
+        'last_name' => 'Name',
         'pronoun_id' => 1,
     ]);
 

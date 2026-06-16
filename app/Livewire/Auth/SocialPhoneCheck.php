@@ -40,14 +40,14 @@ class SocialPhoneCheck extends Component
             if ($existingUser !== null) {
                 SocialAccount::firstOrCreate(
                     [
-                        'provider'         => $payload['provider'],
+                        'provider' => $payload['provider'],
                         'provider_user_id' => $payload['provider_user_id'],
                     ],
                     [
-                        'user_id'                => $existingUser->id,
-                        'provider_token'         => $payload['token'],
+                        'user_id' => $existingUser->id,
+                        'provider_token' => $payload['token'],
                         'provider_refresh_token' => $payload['refresh_token'],
-                        'provider_avatar'        => $payload['avatar'],
+                        'provider_avatar' => $payload['avatar'],
                     ],
                 );
 
@@ -77,9 +77,9 @@ class SocialPhoneCheck extends Component
 
         $user = User::create([
             'first_name' => $nameParts['first_name'],
-            'last_name'  => $nameParts['last_name'],
-            'email'      => $payload['email'],
-            'password'   => null,
+            'last_name' => $nameParts['last_name'],
+            'email' => $payload['email'],
+            'password' => null,
             'pronoun_id' => null,
             'cell_phone' => $phone,
         ]);
@@ -92,12 +92,12 @@ class SocialPhoneCheck extends Component
         $user->assignRole('Teacher');
 
         SocialAccount::create([
-            'user_id'                => $user->id,
-            'provider'               => $payload['provider'],
-            'provider_user_id'       => $payload['provider_user_id'],
-            'provider_token'         => $payload['token'],
+            'user_id' => $user->id,
+            'provider' => $payload['provider'],
+            'provider_user_id' => $payload['provider_user_id'],
+            'provider_token' => $payload['token'],
             'provider_refresh_token' => $payload['refresh_token'],
-            'provider_avatar'        => $payload['avatar'],
+            'provider_avatar' => $payload['avatar'],
         ]);
 
         return $user;
@@ -112,7 +112,7 @@ class SocialPhoneCheck extends Component
             return ['first_name' => 'Unknown', 'last_name' => 'Unknown'];
         }
 
-        $last  = array_pop($parts);
+        $last = array_pop($parts);
         $first = array_shift($parts) ?? $last;
 
         return ['first_name' => $first, 'last_name' => $last];
