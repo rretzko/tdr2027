@@ -18,7 +18,7 @@
                 <flux:select.option value="Rev.">Rev.</flux:select.option>
             </flux:select>
 
-            <flux:select wire:model="pronoun_id" label="Pronouns" placeholder="Select pronoun...">
+            <flux:select wire:model="pronoun_id" label="Pronouns" placeholder="Select pronoun..." autofocus>
                 @foreach ($pronouns as $pronoun)
                     <flux:select.option value="{{ $pronoun->id }}">{{ $pronoun->description }}</flux:select.option>
                 @endforeach
@@ -26,7 +26,7 @@
         </div>
 
         <div class="grid grid-cols-1 gap-4">
-            <flux:input wire:model="first_name" label="First name" required autofocus />
+            <flux:input wire:model="first_name" label="First name" required />
             <flux:input wire:model="middle_name" label="Middle name (optional)" />
             <flux:input wire:model="last_name" label="Last name" required />
         </div>

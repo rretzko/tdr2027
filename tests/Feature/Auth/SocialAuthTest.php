@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\InvalidStateException;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Livewire\Livewire;
 
@@ -21,8 +22,8 @@ uses(RefreshDatabase::class);
 function fakeSocialUser(string $id, string $name, ?string $email, string $token = 'tok'): SocialiteUser
 {
     return (new SocialiteUser)->map([
-        'id'    => $id,
-        'name'  => $name,
+        'id' => $id,
+        'name' => $name,
         'email' => $email,
         'token' => $token,
     ]);
@@ -71,13 +72,13 @@ test('new user via facebook callback stores payload and redirects to phone check
 test('phone check creates new teacher when phone is not registered', function () {
     session([
         'social_oauth_payload' => [
-            'provider'         => 'google',
+            'provider' => 'google',
             'provider_user_id' => 'google-uid-123',
-            'name'             => 'Jane Smith',
-            'email'            => 'jane@example.com',
-            'avatar'           => null,
-            'token'            => 'tok',
-            'refresh_token'    => null,
+            'name' => 'Jane Smith',
+            'email' => 'jane@example.com',
+            'avatar' => null,
+            'token' => 'tok',
+            'refresh_token' => null,
         ],
     ]);
 
@@ -107,13 +108,13 @@ test('phone check links social account to existing user and goes to dashboard', 
 
     session([
         'social_oauth_payload' => [
-            'provider'         => 'google',
+            'provider' => 'google',
             'provider_user_id' => 'google-uid-999',
-            'name'             => 'Some Name',
-            'email'            => 'different@example.com',
-            'avatar'           => null,
-            'token'            => 'tok',
-            'refresh_token'    => null,
+            'name' => 'Some Name',
+            'email' => 'different@example.com',
+            'avatar' => null,
+            'token' => 'tok',
+            'refresh_token' => null,
         ],
     ]);
 
@@ -134,10 +135,10 @@ test('phone check links social account to existing user and goes to dashboard', 
 test('existing user by provider_user_id is logged in and token updated', function () {
     $user = User::factory()->create();
     SocialAccount::create([
-        'user_id'          => $user->id,
-        'provider'         => 'google',
+        'user_id' => $user->id,
+        'provider' => 'google',
         'provider_user_id' => 'google-uid-456',
-        'provider_token'   => 'old-token',
+        'provider_token' => 'old-token',
     ]);
 
     $social = fakeSocialUser('google-uid-456', 'Jane Smith', $user->email, 'new-token');
@@ -169,7 +170,7 @@ test('existing user found by email gets social account linked', function () {
 
 test('invalid oauth state redirects to login with error', function () {
     Socialite::shouldReceive('driver->user')
-        ->andThrow(new \Laravel\Socialite\Two\InvalidStateException);
+        ->andThrow(new InvalidStateException);
 
     get(route('social.callback', 'google'))
         ->assertRedirect(route('login'));
@@ -177,7 +178,7 @@ test('invalid oauth state redirects to login with error', function () {
 
 test('general oauth exception redirects to login with error', function () {
     Socialite::shouldReceive('driver->user')
-        ->andThrow(new \Exception('Provider unreachable'));
+        ->andThrow(new Exception('Provider unreachable'));
 
     get(route('social.callback', 'google'))
         ->assertRedirect(route('login'));

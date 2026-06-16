@@ -11,9 +11,9 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Laravel\Socialite\Contracts\User as SocialiteUser;
-use Laravel\Socialite\Two\User as OAuth2User;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\InvalidStateException;
+use Laravel\Socialite\Two\User as OAuth2User;
 use Symfony\Component\HttpFoundation\RedirectResponse as SymfonyRedirectResponse;
 use Throwable;
 
@@ -79,18 +79,18 @@ class SocialAuthController extends Controller
             }
         }
 
-        $token        = $socialUser instanceof OAuth2User ? $socialUser->token : null;
+        $token = $socialUser instanceof OAuth2User ? $socialUser->token : null;
         $refreshToken = $socialUser instanceof OAuth2User ? $socialUser->refreshToken : null;
 
         session([
             'social_oauth_payload' => [
-                'provider'         => $provider,
+                'provider' => $provider,
                 'provider_user_id' => (string) $socialUser->getId(),
-                'name'             => $socialUser->getName(),
-                'email'            => $socialUser->getEmail(),
-                'avatar'           => $socialUser->getAvatar(),
-                'token'            => $token,
-                'refresh_token'    => $refreshToken,
+                'name' => $socialUser->getName(),
+                'email' => $socialUser->getEmail(),
+                'avatar' => $socialUser->getAvatar(),
+                'token' => $token,
+                'refresh_token' => $refreshToken,
             ],
         ]);
 
@@ -99,28 +99,28 @@ class SocialAuthController extends Controller
 
     private function createSocialAccount(User $user, string $provider, SocialiteUser $socialUser): void
     {
-        $token        = $socialUser instanceof OAuth2User ? $socialUser->token : null;
+        $token = $socialUser instanceof OAuth2User ? $socialUser->token : null;
         $refreshToken = $socialUser instanceof OAuth2User ? $socialUser->refreshToken : null;
 
         SocialAccount::create([
-            'user_id'                => $user->id,
-            'provider'               => $provider,
-            'provider_user_id'       => (string) $socialUser->getId(),
-            'provider_token'         => $token,
+            'user_id' => $user->id,
+            'provider' => $provider,
+            'provider_user_id' => (string) $socialUser->getId(),
+            'provider_token' => $token,
             'provider_refresh_token' => $refreshToken,
-            'provider_avatar'        => $socialUser->getAvatar(),
+            'provider_avatar' => $socialUser->getAvatar(),
         ]);
     }
 
     private function updateTokens(SocialAccount $account, SocialiteUser $socialUser): void
     {
-        $token        = $socialUser instanceof OAuth2User ? $socialUser->token : null;
+        $token = $socialUser instanceof OAuth2User ? $socialUser->token : null;
         $refreshToken = $socialUser instanceof OAuth2User ? $socialUser->refreshToken : null;
 
         $account->update([
-            'provider_token'         => $token,
+            'provider_token' => $token,
             'provider_refresh_token' => $refreshToken,
-            'provider_avatar'        => $socialUser->getAvatar(),
+            'provider_avatar' => $socialUser->getAvatar(),
         ]);
     }
 }

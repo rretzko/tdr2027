@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'parent_id', 'logo_file_url', 'logo_file_alt'])]
+#[Fillable(['name', 'abbr', 'parent_id', 'logo_file_url', 'logo_file_alt'])]
 class Organization extends Model
 {
     /** @use HasFactory<OrganizationFactory> */
@@ -40,5 +40,13 @@ class Organization extends Model
     public function teacherSupervisors(): HasMany
     {
         return $this->hasMany(TeacherSupervisor::class);
+    }
+
+    /**
+     * @return HasMany<Event, $this>
+     */
+    public function events(): HasMany
+    {
+        return $this->hasMany(Event::class);
     }
 }

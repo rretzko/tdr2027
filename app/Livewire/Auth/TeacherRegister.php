@@ -8,6 +8,7 @@ use App\Actions\Fortify\PasswordValidationRules;
 use App\Models\Pronoun;
 use App\Models\Teacher;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
 use Livewire\Attributes\Layout;
@@ -55,10 +56,10 @@ class TeacherRegister extends Component
     public function register(): void
     {
         $this->validate([
-            'cell_phone' => ['required', 'string', 'min:10', 'max:20', \Illuminate\Validation\Rule::unique('users', 'cell_phone')],
+            'cell_phone' => ['required', 'string', 'min:10', 'max:20', Rule::unique('users', 'cell_phone')],
         ]);
 
-        $data               = $this->only([
+        $data = $this->only([
             'honorific', 'first_name', 'middle_name', 'last_name', 'suffix_name',
             'pronoun_id', 'email', 'password', 'password_confirmation',
         ]);

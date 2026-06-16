@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models\Pivots;
 
+use App\Enums\TeacherRole;
 use App\Models\School;
 use App\Models\Teacher;
 use Database\Factories\Pivots\SchoolTeacherFactory;
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
-#[Fillable(['school_id', 'teacher_id', 'is_active', 'school_email', 'verified_at'])]
+#[Fillable(['school_id', 'teacher_id', 'role', 'replacing_teacher_name', 'is_active', 'school_email', 'verified_at'])]
 class SchoolTeacher extends Pivot
 {
     /** @use HasFactory<SchoolTeacherFactory> */
@@ -29,6 +30,7 @@ class SchoolTeacher extends Pivot
     protected function casts(): array
     {
         return [
+            'role' => TeacherRole::class,
             'is_active' => 'boolean',
             'verified_at' => 'datetime',
         ];

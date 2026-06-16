@@ -5,6 +5,7 @@ use App\Livewire\Auth\SocialPhoneCheck;
 use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
 use App\Livewire\Auth\TeacherRegister;
+use App\Livewire\Onboarding\TeacherOnboardingWizard;
 use App\Livewire\Settings\Password;
 use App\Livewire\Settings\Profile;
 use Illuminate\Support\Facades\Route;
@@ -35,8 +36,18 @@ Route::middleware('auth')->group(function () {
         ->name('social.profile.complete');
 });
 
+// Onboarding wizard: outside the onboarding.complete-gated group below, else it would redirect to itself.
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/tdr/onboarding', TeacherOnboardingWizard::class)->name('teacher.onboarding');
+});
+
+Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function () {
     Route::view('/dashboard', 'dashboard')->name('dashboard');
+
+    Route::view('/schools', 'schools')->name('schools.index');
+    Route::view('/students', 'students')->name('students.index');
+    Route::view('/organizations', 'organizations')->name('organizations.index');
+    Route::view('/events', 'events')->name('events.index');
 
     Route::get('/settings/profile', Profile::class)->name('settings.profile');
     Route::get('/settings/password', Password::class)->name('settings.password');

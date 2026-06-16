@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\SchoolType;
 use App\Models\Pivots\SchoolStudent;
 use App\Models\Pivots\SchoolTeacher;
 use Carbon\Carbon;
@@ -15,11 +16,21 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'city', 'zip_code', 'geostate_id', 'county_id', 'school_year'])]
+#[Fillable(['name', 'type', 'city', 'zip_code', 'geostate_id', 'county_id', 'school_year'])]
 class School extends Model
 {
     /** @use HasFactory<SchoolFactory> */
     use HasFactory;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'type' => SchoolType::class,
+        ];
+    }
 
     /**
      * @return BelongsTo<County, $this>
@@ -63,7 +74,7 @@ class School extends Model
     {
         return $this->belongsToMany(Teacher::class, 'school_teacher')
             ->using(SchoolTeacher::class)
-            ->withPivot(['is_active', 'school_email', 'verified_at'])
+            ->withPivot(['role', 'replacing_teacher_name', 'is_active', 'school_email', 'verified_at'])
             ->withTimestamps();
     }
 
