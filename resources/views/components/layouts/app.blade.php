@@ -24,6 +24,24 @@
                 <flux:navlist.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')">
                     Dashboard
                 </flux:navlist.item>
+
+                @if (auth()->user()->teacher?->onboarding_completed_at !== null)
+                    <flux:navlist.item icon="building-library" :href="route('schools.index')" :current="request()->routeIs('schools.*')">
+                        Schools
+                    </flux:navlist.item>
+                    <flux:navlist.item icon="users" :href="route('students.index')" :current="request()->routeIs('students.*')">
+                        Students
+                    </flux:navlist.item>
+
+                    <flux:separator />
+
+                    <flux:navlist.item icon="building-office-2" :href="route('organizations.index')" :current="request()->routeIs('organizations.*')">
+                        Organizations
+                    </flux:navlist.item>
+                    <flux:navlist.item icon="calendar" :href="route('events.index')" :current="request()->routeIs('events.*')">
+                        Events
+                    </flux:navlist.item>
+                @endif
             </flux:navlist>
 
             <flux:spacer />
@@ -36,6 +54,12 @@
                     Password
                 </flux:navlist.item>
             </flux:navlist>
+
+            <div class="flex items-center gap-2 px-2 py-2" x-data="{ dark: document.documentElement.classList.contains('dark') }">
+                <flux:icon.sun variant="micro" class="text-zinc-400" />
+                <flux:switch x-model="dark" x-on:change="$flux.appearance = dark ? 'dark' : 'light'" />
+                <flux:icon.moon variant="micro" class="text-zinc-400" />
+            </div>
 
             <div class="flex items-center gap-2 px-2 py-2">
                 @php $avatar = auth()->user()->avatarUrl(); @endphp

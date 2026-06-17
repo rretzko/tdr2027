@@ -21,6 +21,8 @@ class DatabaseSeeder extends Seeder
             VoicePartSeeder::class,
             InstrumentSeeder::class,
             RolesSeeder::class,
+            SchoolSeeder::class,
+            OrganizationSeeder::class,
         ]);
 
         User::factory()->create([

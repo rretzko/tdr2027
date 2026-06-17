@@ -15,11 +15,21 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['user_id'])]
+#[Fillable(['user_id', 'onboarding_step', 'onboarding_completed_at'])]
 class Teacher extends Model
 {
     /** @use HasFactory<TeacherFactory> */
     use HasFactory;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'onboarding_completed_at' => 'datetime',
+        ];
+    }
 
     /**
      * @return BelongsTo<User, $this>
@@ -36,7 +46,7 @@ class Teacher extends Model
     {
         return $this->belongsToMany(School::class, 'school_teacher')
             ->using(SchoolTeacher::class)
-            ->withPivot(['is_active', 'school_email', 'verified_at'])
+            ->withPivot(['role', 'replacing_teacher_name', 'is_active', 'school_email', 'verified_at'])
             ->withTimestamps();
     }
 
@@ -57,5 +67,13 @@ class Teacher extends Model
     public function teacherSupervisors(): HasMany
     {
         return $this->hasMany(TeacherSupervisor::class);
+    }
+
+    /**
+     * @return HasMany<EventInvitationRequest, $this>
+     */
+    public function eventInvitationRequests(): HasMany
+    {
+        return $this->hasMany(EventInvitationRequest::class);
     }
 }

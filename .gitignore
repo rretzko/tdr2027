@@ -1,6 +1,7 @@
 *.log
 .DS_Store
 /database/*.sqlite
+/database/seeders/data/
 .env
 .env.backup
 .env.production
