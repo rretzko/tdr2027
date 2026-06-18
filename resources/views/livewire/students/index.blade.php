@@ -119,14 +119,183 @@
         </flux:table>
     </div>
 
-    <flux:modal name="edit-student" class="md:w-96">
+    <flux:modal name="edit-student" scroll="body" class="md:w-[36rem] border-2 border-zinc-300 dark:border-zinc-400">
         <form wire:submit="saveEdit" class="space-y-6">
             <div>
                 <flux:heading size="lg">Edit student</flux:heading>
-                <flux:subheading>Update the subject and your role for this student.</flux:subheading>
+                <flux:subheading>Update this student's profile, contacts, and your role with them.</flux:subheading>
             </div>
 
-            <flux:select wire:model="edit_subject" label="Subject">
+            @if ($emailFallbackNotice)
+                <flux:callout variant="warning" icon="exclamation-triangle">
+                    <flux:callout.text>{{ $emailFallbackNotice }}</flux:callout.text>
+                </flux:callout>
+            @endif
+
+            <flux:separator text="Profile" />
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <flux:input wire:model="edit_first_name" label="First name" />
+                <flux:input wire:model="edit_middle_name" label="Middle name (optional)" />
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <flux:input wire:model="edit_last_name" label="Last name" />
+                <flux:input wire:model="edit_suffix_name" label="Suffix (optional)" />
+            </div>
+
+            <flux:select wire:model="edit_pronoun_id" label="Pronouns" placeholder="Select pronouns..." required>
+                @foreach ($pronouns as $pronoun)
+                    <flux:select.option value="{{ $pronoun->id }}">{{ $pronoun->description }}</flux:select.option>
+                @endforeach
+            </flux:select>
+
+            <flux:separator />
+
+            <flux:input wire:model="edit_email" type="email" label="Email" description="Students aren't required to verify their email. If this address is already used by another account, a default address will be assigned instead." />
+
+            <flux:field>
+                <flux:label>
+                    Cell phone (optional)
+                    <flux:tooltip content="May be required for specific events.">
+                        <flux:icon.question-mark-circle variant="micro" class="inline text-zinc-400" />
+                    </flux:tooltip>
+                </flux:label>
+                <flux:input wire:model="edit_cell_phone" />
+            </flux:field>
+
+            <flux:separator />
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <flux:field>
+                    <flux:label>
+                        Birthday{{ $this->studentAge() !== null ? ' ('.$this->studentAge().' years old)' : '' }}
+                        <flux:tooltip content="May be required for specific events.">
+                            <flux:icon.question-mark-circle variant="micro" class="inline text-zinc-400" />
+                        </flux:tooltip>
+                    </flux:label>
+                    <flux:input wire:model.live="edit_birthday" type="date" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>
+                        Height (in)
+                        <flux:tooltip content="May be required for specific events.">
+                            <flux:icon.question-mark-circle variant="micro" class="inline text-zinc-400" />
+                        </flux:tooltip>
+                    </flux:label>
+                    <flux:select wire:model="edit_height" placeholder="Select height...">
+                        @for ($inches = 30; $inches <= 84; $inches++)
+                            <flux:select.option value="{{ $inches }}">{{ $inches }}" ({{ intdiv($inches, 12) }}' {{ $inches % 12 }}")</flux:select.option>
+                        @endfor
+                    </flux:select>
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>
+                        Shirt size
+                        <flux:tooltip content="May be required for specific events.">
+                            <flux:icon.question-mark-circle variant="micro" class="inline text-zinc-400" />
+                        </flux:tooltip>
+                    </flux:label>
+                    <flux:select wire:model="edit_shirt_size">
+                        @foreach ($shirtSizeOptions as $size)
+                            <flux:select.option value="{{ $size->value }}">{{ $size->label() }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                </flux:field>
+            </div>
+
+            @if (array_intersect($edit_subject, ['band', 'orchestra']) !== [])
+                <flux:field>
+                    <flux:label>
+                        Instrument (optional)
+                        <flux:tooltip content="Used to set the default instrument on events">
+                            <flux:icon.question-mark-circle variant="micro" class="inline text-zinc-400" />
+                        </flux:tooltip>
+                    </flux:label>
+                    <flux:select wire:model="edit_instrument_id" placeholder="Select an instrument...">
+                        @foreach ($instruments as $instrument)
+                            <flux:select.option value="{{ $instrument->id }}">{{ $instrument->name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                </flux:field>
+            @endif
+
+            @if (in_array('chorus', $edit_subject, true))
+                <flux:field>
+                    <flux:label>
+                        Voice part (optional)
+                        <flux:tooltip content="Used to set the default voice part on events">
+                            <flux:icon.question-mark-circle variant="micro" class="inline text-zinc-400" />
+                        </flux:tooltip>
+                    </flux:label>
+                    <flux:select wire:model="edit_voice_part_id" placeholder="Select a voice part...">
+                        @foreach ($voiceParts as $voicePart)
+                            <flux:select.option value="{{ $voicePart->id }}">{{ $voicePart->name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                </flux:field>
+            @endif
+
+            <div class="flex w-full items-center" role="none">
+                <div class="h-px w-full grow border-0 bg-zinc-800/15 [print-color-adjust:exact] dark:bg-white/20"></div>
+                <span class="mx-6 flex shrink-0 items-center gap-1 text-sm font-medium whitespace-nowrap text-zinc-500 dark:text-zinc-300">
+                    Home address (optional)
+                    <flux:tooltip content="May be required for specific events.">
+                        <flux:icon.question-mark-circle variant="micro" class="inline text-zinc-400" />
+                    </flux:tooltip>
+                </span>
+                <div class="h-px w-full grow border-0 bg-zinc-800/15 [print-color-adjust:exact] dark:bg-white/20"></div>
+            </div>
+
+            <flux:input wire:model="edit_home_address1" label="Address line 1" />
+            <flux:input wire:model="edit_home_address2" label="Address line 2 (optional)" />
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <flux:input wire:model="edit_home_city" label="City" class="sm:col-span-1" />
+                <flux:input wire:model="edit_home_geo_state" label="State" maxlength="2" />
+                <flux:input wire:model="edit_home_zip_code" label="Zip code" />
+            </div>
+
+            <flux:separator text="Emergency contacts" />
+
+            @foreach ($edit_emergency_contacts as $index => $contact)
+                <div class="space-y-4 rounded-lg border border-zinc-200 p-4 dark:border-white/10">
+                    <div class="flex items-center justify-between">
+                        <flux:text class="font-medium">Contact {{ $index + 1 }}</flux:text>
+
+                        @if (count($edit_emergency_contacts) > 1)
+                            <flux:button size="sm" variant="ghost" icon="x-mark" wire:click="removeEmergencyContactRow({{ $index }})" aria-label="Remove contact" />
+                        @endif
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <flux:input wire:model="edit_emergency_contacts.{{ $index }}.name" label="Name" />
+                        <flux:select wire:model="edit_emergency_contacts.{{ $index }}.relationship" label="Relationship" placeholder="Select a relationship...">
+                            @foreach ($relationshipOptions as $relationship)
+                                <flux:select.option value="{{ $relationship->value }}">{{ $relationship->label() }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                    </div>
+
+                    <flux:input wire:model="edit_emergency_contacts.{{ $index }}.email" type="email" label="Email" />
+
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                        <flux:input wire:model="edit_emergency_contacts.{{ $index }}.cell_phone" label="Cell phone" />
+                        <flux:input wire:model="edit_emergency_contacts.{{ $index }}.home_phone" label="Home phone (optional)" />
+                        <flux:input wire:model="edit_emergency_contacts.{{ $index }}.work_phone" label="Work phone (optional)" />
+                    </div>
+                </div>
+            @endforeach
+
+            <flux:button size="sm" variant="ghost" icon="plus" wire:click="addEmergencyContactRow">
+                Add another contact
+            </flux:button>
+
+            <flux:separator text="Your role with this student" />
+
+            <flux:select wire:model.live="edit_subject" label="Subject" variant="listbox" multiple placeholder="Select subjects...">
                 @foreach ($subjectOptions as $subject)
                     <flux:select.option value="{{ $subject->value }}">{{ $subject->label() }}</flux:select.option>
                 @endforeach
@@ -137,8 +306,23 @@
                 <flux:select.option value="coteacher">Co-teacher / assistant director</flux:select.option>
             </flux:select>
 
-            <div class="flex gap-2">
+            <flux:separator />
+
+            <div>
+                <flux:button variant="ghost" wire:click="resetPassword" wire:confirm="Reset this student's password to their email address?">
+                    Reset password
+                </flux:button>
+
+                @if ($passwordResetNotice)
+                    <flux:callout variant="success" icon="check-circle" class="mt-2">
+                        <flux:callout.text>{{ $passwordResetNotice }}</flux:callout.text>
+                    </flux:callout>
+                @endif
+            </div>
+
+            <div class="flex items-center gap-2">
                 <flux:spacer />
+
                 <flux:modal.close>
                     <flux:button variant="ghost">Cancel</flux:button>
                 </flux:modal.close>
