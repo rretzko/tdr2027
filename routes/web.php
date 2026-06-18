@@ -1,13 +1,16 @@
 <?php
 
 use App\Http\Controllers\Auth\SocialAuthController;
+use App\Http\Controllers\SchoolEmailVerificationController;
 use App\Livewire\Auth\SocialPhoneCheck;
 use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
 use App\Livewire\Auth\TeacherRegister;
 use App\Livewire\Onboarding\TeacherOnboardingWizard;
+use App\Livewire\Schools\Index as SchoolsIndex;
 use App\Livewire\Settings\Password;
 use App\Livewire\Settings\Profile;
+use App\Livewire\Students\Index as StudentsIndex;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -30,6 +33,11 @@ Route::get('/auth/{provider}/callback', [SocialAuthController::class, 'callback'
     ->middleware('throttle:social-callback')
     ->name('social.callback');
 
+// Signed, unauthenticated: clicked from an email inbox that may not have an app session.
+Route::get('/school-email/verify/{schoolTeacher}', [SchoolEmailVerificationController::class, 'verify'])
+    ->middleware('signed')
+    ->name('school-email.verify');
+
 // Profile completion: auth only — user may not yet have a verified email.
 Route::middleware('auth')->group(function () {
     Route::get('/tdr/profile/complete', SocialProfileComplete::class)
@@ -44,8 +52,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function () {
     Route::view('/dashboard', 'dashboard')->name('dashboard');
 
-    Route::view('/schools', 'schools')->name('schools.index');
-    Route::view('/students', 'students')->name('students.index');
+    Route::get('/schools', SchoolsIndex::class)->name('schools.index');
+    Route::get('/students', StudentsIndex::class)->name('students.index');
     Route::view('/organizations', 'organizations')->name('organizations.index');
     Route::view('/events', 'events')->name('events.index');
 
