@@ -179,6 +179,21 @@ test('saveEdit updates both the school record and the school_teacher pivot', fun
     expect($pivot->getRawOriginal('role'))->toBe('coteacher');
 });
 
+test('saveEdit shows a personalized success toast', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create(['name' => 'Old Name']);
+
+    $user->teacher->schools()->attach($school, ['role' => 'primary']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $school->id)
+        ->set('edit_name', 'New Name')
+        ->call('saveEdit')
+        ->assertHasNoErrors()
+        ->assertDispatched('toast-show', slots: ['text' => 'New Name updated successfully.']);
+});
+
 test('saveEdit requires a replacing teacher name when replacing a teacher', function () {
     $user = makeOnboardedTeacherUser();
     $school = School::factory()->create();

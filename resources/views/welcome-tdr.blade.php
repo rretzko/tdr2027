@@ -6,6 +6,8 @@
 
         <title>{{ config('app.name', 'TheDirectorsRoom.com') }}</title>
 
+        @include('partials.favicon')
+
         @fonts
 
         @fluxAppearance
@@ -26,6 +28,7 @@
 
         <main class="mx-auto flex w-full max-w-[1750px] flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
             <div class="w-full max-w-2xl">
+                <img src="{{ asset('images/tdr-logo.svg') }}" alt="" class="mx-auto h-16 w-16">
                 <flux:heading size="xl">TheDirectorsRoom.com</flux:heading>
                 <flux:subheading>Registration and event tools for teachers and event managers</flux:subheading>
             </div>

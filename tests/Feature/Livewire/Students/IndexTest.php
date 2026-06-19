@@ -11,10 +11,12 @@ use App\Models\School;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
+use App\Models\VoicePart;
 use App\Support\ClassOfCalculator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -73,6 +75,86 @@ test('the students index lists students this teacher teaches', function () {
     Livewire::actingAs($user)
         ->test(Index::class)
         ->assertSee('Alice Anderson');
+});
+
+test('the students index shows a student\'s real email under their name', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Has', 'Email');
+    $row->student->user->update(['email' => 'has.email@example.com']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('has.email@example.com')
+        ->assertDontSee('No email address');
+});
+
+test('the students index shows "No email address" for a default studentfolder.info email', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Default', 'Email');
+    $row->student->user->update(['email' => Str::uuid().'@studentfolder.info']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('No email address');
+});
+
+test('the students index shows "No email address" for a null email', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'No', 'Email');
+    $row->student->user->update(['email' => null]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('No email address');
+});
+
+test('the students index shows a Yes badge when a home address or emergency contact exists', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Has', 'Address');
+    HomeAddress::factory()->create(['student_id' => $row->student_id]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('Yes');
+});
+
+test('the students index shows no Yes badge when home address and emergency contact are both absent', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    claimStudentForTeacher($user->teacher, $school, 'Has', 'Neither');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertDontSee('Yes')
+        ->assertSee('No');
+});
+
+test('the students index shows a Yes badge when an emergency contact exists', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Has', 'Contact');
+    EmergencyContact::factory()->create(['student_id' => $row->student_id]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('Emergency Contact')
+        ->assertSee('Yes');
+});
+
+test('the students index shows the voice part column after grade', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Has', 'VoicePart');
+    $voicePart = VoicePart::factory()->create(['name' => 'Tenor']);
+    $row->student->update(['voice_part_id' => $voicePart->id]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('Tenor');
 });
 
 test('the students index only lists students linked to this teacher', function () {
@@ -274,7 +356,8 @@ test('saveEdit updates the student\'s profile fields', function () {
         ->set('edit_shirt_size', 'lg')
         ->set('edit_emergency_contacts', [validEmergencyContact()])
         ->call('saveEdit')
-        ->assertHasNoErrors();
+        ->assertHasNoErrors()
+        ->assertDispatched('toast-show', slots: ['text' => 'Updated Name updated successfully.']);
 
     $student = $row->student->refresh();
     $user2 = $student->user->refresh();
@@ -286,6 +369,22 @@ test('saveEdit updates the student\'s profile fields', function () {
     expect($user2->email_unverifiable)->toBeTrue();
     expect($student->height)->toBe(60);
     expect($student->getRawOriginal('shirt_size'))->toBe('lg');
+});
+
+test('saveEdit does not show a success toast when the email fallback notice keeps the modal open', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Edit', 'Me');
+    User::factory()->create(['email' => 'taken@example.com']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $row->id)
+        ->set('edit_email', 'taken@example.com')
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveEdit')
+        ->assertHasNoErrors()
+        ->assertNotDispatched('toast-show');
 });
 
 test('saveEdit assigns a default email and shows a notice when the requested email is already taken', function () {
@@ -349,7 +448,9 @@ test('saveEdit rejects a birthday that makes the student younger than 9', functi
         ->set('edit_birthday', now()->subYears(5)->format('Y-m-d'))
         ->set('edit_emergency_contacts', [validEmergencyContact()])
         ->call('saveEdit')
-        ->assertHasErrors('edit_birthday');
+        ->assertHasErrors('edit_birthday')
+        ->assertSee('The student must be at least 9 years old.')
+        ->assertSee('This form has not been saved. Please fix the highlighted fields above before saving.');
 });
 
 test('saveEdit rejects a birthday that makes the student older than 19', function () {

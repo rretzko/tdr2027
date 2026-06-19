@@ -11,8 +11,9 @@
         </flux:callout>
     @enderror
 
-    {{-- Cards below md:, full table at md: and up --}}
-    <div class="md:hidden space-y-3">
+    {{-- Cards below lg:, full table at lg: and up — 7 columns don't fit at md: once
+         the persistent sidebar appears (see Students for the table that surfaced this). --}}
+    <div class="lg:hidden space-y-3">
         @forelse ($schools as $school)
             <flux:card size="sm">
                 <div class="flex items-start justify-between gap-3">
@@ -81,7 +82,7 @@
         <flux:pagination :paginator="$schools" />
     </div>
 
-    <div class="hidden md:block">
+    <div class="hidden lg:block">
         <flux:table :paginate="$schools">
             <flux:table.columns>
                 <flux:table.column sortable :sorted="$sortColumn === 'name'" :direction="$sortDirection" wire:click="sortBy('name')">

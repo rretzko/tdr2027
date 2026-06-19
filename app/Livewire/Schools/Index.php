@@ -15,6 +15,7 @@ use App\Models\School;
 use App\Models\Teacher;
 use App\Rules\NotCommercialEmailDomain;
 use App\Support\CommercialEmailDomains;
+use Flux\Flux;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -188,6 +189,8 @@ class Index extends Component
 
         $this->editingSchoolId = null;
         $this->modal('edit-school')->close();
+
+        Flux::toast(text: "{$school->name} updated successfully.", variant: 'success');
     }
 
     /**

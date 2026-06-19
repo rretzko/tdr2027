@@ -5,13 +5,21 @@
         <flux:input wire:model.live.debounce.300ms="search" placeholder="Search by name..." icon="magnifying-glass" class="sm:max-w-xs" />
     </div>
 
-    {{-- Cards below md:, full table at md: and up --}}
-    <div class="md:hidden space-y-3">
+    {{-- Cards below lg:, full table at lg: and up. This table has 7 columns —
+         md: doesn't leave enough room once the persistent sidebar appears. --}}
+    <div class="lg:hidden space-y-3">
         @forelse ($rows as $row)
             <flux:card size="sm">
                 <div class="flex items-start justify-between gap-3">
                     <div>
                         <flux:heading size="base">{{ $row->student->user->name }}</flux:heading>
+
+                        @if ($this->hasRealEmail($row->student->user->email))
+                            <flux:text size="sm" class="ms-3 text-zinc-500">{{ $row->student->user->email }}</flux:text>
+                        @else
+                            <flux:text size="sm" class="ms-3 italic text-zinc-400">No email address</flux:text>
+                        @endif
+
                         <flux:text size="sm" class="text-zinc-500">{{ $row->school->name }}</flux:text>
                     </div>
 
@@ -30,6 +38,30 @@
                     <div>
                         <dt class="text-zinc-400">Grade</dt>
                         <dd>{{ $gradeByRowId[$row->id] ?? '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-zinc-400">Voice Part</dt>
+                        <dd>{{ $row->student->voicePart?->name ?? '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-zinc-400">Home Address</dt>
+                        <dd>
+                            @if ($row->student->homeAddress)
+                                <flux:badge color="green" size="sm">Yes</flux:badge>
+                            @else
+                                <flux:badge color="zinc" size="sm">No</flux:badge>
+                            @endif
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-zinc-400">Emergency Contact</dt>
+                        <dd>
+                            @if ($row->student->emergencyContacts->isNotEmpty())
+                                <flux:badge color="green" size="sm">Yes</flux:badge>
+                            @else
+                                <flux:badge color="zinc" size="sm">No</flux:badge>
+                            @endif
+                        </dd>
                     </div>
                 </dl>
 
@@ -56,7 +88,7 @@
         <flux:pagination :paginator="$rows" />
     </div>
 
-    <div class="hidden md:block">
+    <div class="hidden lg:block">
         <flux:table :paginate="$rows">
             <flux:table.columns>
                 <flux:table.column sortable :sorted="$sortColumn === 'name'" :direction="$sortDirection" wire:click="sortBy('name')">
@@ -69,6 +101,8 @@
                     Subject
                 </flux:table.column>
                 <flux:table.column>Grade</flux:table.column>
+                <flux:table.column>Voice Part</flux:table.column>
+                <flux:table.column>Address &amp; Contact</flux:table.column>
                 <flux:table.column>Status</flux:table.column>
                 <flux:table.column>Actions</flux:table.column>
             </flux:table.columns>
@@ -76,10 +110,41 @@
             <flux:table.rows>
                 @forelse ($rows as $row)
                     <flux:table.row :key="$row->id">
-                        <flux:table.cell>{{ $row->student->user->name }}</flux:table.cell>
+                        <flux:table.cell>
+                            <div>{{ $row->student->user->name }}</div>
+
+                            <div class="mt-0.5 ms-3">
+                                @if ($this->hasRealEmail($row->student->user->email))
+                                    <flux:text size="sm" class="text-zinc-500">{{ $row->student->user->email }}</flux:text>
+                                @else
+                                    <flux:text size="sm" class="italic text-zinc-400">No email address</flux:text>
+                                @endif
+                            </div>
+                        </flux:table.cell>
                         <flux:table.cell>{{ $row->school->name }}</flux:table.cell>
                         <flux:table.cell>{{ $row->subject->label() }}</flux:table.cell>
                         <flux:table.cell>{{ $gradeByRowId[$row->id] ?? '—' }}</flux:table.cell>
+                        <flux:table.cell>{{ $row->student->voicePart?->name ?? '—' }}</flux:table.cell>
+                        <flux:table.cell>
+                            <div class="flex flex-col gap-1 text-xs">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-zinc-400">Address:</span>
+                                    @if ($row->student->homeAddress)
+                                        <flux:badge color="green" size="sm">Yes</flux:badge>
+                                    @else
+                                        <flux:badge color="zinc" size="sm">No</flux:badge>
+                                    @endif
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-zinc-400">Contact:</span>
+                                    @if ($row->student->emergencyContacts->isNotEmpty())
+                                        <flux:badge color="green" size="sm">Yes</flux:badge>
+                                    @else
+                                        <flux:badge color="zinc" size="sm">No</flux:badge>
+                                    @endif
+                                </div>
+                            </div>
+                        </flux:table.cell>
                         <flux:table.cell>
                             @if ($row->is_active)
                                 <flux:badge color="green" size="sm">Active</flux:badge>
@@ -110,7 +175,7 @@
                     </flux:table.row>
                 @empty
                     <flux:table.row>
-                        <flux:table.cell colspan="6" class="text-center text-zinc-500">
+                        <flux:table.cell colspan="7" class="text-center text-zinc-500">
                             No students found.
                         </flux:table.cell>
                     </flux:table.row>
@@ -134,15 +199,10 @@
 
             <flux:separator text="Profile" />
 
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <flux:input wire:model="edit_first_name" label="First name" />
-                <flux:input wire:model="edit_middle_name" label="Middle name (optional)" />
-            </div>
-
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <flux:input wire:model="edit_last_name" label="Last name" />
-                <flux:input wire:model="edit_suffix_name" label="Suffix (optional)" />
-            </div>
+            <flux:input wire:model="edit_first_name" label="First name" />
+            <flux:input wire:model="edit_middle_name" label="Middle name (optional)" />
+            <flux:input wire:model="edit_last_name" label="Last name" />
+            <flux:input wire:model="edit_suffix_name" label="Suffix (optional)" />
 
             <flux:select wire:model="edit_pronoun_id" label="Pronouns" placeholder="Select pronouns..." required>
                 @foreach ($pronouns as $pronoun)
@@ -162,6 +222,7 @@
                     </flux:tooltip>
                 </flux:label>
                 <flux:input wire:model="edit_cell_phone" />
+                <flux:error name="edit_cell_phone" />
             </flux:field>
 
             <flux:separator />
@@ -175,6 +236,7 @@
                         </flux:tooltip>
                     </flux:label>
                     <flux:input wire:model.live="edit_birthday" type="date" />
+                    <flux:error name="edit_birthday" />
                 </flux:field>
 
                 <flux:field>
@@ -189,6 +251,7 @@
                             <flux:select.option value="{{ $inches }}">{{ $inches }}" ({{ intdiv($inches, 12) }}' {{ $inches % 12 }}")</flux:select.option>
                         @endfor
                     </flux:select>
+                    <flux:error name="edit_height" />
                 </flux:field>
 
                 <flux:field>
@@ -203,6 +266,7 @@
                             <flux:select.option value="{{ $size->value }}">{{ $size->label() }}</flux:select.option>
                         @endforeach
                     </flux:select>
+                    <flux:error name="edit_shirt_size" />
                 </flux:field>
             </div>
 
@@ -219,6 +283,7 @@
                             <flux:select.option value="{{ $instrument->id }}">{{ $instrument->name }}</flux:select.option>
                         @endforeach
                     </flux:select>
+                    <flux:error name="edit_instrument_id" />
                 </flux:field>
             @endif
 
@@ -235,6 +300,7 @@
                             <flux:select.option value="{{ $voicePart->id }}">{{ $voicePart->name }}</flux:select.option>
                         @endforeach
                     </flux:select>
+                    <flux:error name="edit_voice_part_id" />
                 </flux:field>
             @endif
 
@@ -319,6 +385,12 @@
                     </flux:callout>
                 @endif
             </div>
+
+            @if ($errors->any())
+                <flux:callout variant="danger" icon="exclamation-triangle">
+                    <flux:callout.text>This form has not been saved. Please fix the highlighted fields above before saving.</flux:callout.text>
+                </flux:callout>
+            @endif
 
             <div class="flex items-center gap-2">
                 <flux:spacer />

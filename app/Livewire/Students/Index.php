@@ -19,6 +19,7 @@ use App\Models\Teacher;
 use App\Models\User;
 use App\Models\VoicePart;
 use App\Support\ClassOfCalculator;
+use Flux\Flux;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -133,6 +134,15 @@ class Index extends Component
         }
 
         return Carbon::parse($this->edit_birthday)->age;
+    }
+
+    /**
+     * False for a null email or one of the system-generated default addresses
+     * (Str::uuid().'@studentfolder.info') assigned when no real email is on file.
+     */
+    public function hasRealEmail(?string $email): bool
+    {
+        return $email !== null && ! str_ends_with($email, '@studentfolder.info');
     }
 
     public function edit(int $rowId): void
@@ -350,6 +360,8 @@ class Index extends Component
         $this->emailFallbackNotice = null;
         $this->editingRowId = null;
         $this->modal('edit-student')->close();
+
+        Flux::toast(text: "{$user->name} updated successfully.", variant: 'success');
     }
 
     public function render(): View
@@ -462,7 +474,7 @@ class Index extends Component
             ->join('students', 'students.id', '=', 'student_teacher.student_id')
             ->join('users', 'users.id', '=', 'students.user_id')
             ->join('schools', 'schools.id', '=', 'student_teacher.school_id')
-            ->with(['student.user', 'school']);
+            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'student.voicePart', 'school']);
 
         if ($this->search !== '') {
             $query->where(fn ($q) => $q->where('users.first_name', 'like', "%{$this->search}%")

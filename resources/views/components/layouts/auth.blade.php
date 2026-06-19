@@ -6,6 +6,8 @@
 
         <title>{{ $title ?? config('app.name') }}</title>
 
+        @include('partials.favicon')
+
         @fonts
 
         @fluxAppearance
@@ -14,7 +16,8 @@
     </head>
     <body class="min-h-screen bg-zinc-50 antialiased dark:bg-zinc-900">
         <div class="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
-            <a href="{{ url('/') }}" class="text-lg font-semibold text-zinc-900 dark:text-white">
+            <a href="{{ url('/') }}" class="flex items-center gap-2 text-lg font-semibold text-zinc-900 dark:text-white">
+                <img src="{{ asset('images/tdr-logo.svg') }}" alt="" class="h-8 w-8">
                 {{ config('app.name') }}
             </a>
 
