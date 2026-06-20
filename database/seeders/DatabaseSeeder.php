@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
             SchoolSeeder::class,
             OrganizationSeeder::class,
             UserSeeder::class,
+            TeacherSeeder::class,
         ]);
 
         User::factory()->create([

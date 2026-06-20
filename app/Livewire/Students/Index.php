@@ -12,8 +12,11 @@ use App\Models\EmergencyContact;
 use App\Models\HomeAddress;
 use App\Models\Instrument;
 use App\Models\Pivots\SchoolStudent;
+use App\Models\Pivots\SchoolTeacher;
+use App\Models\Pivots\SchoolTeacherSubject;
 use App\Models\Pivots\StudentTeacher;
 use App\Models\Pronoun;
+use App\Models\School;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
@@ -21,8 +24,10 @@ use App\Models\VoicePart;
 use App\Support\ClassOfCalculator;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -45,7 +50,15 @@ class Index extends Component
 
     public string $sortDirection = 'asc';
 
+    public string $schoolFilter = '';
+
     public ?int $editingRowId = null;
+
+    public bool $isAdding = false;
+
+    public string $add_school_id = '';
+
+    public string $add_grade = '';
 
     // Teacher relationship — a teacher can claim a student under several subjects
     // at once (school_teacher_subject is many-to-one against school_teacher, and
@@ -113,6 +126,11 @@ class Index extends Component
         $this->resetPage();
     }
 
+    public function updatedSchoolFilter(): void
+    {
+        $this->resetPage();
+    }
+
     public function deactivate(int $rowId): void
     {
         StudentTeacher::where('id', $rowId)
@@ -143,6 +161,90 @@ class Index extends Component
     public function hasRealEmail(?string $email): bool
     {
         return $email !== null && ! str_ends_with($email, '@studentfolder.info');
+    }
+
+    /**
+     * "<last_name> <suffix_name>, <first_name> <middle_name>" — distinct from
+     * User::sortName (which uses commas between last/suffix and adds an
+     * honorific), kept specific to this column per the user's requested format.
+     */
+    public function studentDisplayName(User $user): string
+    {
+        $last = collect([$user->last_name, $user->suffix_name])->filter(fn (?string $part) => filled($part))->implode(' ');
+        $first = collect([$user->first_name, $user->middle_name])->filter(fn (?string $part) => filled($part))->implode(' ');
+
+        return "{$last}, {$first}";
+    }
+
+    public function add(): void
+    {
+        $this->editingRowId = null;
+        $this->isAdding = true;
+
+        $activeSchools = $this->teacher()->schools()->wherePivot('is_active', true)->get();
+        $teacherSubjects = $this->teacherDistinctSubjects();
+
+        $this->edit_subject = count($teacherSubjects) === 1 ? $teacherSubjects : [];
+        $this->edit_role = TeacherRole::Primary->value;
+
+        $this->edit_first_name = '';
+        $this->edit_middle_name = '';
+        $this->edit_last_name = '';
+        $this->edit_suffix_name = '';
+        $this->edit_email = '';
+        $this->edit_cell_phone = '';
+        $this->edit_pronoun_id = '';
+
+        $this->edit_birthday = '';
+        $this->edit_height = '';
+        $this->edit_shirt_size = ShirtSize::MED->value;
+        $this->edit_instrument_id = '';
+        $this->edit_voice_part_id = '';
+
+        $this->edit_home_address1 = '';
+        $this->edit_home_address2 = '';
+        $this->edit_home_city = '';
+        $this->edit_home_geo_state = '';
+        $this->edit_home_zip_code = '';
+
+        $this->edit_emergency_contacts = [$this->blankEmergencyContact()];
+
+        $this->add_school_id = $activeSchools->count() === 1 ? (string) $activeSchools->first()->id : '';
+        $this->add_grade = '';
+
+        $this->emailFallbackNotice = null;
+        $this->passwordResetNotice = null;
+        $this->resetErrorBag();
+    }
+
+    public function updatedAddSchoolId(): void
+    {
+        $this->add_grade = '';
+    }
+
+    /**
+     * @return list<array{grade: int, class_of: int, label: string}>
+     */
+    public function addGradeOptions(): array
+    {
+        if ($this->add_school_id === '') {
+            return [];
+        }
+
+        $school = School::find((int) $this->add_school_id);
+
+        if ($school === null) {
+            return [];
+        }
+
+        return array_map(
+            fn (int $grade) => [
+                'grade' => $grade,
+                'class_of' => ClassOfCalculator::classOfFromGrade($grade, $school->senior_year),
+                'label' => "{$grade}th Grade (Class of ".ClassOfCalculator::classOfFromGrade($grade, $school->senior_year).')',
+            ],
+            range(12, 4),
+        );
     }
 
     public function edit(int $rowId): void
@@ -252,48 +354,12 @@ class Index extends Component
             || $this->edit_home_geo_state !== ''
             || $this->edit_home_zip_code !== '';
 
-        $subjectValues = array_map(fn (Subject $subject) => $subject->value, Subject::cases());
-        $shirtSizeValues = array_map(fn (ShirtSize $size) => $size->value, ShirtSize::cases());
-        $relationshipValues = array_map(fn (EmergencyContactRelationship $relationship) => $relationship->value, EmergencyContactRelationship::cases());
-
-        $this->validate([
-            'edit_first_name' => ['required', 'string', 'max:255'],
-            'edit_middle_name' => ['nullable', 'string', 'max:255'],
-            'edit_last_name' => ['required', 'string', 'max:255'],
-            'edit_suffix_name' => ['nullable', 'string', 'max:255'],
-            'edit_email' => ['nullable', 'email', 'max:255'],
-            'edit_cell_phone' => ['nullable', 'string', 'max:20', Rule::unique('users', 'cell_phone')->ignore($user->id)],
-            'edit_pronoun_id' => ['required', 'integer', Rule::exists(Pronoun::class, 'id')],
-            'edit_birthday' => [
-                'nullable', 'date',
-                'before_or_equal:'.now()->subYears(9)->format('Y-m-d'),
-                'after:'.now()->subYears(20)->format('Y-m-d'),
-            ],
-            'edit_height' => ['nullable', 'integer', 'min:30', 'max:84'],
-            'edit_shirt_size' => ['required', Rule::in($shirtSizeValues)],
-            'edit_instrument_id' => ['nullable', 'integer', Rule::exists(Instrument::class, 'id')],
-            'edit_voice_part_id' => ['nullable', 'integer', Rule::exists(VoicePart::class, 'id')],
-
-            'edit_home_address1' => [$homeAddressProvided ? 'required' : 'nullable', 'string', 'max:255'],
-            'edit_home_address2' => ['nullable', 'string', 'max:255'],
-            'edit_home_city' => [$homeAddressProvided ? 'required' : 'nullable', 'string', 'max:255'],
-            'edit_home_geo_state' => [$homeAddressProvided ? 'required' : 'nullable', 'string', 'max:2'],
-            'edit_home_zip_code' => [$homeAddressProvided ? 'required' : 'nullable', 'string', 'max:10'],
-
-            'edit_emergency_contacts' => ['required', 'array', 'min:1'],
-            'edit_emergency_contacts.*.name' => ['required', 'string', 'max:255'],
-            'edit_emergency_contacts.*.relationship' => ['required', Rule::in($relationshipValues)],
-            'edit_emergency_contacts.*.email' => ['required', 'email', 'max:255'],
-            'edit_emergency_contacts.*.cell_phone' => ['required', 'string', 'max:20'],
-            'edit_emergency_contacts.*.home_phone' => ['nullable', 'string', 'max:20'],
-            'edit_emergency_contacts.*.work_phone' => ['nullable', 'string', 'max:20'],
-
-            'edit_subject' => ['required', 'array', 'min:1'],
-            'edit_subject.*' => [Rule::in($subjectValues)],
-            'edit_role' => ['required', Rule::in([TeacherRole::Primary->value, TeacherRole::Coteacher->value])],
-        ], [
+        $this->validate($this->profileValidationRules($user->id, $homeAddressProvided), [
             'edit_birthday.before_or_equal' => 'The student must be at least 9 years old.',
             'edit_birthday.after' => 'The student must be no older than 19.',
+            'edit_first_name.regex' => 'First name may only contain letters, spaces, hyphens, and apostrophes.',
+            'edit_middle_name.regex' => 'Middle name may only contain letters, spaces, hyphens, and apostrophes.',
+            'edit_last_name.regex' => 'Last name may only contain letters, spaces, hyphens, and apostrophes.',
         ]);
 
         // Students aren't required to verify email, and a default address is used
@@ -364,19 +430,141 @@ class Index extends Component
         Flux::toast(text: "{$user->name} updated successfully.", variant: 'success');
     }
 
+    public function saveAdd(): void
+    {
+        $homeAddressProvided = $this->edit_home_address1 !== ''
+            || $this->edit_home_city !== ''
+            || $this->edit_home_geo_state !== ''
+            || $this->edit_home_zip_code !== '';
+
+        // Emergency contacts are optional when adding a student — drop any rows the
+        // teacher left entirely blank (e.g. the default empty row) before validating,
+        // so a skipped contact section doesn't trip the per-field "required" rules.
+        $this->edit_emergency_contacts = array_values(array_filter(
+            $this->edit_emergency_contacts,
+            fn (array $contact) => $contact['name'] !== ''
+                || $contact['relationship'] !== ''
+                || $contact['email'] !== ''
+                || $contact['cell_phone'] !== ''
+                || $contact['home_phone'] !== ''
+                || $contact['work_phone'] !== ''
+        ));
+
+        $activeSchoolIds = $this->teacher()->schools()->wherePivot('is_active', true)->pluck('schools.id')->all();
+
+        $this->validate([
+            'add_school_id' => ['required', 'integer', Rule::in($activeSchoolIds)],
+            'add_grade' => ['required', 'integer', 'min:4', 'max:12'],
+            ...$this->profileValidationRules(null, $homeAddressProvided, emergencyContactsRequired: false),
+        ], [
+            'edit_birthday.before_or_equal' => 'The student must be at least 9 years old.',
+            'edit_birthday.after' => 'The student must be no older than 19.',
+            'edit_first_name.regex' => 'First name may only contain letters, spaces, hyphens, and apostrophes.',
+            'edit_middle_name.regex' => 'Middle name may only contain letters, spaces, hyphens, and apostrophes.',
+            'edit_last_name.regex' => 'Last name may only contain letters, spaces, hyphens, and apostrophes.',
+        ]);
+
+        $school = School::findOrFail((int) $this->add_school_id);
+
+        // Students aren't required to verify email, and a default address is used
+        // whenever none is given or the requested one is already taken (e.g. a
+        // shared family address) — see requirements/general/Student Overview.md.
+        $attemptedEmail = trim($this->edit_email);
+        $fallbackApplied = false;
+        $finalEmail = $attemptedEmail;
+
+        if ($attemptedEmail === '' || User::where('email', $attemptedEmail)->exists()) {
+            $fallbackApplied = $attemptedEmail !== '';
+            $finalEmail = Str::uuid().'@studentfolder.info';
+        }
+
+        $user = User::create([
+            'first_name' => $this->edit_first_name,
+            'middle_name' => $this->edit_middle_name !== '' ? $this->edit_middle_name : null,
+            'last_name' => $this->edit_last_name,
+            'suffix_name' => $this->edit_suffix_name !== '' ? $this->edit_suffix_name : null,
+            'email' => $finalEmail,
+            'password' => null,
+            'cell_phone' => $this->edit_cell_phone !== '' ? $this->edit_cell_phone : null,
+            'pronoun_id' => (int) $this->edit_pronoun_id,
+        ]);
+        $user->forceFill(['email_unverifiable' => true])->save();
+
+        $student = Student::create([
+            'user_id' => $user->id,
+            'height' => $this->edit_height !== '' ? (int) $this->edit_height : null,
+            'birthday' => $this->edit_birthday !== '' ? $this->edit_birthday : null,
+            'shirt_size' => $this->edit_shirt_size,
+            'instrument_id' => $this->edit_instrument_id !== '' ? (int) $this->edit_instrument_id : null,
+            'voice_part_id' => $this->edit_voice_part_id !== '' ? (int) $this->edit_voice_part_id : null,
+        ]);
+
+        if ($homeAddressProvided) {
+            $student->homeAddress()->create([
+                'address1' => $this->edit_home_address1,
+                'address2' => $this->edit_home_address2 !== '' ? $this->edit_home_address2 : null,
+                'city' => $this->edit_home_city,
+                'geo_state' => mb_strtoupper($this->edit_home_geo_state),
+                'zip_code' => $this->edit_home_zip_code,
+            ]);
+        }
+
+        $this->syncEmergencyContacts($student);
+
+        SchoolStudent::create([
+            'student_id' => $student->id,
+            'school_id' => $school->id,
+            'is_active' => true,
+            'class_of' => ClassOfCalculator::classOfFromGrade((int) $this->add_grade, $school->senior_year),
+        ]);
+
+        foreach ($this->edit_subject as $subject) {
+            StudentTeacher::create([
+                'student_id' => $student->id,
+                'teacher_id' => $this->teacher()->id,
+                'school_id' => $school->id,
+                'subject' => $subject,
+                'role' => $this->edit_role,
+                'is_active' => true,
+            ]);
+        }
+
+        $this->isAdding = false;
+        $this->editingRowId = StudentTeacher::where('student_id', $student->id)
+            ->where('teacher_id', $this->teacher()->id)
+            ->where('school_id', $school->id)
+            ->value('id');
+
+        if ($fallbackApplied) {
+            $this->emailFallbackNotice = "\"{$attemptedEmail}\" is already used by another account, so a default address was assigned instead.";
+            $this->edit_email = $finalEmail;
+
+            return;
+        }
+
+        $this->emailFallbackNotice = null;
+        $this->editingRowId = null;
+        $this->modal('edit-student')->close();
+
+        Flux::toast(text: "{$user->name} added successfully.", variant: 'success');
+    }
+
     public function render(): View
     {
         $rows = $this->rows();
+        $activeSchools = $this->teacher()->schools()->wherePivot('is_active', true)->orderBy('name')->get();
 
         return view('livewire.students.index', [
             'rows' => $rows,
-            'gradeByRowId' => $this->gradeByRowId($rows),
+            'gradeByRowId' => $this->gradeByRowId($rows->getCollection()),
             'subjectOptions' => Subject::cases(),
             'shirtSizeOptions' => ShirtSize::cases(),
             'relationshipOptions' => EmergencyContactRelationship::cases(),
             'pronouns' => Pronoun::orderBy('sort_order')->get(),
             'instruments' => Instrument::ordered()->get(),
             'voiceParts' => VoicePart::ordered()->get(),
+            'addSchoolOptions' => $activeSchools,
+            'filterSchools' => $activeSchools,
         ]);
     }
 
@@ -386,6 +574,58 @@ class Index extends Component
     private function blankEmergencyContact(): array
     {
         return ['id' => null, 'name' => '', 'relationship' => '', 'email' => '', 'cell_phone' => '', 'home_phone' => '', 'work_phone' => ''];
+    }
+
+    /**
+     * Validation rules shared by saveEdit() and saveAdd() — the profile, home
+     * address, emergency contact, and subject/role fields are identical for both;
+     * only the school/grade fields (add-only), ignored-user-id, and whether an
+     * emergency contact is required (optional when adding a new student) differ.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private function profileValidationRules(?int $ignoreUserId, bool $homeAddressProvided, bool $emergencyContactsRequired = true): array
+    {
+        $subjectValues = array_map(fn (Subject $subject) => $subject->value, Subject::cases());
+        $shirtSizeValues = array_map(fn (ShirtSize $size) => $size->value, ShirtSize::cases());
+        $relationshipValues = array_map(fn (EmergencyContactRelationship $relationship) => $relationship->value, EmergencyContactRelationship::cases());
+
+        return [
+            'edit_first_name' => ['required', 'string', 'max:255', "regex:/^[\pL\s'-]+$/u"],
+            'edit_middle_name' => ['nullable', 'string', 'max:255', "regex:/^[\pL\s'-]+$/u"],
+            'edit_last_name' => ['required', 'string', 'max:255', "regex:/^[\pL\s'-]+$/u"],
+            'edit_suffix_name' => ['nullable', 'string', 'max:255'],
+            'edit_email' => ['nullable', 'email', 'max:255'],
+            'edit_cell_phone' => ['nullable', 'string', 'max:20', Rule::unique('users', 'cell_phone')->ignore($ignoreUserId)],
+            'edit_pronoun_id' => ['required', 'integer', Rule::exists(Pronoun::class, 'id')],
+            'edit_birthday' => [
+                'nullable', 'date',
+                'before_or_equal:'.now()->subYears(9)->format('Y-m-d'),
+                'after:'.now()->subYears(20)->format('Y-m-d'),
+            ],
+            'edit_height' => ['nullable', 'integer', 'min:30', 'max:84'],
+            'edit_shirt_size' => ['required', Rule::in($shirtSizeValues)],
+            'edit_instrument_id' => ['nullable', 'integer', Rule::exists(Instrument::class, 'id')],
+            'edit_voice_part_id' => ['nullable', 'integer', Rule::exists(VoicePart::class, 'id')],
+
+            'edit_home_address1' => [$homeAddressProvided ? 'required' : 'nullable', 'string', 'max:255'],
+            'edit_home_address2' => ['nullable', 'string', 'max:255'],
+            'edit_home_city' => [$homeAddressProvided ? 'required' : 'nullable', 'string', 'max:255'],
+            'edit_home_geo_state' => [$homeAddressProvided ? 'required' : 'nullable', 'string', 'max:2'],
+            'edit_home_zip_code' => [$homeAddressProvided ? 'required' : 'nullable', 'string', 'max:10'],
+
+            'edit_emergency_contacts' => [$emergencyContactsRequired ? 'required' : 'nullable', 'array', $emergencyContactsRequired ? 'min:1' : 'min:0'],
+            'edit_emergency_contacts.*.name' => ['required', 'string', 'max:255'],
+            'edit_emergency_contacts.*.relationship' => ['required', Rule::in($relationshipValues)],
+            'edit_emergency_contacts.*.email' => ['required', 'email', 'max:255'],
+            'edit_emergency_contacts.*.cell_phone' => ['required', 'string', 'max:20'],
+            'edit_emergency_contacts.*.home_phone' => ['nullable', 'string', 'max:20'],
+            'edit_emergency_contacts.*.work_phone' => ['nullable', 'string', 'max:20'],
+
+            'edit_subject' => ['required', 'array', 'min:1'],
+            'edit_subject.*' => [Rule::in($subjectValues)],
+            'edit_role' => ['required', Rule::in([TeacherRole::Primary->value, TeacherRole::Coteacher->value])],
+        ];
     }
 
     private function syncEmergencyContacts(Student $student): void
@@ -456,6 +696,26 @@ class Index extends Component
     }
 
     /**
+     * Distinct subjects this teacher is set up to teach across their active schools,
+     * used to default the Add-student Subject field when there's no ambiguity.
+     *
+     * @return list<string>
+     */
+    private function teacherDistinctSubjects(): array
+    {
+        $schoolTeacherIds = SchoolTeacher::where('teacher_id', $this->teacher()->id)
+            ->where('is_active', true)
+            ->pluck('id');
+
+        return SchoolTeacherSubject::whereIn('school_teacher_id', $schoolTeacherIds)
+            ->get()
+            ->map(fn (SchoolTeacherSubject $row) => $row->getRawOriginal('subject'))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return Builder<StudentTeacher>
      */
     private function teacherRow(?int $rowId)
@@ -474,6 +734,15 @@ class Index extends Component
             ->join('students', 'students.id', '=', 'student_teacher.student_id')
             ->join('users', 'users.id', '=', 'students.user_id')
             ->join('schools', 'schools.id', '=', 'student_teacher.school_id')
+            // Gates the roster to schools the teacher is still actively at — a
+            // deactivated school relationship (Schools index "Deactivate") hides
+            // that school's students here too, without touching their own rows.
+            ->join('school_teacher', function (JoinClause $join) {
+                $join->on('school_teacher.school_id', '=', 'student_teacher.school_id')
+                    ->on('school_teacher.teacher_id', '=', 'student_teacher.teacher_id');
+            })
+            ->where('school_teacher.is_active', true)
+            ->leftJoin('voice_parts', 'voice_parts.id', '=', 'students.voice_part_id')
             ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'student.voicePart', 'school']);
 
         if ($this->search !== '') {
@@ -481,9 +750,18 @@ class Index extends Component
                 ->orWhere('users.last_name', 'like', "%{$this->search}%"));
         }
 
+        if ($this->schoolFilter !== '') {
+            $query->where('student_teacher.school_id', (int) $this->schoolFilter);
+        }
+
+        if ($this->sortColumn === 'grade') {
+            return $this->paginateSortedByGrade($query);
+        }
+
         match ($this->sortColumn) {
             'school' => $query->orderBy('schools.name', $this->sortDirection),
             'subject' => $query->orderBy('student_teacher.subject', $this->sortDirection),
+            'voice_part' => $query->orderBy('voice_parts.name', $this->sortDirection),
             default => $query->orderBy('users.last_name', $this->sortDirection)->orderBy('users.first_name', $this->sortDirection),
         };
 
@@ -491,17 +769,51 @@ class Index extends Component
     }
 
     /**
+     * Grade isn't a stored column — it's computed from school_student.class_of and
+     * the school's senior_year (itself date-dependent, not a column — see
+     * School::getSeniorYearAttribute()) — so sorting by it can't be pushed into
+     * SQL without duplicating that logic there. Instead the full filtered/searched
+     * result set is pulled into memory, sorted in PHP, then sliced into a page
+     * manually so it still behaves like a normal Eloquent paginator.
+     *
+     * @param  Builder<StudentTeacher>  $query
+     */
+    private function paginateSortedByGrade(Builder $query): LengthAwarePaginator
+    {
+        $allRows = $query->get();
+        $grades = $this->gradeByRowId($allRows);
+
+        $sorted = $allRows->sort(function (StudentTeacher $a, StudentTeacher $b) use ($grades) {
+            $gradeA = $grades[$a->id] ?? -1;
+            $gradeB = $grades[$b->id] ?? -1;
+
+            return $this->sortDirection === 'desc' ? $gradeB <=> $gradeA : $gradeA <=> $gradeB;
+        })->values();
+
+        $page = LengthAwarePaginator::resolveCurrentPage();
+        $perPage = 15;
+
+        return new LengthAwarePaginator(
+            $sorted->slice(($page - 1) * $perPage, $perPage)->values(),
+            $sorted->count(),
+            $perPage,
+            $page,
+            ['path' => LengthAwarePaginator::resolveCurrentPath()],
+        );
+    }
+
+    /**
      * Grade depends on the student's class_of at the specific school this row
      * belongs to, not necessarily their currently-active school, so it's looked
      * up per (student, school) pair rather than via Student::getGradeAttribute().
      *
-     * @param  LengthAwarePaginator<int, StudentTeacher>  $rows
+     * @param  Collection<int, StudentTeacher>  $rows
      * @return array<int, int|null>
      */
-    private function gradeByRowId(LengthAwarePaginator $rows): array
+    private function gradeByRowId(Collection $rows): array
     {
-        $studentIds = $rows->getCollection()->pluck('student_id');
-        $schoolIds = $rows->getCollection()->pluck('school_id');
+        $studentIds = $rows->pluck('student_id');
+        $schoolIds = $rows->pluck('school_id');
 
         $schoolStudents = SchoolStudent::query()
             ->whereIn('student_id', $studentIds)

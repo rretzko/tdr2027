@@ -6,7 +6,11 @@ use App\Livewire\Students\Index;
 use App\Models\EmergencyContact;
 use App\Models\HomeAddress;
 use App\Models\Instrument;
+use App\Models\Pivots\SchoolStudent;
+use App\Models\Pivots\SchoolTeacher;
+use App\Models\Pivots\SchoolTeacherSubject;
 use App\Models\Pivots\StudentTeacher;
+use App\Models\Pronoun;
 use App\Models\School;
 use App\Models\Student;
 use App\Models\Teacher;
@@ -31,7 +35,10 @@ function makeStudentsIndexTeacherUser(): User
 
 /**
  * Claims a student for a teacher at a school: enrolls them at the school with the
- * given grade, then links them to the teacher for the given subject.
+ * given grade, then links them to the teacher for the given subject. Also ensures
+ * the teacher has an active school_teacher pivot row there — the index gates the
+ * roster to actively-attached schools, so without this a claimed student would be
+ * invisible even though the student_teacher row itself exists.
  */
 function claimStudentForTeacher(Teacher $teacher, School $school, string $firstName, string $lastName, int $grade = 9, string $subject = 'band'): StudentTeacher
 {
@@ -41,6 +48,10 @@ function claimStudentForTeacher(Teacher $teacher, School $school, string $firstN
     $classOf = ClassOfCalculator::classOfFromGrade($grade, $school->senior_year);
     $school->students()->attach($student->id, ['is_active' => true, 'class_of' => $classOf]);
 
+    if (! $teacher->schools()->where('schools.id', $school->id)->exists()) {
+        $teacher->schools()->attach($school->id, ['is_active' => true]);
+    }
+
     return StudentTeacher::create([
         'student_id' => $student->id,
         'teacher_id' => $teacher->id,
@@ -49,6 +60,17 @@ function claimStudentForTeacher(Teacher $teacher, School $school, string $firstN
         'role' => 'primary',
         'is_active' => true,
     ]);
+}
+
+/**
+ * Records that a teacher is set up to teach a subject at a school, the way the
+ * onboarding wizard would — used to test the Add-student Subject default.
+ */
+function addTeacherSubject(Teacher $teacher, School $school, string $subject): void
+{
+    $pivot = SchoolTeacher::where('teacher_id', $teacher->id)->where('school_id', $school->id)->first();
+
+    SchoolTeacherSubject::create(['school_teacher_id' => $pivot->id, 'subject' => $subject]);
 }
 
 /**
@@ -74,7 +96,30 @@ test('the students index lists students this teacher teaches', function () {
 
     Livewire::actingAs($user)
         ->test(Index::class)
-        ->assertSee('Alice Anderson');
+        ->assertSee('Anderson, Alice');
+});
+
+test('the Name column shows "Last Suffix, First Middle"', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Jane', 'Smith');
+    $row->student->user->update(['middle_name' => 'Q', 'suffix_name' => 'Jr.']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('Smith Jr., Jane Q');
+});
+
+test('the Name column omits absent middle name and suffix', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Jane', 'Smith');
+    $row->student->user->update(['middle_name' => null, 'suffix_name' => null]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('Smith, Jane')
+        ->assertDontSee('Smith , Jane');
 });
 
 test('the students index shows a student\'s real email under their name', function () {
@@ -208,6 +253,96 @@ test('the students index shows the computed grade for the row\'s school', functi
     Livewire::actingAs($user)
         ->test(Index::class)
         ->assertSee('9');
+});
+
+test('students can be sorted by grade ascending', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+
+    claimStudentForTeacher($user->teacher, $school, 'Twelve', 'Student', 12);
+    claimStudentForTeacher($user->teacher, $school, 'Four', 'Student', 4);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('sortBy', 'grade')
+        ->assertSet('sortColumn', 'grade')
+        ->assertSet('sortDirection', 'asc')
+        ->assertSeeInOrder(['Student, Four', 'Student, Twelve']);
+});
+
+test('students can be sorted by grade descending', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+
+    claimStudentForTeacher($user->teacher, $school, 'Twelve', 'Student', 12);
+    claimStudentForTeacher($user->teacher, $school, 'Four', 'Student', 4);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('sortBy', 'grade')
+        ->call('sortBy', 'grade')
+        ->assertSet('sortDirection', 'desc')
+        ->assertSeeInOrder(['Student, Twelve', 'Student, Four']);
+});
+
+test('students can be sorted by voice part', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+
+    $rowA = claimStudentForTeacher($user->teacher, $school, 'A', 'Student', 9, 'chorus');
+    $rowB = claimStudentForTeacher($user->teacher, $school, 'B', 'Student', 9, 'chorus');
+
+    $tenor = VoicePart::factory()->create(['name' => 'Tenor']);
+    $alto = VoicePart::factory()->create(['name' => 'Alto']);
+    $rowA->student->update(['voice_part_id' => $tenor->id]);
+    $rowB->student->update(['voice_part_id' => $alto->id]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('sortBy', 'voice_part')
+        ->assertSet('sortColumn', 'voice_part')
+        ->assertSet('sortDirection', 'asc')
+        ->assertSeeInOrder(['Alto', 'Tenor']);
+});
+
+test('the schools filter is hidden when the teacher has only one active school', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    claimStudentForTeacher($user->teacher, $school, 'Solo', 'Student');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertDontSee('All schools');
+});
+
+test('the schools filter appears and filters the roster when the teacher has multiple active schools', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $schoolOne = School::factory()->create(['name' => 'First School']);
+    $schoolTwo = School::factory()->create(['name' => 'Second School']);
+
+    claimStudentForTeacher($user->teacher, $schoolOne, 'At', 'First');
+    claimStudentForTeacher($user->teacher, $schoolTwo, 'At', 'Second');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('All schools')
+        ->assertSee('First, At')
+        ->assertSee('Second, At')
+        ->set('schoolFilter', (string) $schoolOne->id)
+        ->assertSee('First, At')
+        ->assertDontSee('Second, At');
+});
+
+test('students at a school the teacher has deactivated are hidden', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    claimStudentForTeacher($user->teacher, $school, 'Hidden', 'Student');
+
+    $user->teacher->schools()->updateExistingPivot($school->id, ['is_active' => false]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertDontSee('Student, Hidden');
 });
 
 test('deactivate sets the student_teacher row is_active to false', function () {
@@ -369,6 +504,37 @@ test('saveEdit updates the student\'s profile fields', function () {
     expect($user2->email_unverifiable)->toBeTrue();
     expect($student->height)->toBe(60);
     expect($student->getRawOriginal('shirt_size'))->toBe('lg');
+});
+
+test('saveEdit rejects digits or symbols in first, middle, or last name', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Edit', 'Me');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $row->id)
+        ->set('edit_first_name', 'Edit3')
+        ->set('edit_middle_name', 'M1ddle')
+        ->set('edit_last_name', 'Me!')
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveEdit')
+        ->assertHasErrors(['edit_first_name', 'edit_middle_name', 'edit_last_name']);
+});
+
+test('saveEdit accepts hyphenated, multi-word, and apostrophe names', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Edit', 'Me');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $row->id)
+        ->set('edit_first_name', 'Mary Jane')
+        ->set('edit_last_name', "Smith-O'Brien")
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveEdit')
+        ->assertHasNoErrors();
 });
 
 test('saveEdit does not show a success toast when the email fallback notice keeps the modal open', function () {
@@ -671,3 +837,232 @@ test('resetPassword cannot affect a student belonging to another teacher', funct
         ->set('editingRowId', $row->id)
         ->call('resetPassword');
 })->throws(ModelNotFoundException::class);
+
+test('add resets the form to a blank state and defaults role and shirt size', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $schoolOne = School::factory()->create();
+    $schoolTwo = School::factory()->create();
+    $user->teacher->schools()->attach($schoolOne, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($schoolTwo, ['role' => 'primary', 'is_active' => true]);
+    $row = claimStudentForTeacher($user->teacher, $schoolOne, 'Existing', 'Student');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $row->id)
+        ->call('add')
+        ->assertSet('editingRowId', null)
+        ->assertSet('isAdding', true)
+        ->assertSet('edit_first_name', '')
+        ->assertSet('edit_subject', [])
+        ->assertSet('edit_role', 'primary')
+        ->assertSet('edit_shirt_size', 'med')
+        // Two active schools means no unambiguous default.
+        ->assertSet('add_school_id', '')
+        ->assertSet('add_grade', '');
+});
+
+test('add defaults the school field when the teacher has only one active school', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->assertSet('add_school_id', (string) $school->id);
+});
+
+test('add does not default the school field when the teacher has multiple active schools', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $schoolOne = School::factory()->create();
+    $schoolTwo = School::factory()->create();
+    $user->teacher->schools()->attach($schoolOne, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($schoolTwo, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->assertSet('add_school_id', '');
+});
+
+test('add ignores an inactive school when defaulting the school field', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $activeSchool = School::factory()->create();
+    $inactiveSchool = School::factory()->create();
+    $user->teacher->schools()->attach($activeSchool, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($inactiveSchool, ['role' => 'primary', 'is_active' => false]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->assertSet('add_school_id', (string) $activeSchool->id);
+});
+
+test('add defaults the subject field when the teacher only teaches one subject', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    addTeacherSubject($user->teacher, $school, 'band');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->assertSet('edit_subject', ['band']);
+});
+
+test('add does not default the subject field when the teacher teaches multiple subjects', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    addTeacherSubject($user->teacher, $school, 'band');
+    addTeacherSubject($user->teacher, $school, 'chorus');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->assertSet('edit_subject', []);
+});
+
+test('saveAdd does not require an emergency contact', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'No')
+        ->set('edit_last_name', 'Contact')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_subject', ['band'])
+        ->call('saveAdd')
+        ->assertHasNoErrors();
+
+    $user2 = User::where('first_name', 'No')->where('last_name', 'Contact')->firstOrFail();
+    expect(EmergencyContact::where('student_id', $user2->student->id)->count())->toBe(0);
+});
+
+test('saveAdd still validates an emergency contact once the teacher starts filling one in', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'Partial')
+        ->set('edit_last_name', 'Contact')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_subject', ['band'])
+        ->set('edit_emergency_contacts.0.name', 'Started Typing')
+        ->call('saveAdd')
+        ->assertHasErrors([
+            'edit_emergency_contacts.0.relationship',
+            'edit_emergency_contacts.0.email',
+            'edit_emergency_contacts.0.cell_phone',
+        ]);
+});
+
+test('saveAdd creates a new student with the chosen school, grade, and subject', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'New')
+        ->set('edit_last_name', 'Student')
+        ->set('edit_email', 'new.student@theschool.edu')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_shirt_size', 'lg')
+        ->set('edit_subject', ['band'])
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveAdd')
+        ->assertHasNoErrors()
+        ->assertDispatched('toast-show', slots: ['text' => 'New Student added successfully.']);
+
+    $user2 = User::where('email', 'new.student@theschool.edu')->firstOrFail();
+    $student = $user2->student;
+
+    expect($student)->not->toBeNull();
+
+    $schoolStudent = SchoolStudent::where('student_id', $student->id)->where('school_id', $school->id)->first();
+    expect($schoolStudent)->not->toBeNull();
+    expect((int) $schoolStudent->class_of)->toBe(ClassOfCalculator::classOfFromGrade(9, $school->senior_year));
+
+    $studentTeacher = StudentTeacher::where('student_id', $student->id)
+        ->where('teacher_id', $user->teacher->id)
+        ->where('school_id', $school->id)
+        ->first();
+    expect($studentTeacher)->not->toBeNull();
+    expect($studentTeacher->getRawOriginal('subject'))->toBe('band');
+    expect($studentTeacher->getRawOriginal('role'))->toBe('primary');
+});
+
+test('saveAdd requires a school the teacher is actively attached to', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $otherSchool = School::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $otherSchool->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'New')
+        ->set('edit_last_name', 'Student')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_shirt_size', 'lg')
+        ->set('edit_subject', ['band'])
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveAdd')
+        ->assertHasErrors('add_school_id');
+});
+
+test('saveAdd requires a grade', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('edit_first_name', 'New')
+        ->set('edit_last_name', 'Student')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_shirt_size', 'lg')
+        ->set('edit_subject', ['band'])
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveAdd')
+        ->assertHasErrors('add_grade');
+});
+
+test('saveAdd assigns a default email when left blank', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'New')
+        ->set('edit_last_name', 'Student')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_shirt_size', 'lg')
+        ->set('edit_subject', ['band'])
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveAdd')
+        ->assertHasNoErrors();
+
+    $user2 = User::where('first_name', 'New')->where('last_name', 'Student')->firstOrFail();
+    expect($user2->email)->toEndWith('@studentfolder.info');
+});

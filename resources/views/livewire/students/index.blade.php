@@ -2,7 +2,24 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <flux:heading size="xl">Students</flux:heading>
 
-        <flux:input wire:model.live.debounce.300ms="search" placeholder="Search by name..." icon="magnifying-glass" class="sm:max-w-xs" />
+        <div class="flex items-center gap-3">
+            <flux:input wire:model.live.debounce.300ms="search" placeholder="Search by name..." icon="magnifying-glass" class="sm:max-w-xs" />
+
+            @if ($filterSchools->count() > 1)
+                <flux:select wire:model.live="schoolFilter" placeholder="All schools" class="sm:max-w-xs">
+                    <flux:select.option value="">All schools</flux:select.option>
+                    @foreach ($filterSchools as $filterSchool)
+                        <flux:select.option value="{{ $filterSchool->id }}">{{ $filterSchool->name }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+            @endif
+
+            <flux:modal.trigger name="edit-student">
+                <flux:button variant="primary" icon="plus" wire:click="add">
+                    Add student
+                </flux:button>
+            </flux:modal.trigger>
+        </div>
     </div>
 
     {{-- Cards below lg:, full table at lg: and up. This table has 7 columns —
@@ -12,7 +29,7 @@
             <flux:card size="sm">
                 <div class="flex items-start justify-between gap-3">
                     <div>
-                        <flux:heading size="base">{{ $row->student->user->name }}</flux:heading>
+                        <flux:heading size="base">{{ $this->studentDisplayName($row->student->user) }}</flux:heading>
 
                         @if ($this->hasRealEmail($row->student->user->email))
                             <flux:text size="sm" class="ms-3 text-zinc-500">{{ $row->student->user->email }}</flux:text>
@@ -100,8 +117,12 @@
                 <flux:table.column sortable :sorted="$sortColumn === 'subject'" :direction="$sortDirection" wire:click="sortBy('subject')">
                     Subject
                 </flux:table.column>
-                <flux:table.column>Grade</flux:table.column>
-                <flux:table.column>Voice Part</flux:table.column>
+                <flux:table.column sortable :sorted="$sortColumn === 'grade'" :direction="$sortDirection" wire:click="sortBy('grade')">
+                    Grade
+                </flux:table.column>
+                <flux:table.column sortable :sorted="$sortColumn === 'voice_part'" :direction="$sortDirection" wire:click="sortBy('voice_part')">
+                    Voice Part
+                </flux:table.column>
                 <flux:table.column>Address &amp; Contact</flux:table.column>
                 <flux:table.column>Status</flux:table.column>
                 <flux:table.column>Actions</flux:table.column>
@@ -111,7 +132,7 @@
                 @forelse ($rows as $row)
                     <flux:table.row :key="$row->id">
                         <flux:table.cell>
-                            <div>{{ $row->student->user->name }}</div>
+                            <div>{{ $this->studentDisplayName($row->student->user) }}</div>
 
                             <div class="mt-0.5 ms-3">
                                 @if ($this->hasRealEmail($row->student->user->email))
@@ -185,16 +206,38 @@
     </div>
 
     <flux:modal name="edit-student" scroll="body" class="md:w-[36rem] border-2 border-zinc-300 dark:border-zinc-400">
-        <form wire:submit="saveEdit" class="space-y-6">
+        <form wire:submit="{{ $isAdding ? 'saveAdd' : 'saveEdit' }}" class="space-y-6">
             <div>
-                <flux:heading size="lg">Edit student</flux:heading>
-                <flux:subheading>Update this student's profile, contacts, and your role with them.</flux:subheading>
+                <flux:heading size="lg">{{ $isAdding ? 'Add student' : 'Edit student' }}</flux:heading>
+                <flux:subheading>
+                    @if ($isAdding)
+                        Add a new student to your roster.
+                    @else
+                        Update this student's profile, contacts, and your role with them.
+                    @endif
+                </flux:subheading>
             </div>
 
             @if ($emailFallbackNotice)
                 <flux:callout variant="warning" icon="exclamation-triangle">
                     <flux:callout.text>{{ $emailFallbackNotice }}</flux:callout.text>
                 </flux:callout>
+            @endif
+
+            @if ($isAdding)
+                <flux:separator text="School" />
+
+                <flux:select wire:model.live="add_school_id" label="School" placeholder="Select a school..." required>
+                    @foreach ($addSchoolOptions as $school)
+                        <flux:select.option value="{{ $school->id }}">{{ $school->name }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+
+                <flux:select wire:model="add_grade" label="Grade" placeholder="Select a grade..." required>
+                    @foreach ($this->addGradeOptions() as $option)
+                        <flux:select.option value="{{ $option['grade'] }}">{{ $option['label'] }}</flux:select.option>
+                    @endforeach
+                </flux:select>
             @endif
 
             <flux:separator text="Profile" />
@@ -261,7 +304,7 @@
                             <flux:icon.question-mark-circle variant="micro" class="inline text-zinc-400" />
                         </flux:tooltip>
                     </flux:label>
-                    <flux:select wire:model="edit_shirt_size">
+                    <flux:select wire:model="edit_shirt_size" placeholder="Select shirt size...">
                         @foreach ($shirtSizeOptions as $size)
                             <flux:select.option value="{{ $size->value }}">{{ $size->label() }}</flux:select.option>
                         @endforeach
@@ -324,7 +367,7 @@
                 <flux:input wire:model="edit_home_zip_code" label="Zip code" />
             </div>
 
-            <flux:separator text="Emergency contacts" />
+            <flux:separator :text="$isAdding ? 'Emergency contacts (optional)' : 'Emergency contacts'" />
 
             @foreach ($edit_emergency_contacts as $index => $contact)
                 <div class="space-y-4 rounded-lg border border-zinc-200 p-4 dark:border-white/10">
@@ -372,19 +415,21 @@
                 <flux:select.option value="coteacher">Co-teacher / assistant director</flux:select.option>
             </flux:select>
 
-            <flux:separator />
+            @unless ($isAdding)
+                <flux:separator />
 
-            <div>
-                <flux:button variant="ghost" wire:click="resetPassword" wire:confirm="Reset this student's password to their email address?">
-                    Reset password
-                </flux:button>
+                <div>
+                    <flux:button variant="ghost" wire:click="resetPassword" wire:confirm="Reset this student's password to their email address?">
+                        Reset password
+                    </flux:button>
 
-                @if ($passwordResetNotice)
-                    <flux:callout variant="success" icon="check-circle" class="mt-2">
-                        <flux:callout.text>{{ $passwordResetNotice }}</flux:callout.text>
-                    </flux:callout>
-                @endif
-            </div>
+                    @if ($passwordResetNotice)
+                        <flux:callout variant="success" icon="check-circle" class="mt-2">
+                            <flux:callout.text>{{ $passwordResetNotice }}</flux:callout.text>
+                        </flux:callout>
+                    @endif
+                </div>
+            @endunless
 
             @if ($errors->any())
                 <flux:callout variant="danger" icon="exclamation-triangle">
@@ -398,7 +443,7 @@
                 <flux:modal.close>
                     <flux:button variant="ghost">Cancel</flux:button>
                 </flux:modal.close>
-                <flux:button type="submit" variant="primary">Save</flux:button>
+                <flux:button type="submit" variant="primary">{{ $isAdding ? 'Add student' : 'Save' }}</flux:button>
             </div>
         </form>
     </flux:modal>
