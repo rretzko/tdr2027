@@ -19,26 +19,32 @@
         </flux:callout>
     @enderror
 
+    @if (session('status') === 'no-active-school')
+        <flux:callout variant="warning" icon="exclamation-triangle" class="mb-4">
+            <flux:callout.text>Add or activate a school here before you can access Students or Events.</flux:callout.text>
+        </flux:callout>
+    @endif
+
     {{-- Cards below lg:, full table at lg: and up — 7 columns don't fit at md: once
          the persistent sidebar appears (see Students for the table that surfaced this). --}}
     <div class="lg:hidden space-y-3">
         @forelse ($schools as $school)
             <flux:card size="sm">
                 <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <flux:heading size="base">{{ $school->name }}</flux:heading>
+                    <div class="min-w-0">
+                        <flux:heading size="base" class="truncate">{{ $school->name }}</flux:heading>
 
                         <div class="mt-0.5 flex items-center gap-2">
                             @if ($school->pivot->school_email)
-                                <flux:text size="sm" class="text-zinc-500">{{ $school->pivot->school_email }}</flux:text>
+                                <flux:text size="sm" class="min-w-0 truncate text-zinc-500">{{ $school->pivot->school_email }}</flux:text>
 
                                 @if ($school->pivot->verified_at)
-                                    <flux:badge color="green" size="sm">Verified</flux:badge>
+                                    <flux:badge color="green" size="sm" class="shrink-0">Verified</flux:badge>
                                 @else
-                                    <flux:badge color="amber" size="sm">Pending</flux:badge>
+                                    <flux:badge color="amber" size="sm" class="shrink-0">Pending</flux:badge>
                                 @endif
                             @else
-                                <flux:text size="sm" class="italic text-zinc-400">No school email found</flux:text>
+                                <flux:text size="sm" class="truncate italic text-zinc-400">No school email found</flux:text>
                             @endif
                         </div>
 
@@ -88,7 +94,7 @@
                         @endif
                     @endunless
 
-                    <flux:button size="sm" variant="danger" wire:click="remove({{ $school->id }})" wire:confirm="Remove {{ $school->name }}? This cannot be undone.">
+                    <flux:button size="sm" variant="danger" wire:click="remove({{ $school->id }})" wire:confirm="Remove {{ $school->name }}? Only do this if it was linked by mistake — if you've had legitimate history there, mark it inactive instead. This cannot be undone.">
                         Remove
                     </flux:button>
                 </div>
@@ -117,26 +123,26 @@
                 <flux:table.column>County</flux:table.column>
                 <flux:table.column>State</flux:table.column>
                 <flux:table.column>Status</flux:table.column>
-                <flux:table.column>Actions</flux:table.column>
+                <flux:table.column align="center">Actions</flux:table.column>
             </flux:table.columns>
 
             <flux:table.rows>
                 @forelse ($schools as $school)
                     <flux:table.row :key="$school->id">
                         <flux:table.cell>
-                            <div>{{ $school->name }}</div>
+                            <div class="max-w-64 truncate">{{ $school->name }}</div>
 
                             <div class="mt-0.5 flex items-center gap-2">
                                 @if ($school->pivot->school_email)
-                                    <flux:text size="sm" class="text-zinc-500">{{ $school->pivot->school_email }}</flux:text>
+                                    <flux:text size="sm" class="min-w-0 truncate text-zinc-500">{{ $school->pivot->school_email }}</flux:text>
 
                                     @if ($school->pivot->verified_at)
-                                        <flux:badge color="green" size="sm">Verified</flux:badge>
+                                        <flux:badge color="green" size="sm" class="shrink-0">Verified</flux:badge>
                                     @else
-                                        <flux:badge color="amber" size="sm">Pending</flux:badge>
+                                        <flux:badge color="amber" size="sm" class="shrink-0">Pending</flux:badge>
                                     @endif
                                 @else
-                                    <flux:text size="sm" class="italic text-zinc-400">No school email found</flux:text>
+                                    <flux:text size="sm" class="truncate italic text-zinc-400">No school email found</flux:text>
                                 @endif
                             </div>
                         </flux:table.cell>
@@ -154,13 +160,13 @@
                             @endif
                         </flux:table.cell>
                         <flux:table.cell>
-                            <div class="flex items-center justify-end gap-1">
+                            <div class="flex items-center justify-center gap-1">
                                 <flux:modal.trigger name="edit-school">
-                                    <flux:button size="sm" variant="ghost" icon="pencil" inset="right" aria-label="Edit school" wire:click="edit({{ $school->id }})" />
+                                    <flux:button size="sm" variant="ghost" icon="pencil" aria-label="Edit school" wire:click="edit({{ $school->id }})" />
                                 </flux:modal.trigger>
 
                                 <flux:dropdown position="bottom" align="end">
-                                    <flux:button size="sm" variant="ghost" icon="ellipsis-vertical" inset="right" aria-label="School actions" />
+                                    <flux:button size="sm" variant="ghost" icon="ellipsis-vertical" aria-label="School actions" />
 
                                     <flux:menu>
                                         @unless ($this->isPending($school->pivot))
@@ -174,7 +180,7 @@
                                                 </flux:menu.item>
                                             @endif
                                         @endunless
-                                        <flux:menu.item variant="danger" wire:click="remove({{ $school->id }})" wire:confirm="Remove {{ $school->name }}? This cannot be undone.">
+                                        <flux:menu.item variant="danger" wire:click="remove({{ $school->id }})" wire:confirm="Remove {{ $school->name }}? Only do this if it was linked by mistake — if you've had legitimate history there, mark it inactive instead. This cannot be undone.">
                                             Remove
                                         </flux:menu.item>
                                     </flux:menu>

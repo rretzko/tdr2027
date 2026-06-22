@@ -47,7 +47,7 @@
                     <flux:input wire:model="newStudents.{{ $index }}.first_name" placeholder="First name" />
                     <flux:input wire:model="newStudents.{{ $index }}.last_name" placeholder="Last name" />
 
-                    <flux:select wire:model="newStudents.{{ $index }}.class_of" placeholder="Class of...">
+                    <flux:select wire:model="newStudents.{{ $index }}.class_of" placeholder="Grade...">
                         @foreach ($classOfOptions as $option)
                             <flux:select.option value="{{ $option['class_of'] }}">{{ $option['label'] }}</flux:select.option>
                         @endforeach

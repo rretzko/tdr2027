@@ -113,6 +113,11 @@ class Index extends Component
             return;
         }
 
+        // school_teacher_subject rows (the subjects taught there) foreign-key to
+        // school_teacher and aren't cascade-deleted, so they have to go first or
+        // detach() below fails with an integrity constraint violation.
+        SchoolTeacher::where('teacher_id', $teacher->id)->where('school_id', $schoolId)->first()?->subjects()->delete();
+
         $teacher->schools()->detach($schoolId);
     }
 

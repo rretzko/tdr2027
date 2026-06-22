@@ -28,22 +28,29 @@
                 Dashboard
             </flux:sidebar.item>
 
-            @if (auth()->user()->teacher?->onboarding_completed_at !== null)
+            @php $teacher = auth()->user()->teacher; @endphp
+            @if ($teacher?->onboarding_completed_at !== null)
                 <flux:sidebar.item icon="building-library" :href="route('schools.index')" :current="request()->routeIs('schools.*')">
                     Schools
                 </flux:sidebar.item>
-                <flux:sidebar.item icon="users" :href="route('students.index')" :current="request()->routeIs('students.*')">
-                    Students
-                </flux:sidebar.item>
+
+                @if ($teacher->hasActiveSchool())
+                    <flux:sidebar.item icon="users" :href="route('students.index')" :current="request()->routeIs('students.*')">
+                        Students
+                    </flux:sidebar.item>
+                @endif
 
                 <flux:separator />
 
                 <flux:sidebar.item icon="building-office-2" :href="route('organizations.index')" :current="request()->routeIs('organizations.*')">
                     Organizations
                 </flux:sidebar.item>
-                <flux:sidebar.item icon="calendar" :href="route('events.index')" :current="request()->routeIs('events.*')">
-                    Events
-                </flux:sidebar.item>
+
+                @if ($teacher->hasActiveSchool())
+                    <flux:sidebar.item icon="calendar" :href="route('events.index')" :current="request()->routeIs('events.*')">
+                        Events
+                    </flux:sidebar.item>
+                @endif
             @endif
 
             <flux:spacer />

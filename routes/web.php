@@ -53,9 +53,14 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
     Route::view('/dashboard', 'dashboard')->name('dashboard');
 
     Route::get('/schools', SchoolsIndex::class)->name('schools.index');
-    Route::get('/students', StudentsIndex::class)->name('students.index');
     Route::view('/organizations', 'organizations')->name('organizations.index');
-    Route::view('/events', 'events')->name('events.index');
+
+    // Students and Events both depend on having an active school to attach
+    // records to, so both are gated behind the teacher having at least one.
+    Route::middleware('has.active.school')->group(function () {
+        Route::get('/students', StudentsIndex::class)->name('students.index');
+        Route::view('/events', 'events')->name('events.index');
+    });
 
     Route::get('/settings/profile', Profile::class)->name('settings.profile');
     Route::get('/settings/password', Password::class)->name('settings.password');

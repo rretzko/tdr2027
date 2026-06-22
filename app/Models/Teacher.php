@@ -61,6 +61,11 @@ class Teacher extends Model
             ->withTimestamps();
     }
 
+    public function hasActiveSchool(): bool
+    {
+        return $this->schools()->wherePivot('is_active', true)->exists();
+    }
+
     /**
      * @return HasMany<TeacherSupervisor, $this>
      */

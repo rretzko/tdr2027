@@ -7,6 +7,7 @@ use App\Mail\SchoolEmailVerificationMail;
 use App\Models\County;
 use App\Models\Geostate;
 use App\Models\Pivots\SchoolTeacher;
+use App\Models\Pivots\SchoolTeacherSubject;
 use App\Models\Pivots\StudentTeacher;
 use App\Models\School;
 use App\Models\Student;
@@ -194,6 +195,24 @@ test('a school cannot be removed while a student is linked to the teacher there'
         ->assertHasErrors('remove');
 
     expect($user->teacher->schools()->find($school->id))->not->toBeNull();
+});
+
+test('a school can be removed when the teacher has subjects recorded there and no students are linked', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+
+    $user->teacher->schools()->attach($school);
+    $pivot = SchoolTeacher::where('teacher_id', $user->teacher->id)->where('school_id', $school->id)->first();
+
+    SchoolTeacherSubject::factory()->create(['school_teacher_id' => $pivot->id]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('remove', $school->id)
+        ->assertHasNoErrors();
+
+    expect($user->teacher->schools()->find($school->id))->toBeNull();
+    expect(SchoolTeacherSubject::where('school_teacher_id', $pivot->id)->exists())->toBeFalse();
 });
 
 test('add resets the form to a blank state and defaults role and type', function () {

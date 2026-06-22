@@ -125,7 +125,7 @@
                 </flux:table.column>
                 <flux:table.column>Address &amp; Contact</flux:table.column>
                 <flux:table.column>Status</flux:table.column>
-                <flux:table.column>Actions</flux:table.column>
+                <flux:table.column align="center">Actions</flux:table.column>
             </flux:table.columns>
 
             <flux:table.rows>
@@ -174,13 +174,13 @@
                             @endif
                         </flux:table.cell>
                         <flux:table.cell>
-                            <div class="flex items-center justify-end gap-1">
+                            <div class="flex items-center justify-center gap-1">
                                 <flux:modal.trigger name="edit-student">
-                                    <flux:button size="sm" variant="ghost" icon="pencil" inset="right" aria-label="Edit student" wire:click="edit({{ $row->id }})" />
+                                    <flux:button size="sm" variant="ghost" icon="pencil" aria-label="Edit student" wire:click="edit({{ $row->id }})" />
                                 </flux:modal.trigger>
 
                                 <flux:dropdown position="bottom" align="end">
-                                    <flux:button size="sm" variant="ghost" icon="ellipsis-vertical" inset="right" aria-label="Student actions" />
+                                    <flux:button size="sm" variant="ghost" icon="ellipsis-vertical" aria-label="Student actions" />
 
                                     <flux:menu>
                                         <flux:menu.item :disabled="! $row->is_active" wire:click="deactivate({{ $row->id }})">
