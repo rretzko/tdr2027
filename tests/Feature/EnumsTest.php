@@ -10,7 +10,7 @@ use App\Enums\TeacherRole;
 
 test('ShirtSize has the expected cases and non-empty labels', function () {
     expect(array_map(fn (ShirtSize $case) => $case->value, ShirtSize::cases()))
-        ->toBe(['xxs', 'xs', 'sm', 'med', 'lg', 'xl', 'xxl']);
+        ->toBe(['xxs', 'xs', 'sm', 'med', 'lg', 'xl', 'xxl', 'xxxl', 'xxxxl']);
 
     foreach (ShirtSize::cases() as $case) {
         expect($case->label())->not->toBe('');

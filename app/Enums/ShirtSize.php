@@ -13,6 +13,8 @@ enum ShirtSize: string
     case LG = 'lg';
     case XL = 'xl';
     case XXL = 'xxl';
+    case XXXL = 'xxxl';
+    case XXXXL = 'xxxxl';
 
     public function label(): string
     {
@@ -24,6 +26,8 @@ enum ShirtSize: string
             self::LG => 'Large',
             self::XL => 'X-Large',
             self::XXL => 'XX-Large',
+            self::XXXL => 'XXX-Large',
+            self::XXXXL => 'XXXX-Large',
         };
     }
 }

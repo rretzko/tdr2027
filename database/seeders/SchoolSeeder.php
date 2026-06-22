@@ -54,6 +54,10 @@ class SchoolSeeder extends Seeder
         $rows = [];
 
         while (($data = fgetcsv($handle)) !== false) {
+            if (count($data) !== count($header)) {
+                continue;
+            }
+
             $row = array_combine($header, $data);
 
             $rows[] = [
