@@ -10,7 +10,17 @@
                 <flux:card class="flex h-full flex-col gap-4 border-l-4 border-l-blue-500 sm:border-2 sm:border-blue-500">
                     <flux:heading size="lg">Schools</flux:heading>
 
-                    @foreach ($teacher->schools as $school)
+                    @php
+                        // A single callback returning a [rank, name] tuple — not Collection::sortBy()'s
+                        // multi-criteria array form, whose comparator callbacks need two args (a, b),
+                        // not one. PHP compares same-shaped arrays element-by-element, so this sorts
+                        // by status rank first and then alphabetically within each rank.
+                        $sortedSchools = $teacher->schools->sortBy(
+                            fn ($school) => [$school->pivot->statusSortRank(), $school->name]
+                        );
+                    @endphp
+
+                    @foreach ($sortedSchools as $school)
                         <div class="flex flex-col gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
                             <div class="w-full">
                                 <flux:text class="font-medium">{{ $school->name }}</flux:text>

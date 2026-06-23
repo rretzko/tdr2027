@@ -53,6 +53,16 @@
                 @endif
             @endif
 
+            @if (auth()->user()->isFounder())
+                <flux:separator />
+
+                <flux:sidebar.group heading="Founder" expandable>
+                    <flux:sidebar.item icon="user-circle" :href="route('founder.impersonate')" :current="request()->routeIs('founder.*')">
+                        Impersonate User
+                    </flux:sidebar.item>
+                </flux:sidebar.group>
+            @endif
+
             <flux:spacer />
 
             <flux:sidebar.item icon="user" :href="route('settings.profile')" :current="request()->routeIs('settings.profile')">
@@ -94,6 +104,20 @@
         </flux:header>
 
         <flux:main>
+            @if (session()->has('impersonator_id'))
+                <flux:callout variant="warning" icon="exclamation-triangle" class="mb-4">
+                    <flux:callout.text>
+                        You're impersonating {{ auth()->user()->first_name }} {{ auth()->user()->last_name }}.
+                    </flux:callout.text>
+                    <x-slot name="actions">
+                        <form method="POST" action="{{ route('founder.stop-impersonating') }}">
+                            @csrf
+                            <flux:button type="submit" size="sm">Return to Founder account</flux:button>
+                        </form>
+                    </x-slot>
+                </flux:callout>
+            @endif
+
             {{ $slot }}
         </flux:main>
 

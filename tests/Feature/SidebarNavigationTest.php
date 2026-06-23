@@ -124,3 +124,24 @@ test('a teacher with an active school can visit Students and Events', function (
     actingAs($user)->get(route('students.index'))->assertOk();
     actingAs($user)->get(route('events.index'))->assertOk();
 });
+
+test('the founder sees the Founder menu', function () {
+    // rick@mfrholdings.com may already exist from seeded data — reuse it rather
+    // than colliding with the unique email constraint.
+    $founder = User::where('email', 'rick@mfrholdings.com')->first()
+        ?? User::factory()->create(['email' => 'rick@mfrholdings.com']);
+
+    actingAs($founder)->get(route('dashboard'))
+        ->assertOk()
+        ->assertSeeText('Founder')
+        ->assertSeeText('Impersonate User');
+});
+
+test('a non-founder does not see the Founder menu', function () {
+    $user = User::factory()->create();
+    Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
+
+    actingAs($user)->get(route('dashboard'))
+        ->assertOk()
+        ->assertDontSeeText('Impersonate User');
+});

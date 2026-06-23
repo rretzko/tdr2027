@@ -59,4 +59,28 @@ class SchoolTeacher extends Pivot
     {
         return $this->hasMany(SchoolTeacherSubject::class, 'school_teacher_id');
     }
+
+    /**
+     * A school is "Pending" until its school_email is set and verified — until
+     * then the teacher hasn't proven their affiliation, so the Active/Inactive
+     * toggle is hidden in favor of resolving verification first.
+     */
+    public function isPending(): bool
+    {
+        return blank($this->school_email) || blank($this->verified_at);
+    }
+
+    /**
+     * Sort precedence for status displays: Active, then Pending, then Inactive.
+     * Pending takes priority over is_active — an unverified link's eventual
+     * Active/Inactive state hasn't been established yet.
+     */
+    public function statusSortRank(): int
+    {
+        return match (true) {
+            $this->isPending() => 1,
+            $this->is_active => 0,
+            default => 2,
+        };
+    }
 }

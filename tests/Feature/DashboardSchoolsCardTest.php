@@ -58,6 +58,62 @@ test('the dashboard shows inactive and pending-verification states for a school'
         ->assertSeeText('Email pending');
 });
 
+test('the Schools card sorts by status (Active, Pending, Inactive) and then by name', function () {
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+    $teacher = Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
+
+    $zebraActive = School::factory()->create(['name' => 'Zebra Active School']);
+    $appleActive = School::factory()->create(['name' => 'Apple Active School']);
+    $mangoPending = School::factory()->create(['name' => 'Mango Pending School']);
+    $echoInactive = School::factory()->create(['name' => 'Echo Inactive School']);
+
+    SchoolTeacher::create([
+        'school_id' => $zebraActive->id,
+        'teacher_id' => $teacher->id,
+        'role' => TeacherRole::Primary->value,
+        'is_active' => true,
+        'school_email' => 'teacher@zebra.edu',
+        'verified_at' => now(),
+    ]);
+
+    SchoolTeacher::create([
+        'school_id' => $appleActive->id,
+        'teacher_id' => $teacher->id,
+        'role' => TeacherRole::Primary->value,
+        'is_active' => true,
+        'school_email' => 'teacher@apple.edu',
+        'verified_at' => now(),
+    ]);
+
+    SchoolTeacher::create([
+        'school_id' => $mangoPending->id,
+        'teacher_id' => $teacher->id,
+        'role' => TeacherRole::Primary->value,
+        'is_active' => true,
+        'school_email' => 'teacher@mango.edu',
+        'verified_at' => null,
+    ]);
+
+    SchoolTeacher::create([
+        'school_id' => $echoInactive->id,
+        'teacher_id' => $teacher->id,
+        'role' => TeacherRole::Primary->value,
+        'is_active' => false,
+        'school_email' => 'teacher@echo.edu',
+        'verified_at' => now(),
+    ]);
+
+    actingAs($user)->get(route('dashboard'))
+        ->assertOk()
+        ->assertSeeTextInOrder([
+            'Apple Active School',
+            'Zebra Active School',
+            'Mango Pending School',
+            'Echo Inactive School',
+        ]);
+});
+
 test('a student sees no Schools card on the dashboard', function () {
     $user = User::factory()->create();
     $user->markEmailAsVerified();

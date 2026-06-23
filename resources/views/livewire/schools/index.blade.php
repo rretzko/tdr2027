@@ -200,7 +200,7 @@
     </div>
 
     <flux:modal name="edit-school" class="md:w-[32rem]">
-        <form wire:submit="{{ $isAdding ? 'saveAdd' : 'saveEdit' }}" class="space-y-6">
+        <form wire:submit="{{ $linkingSchoolId !== null ? 'linkExistingSchool(' . $linkingSchoolId . ')' : ($isAdding ? 'saveAdd' : 'saveEdit') }}" class="space-y-6">
             <div>
                 <flux:heading size="lg">{{ $isAdding ? 'Add school' : 'Edit school' }}</flux:heading>
                 <flux:subheading>
@@ -212,50 +212,27 @@
                 </flux:subheading>
             </div>
 
-            <flux:select wire:model="edit_role" label="Your role">
-                <flux:select.option value="primary">Primary teacher / director</flux:select.option>
-                <flux:select.option value="coteacher">Co-teacher / assistant director</flux:select.option>
-            </flux:select>
+            <flux:input wire:model.live.debounce.300ms="edit_name" label="School name" autofocus :disabled="$linkingSchoolId !== null" />
 
-            <flux:checkbox wire:model.live="edit_is_replacing_teacher" label="I'm replacing a teacher who is no longer at this school" />
-
-            @if ($edit_is_replacing_teacher)
-                <flux:input wire:model="edit_replacing_teacher_name" label="Name of the teacher you're replacing" />
-            @endif
-
-            <div>
-                <flux:input wire:model.live.debounce.400ms="edit_school_email" type="email" label="School email" description="Verifying this unlocks access to student data at this school." />
-
-                @if ($this->schoolEmailDomainWarning())
-                    <flux:callout variant="warning" icon="exclamation-triangle" class="mt-2">
-                        <flux:callout.text>{{ $this->schoolEmailDomainWarning() }}</flux:callout.text>
-                    </flux:callout>
-                @endif
-            </div>
-
-            <flux:separator />
-
-            <flux:input wire:model.live.debounce.300ms="edit_name" label="School name" />
-
-            <flux:radio.group wire:model="edit_type" label="Type">
+            <flux:radio.group wire:model="edit_type" label="Type" :disabled="$linkingSchoolId !== null">
                 <flux:radio value="school" label="School" />
                 <flux:radio value="studio" label="Studio" />
             </flux:radio.group>
 
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <flux:input wire:model="edit_city" label="City" />
-                <flux:input wire:model.live.debounce.300ms="edit_zip_code" label="Zip code" />
+                <flux:input wire:model="edit_city" label="City" :disabled="$linkingSchoolId !== null" />
+                <flux:input wire:model.live.debounce.300ms="edit_zip_code" label="Zip code" :disabled="$linkingSchoolId !== null" />
             </div>
 
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <flux:select wire:model.live="edit_geostate_id" label="State">
+                <flux:select wire:model.live="edit_geostate_id" label="State" :disabled="$linkingSchoolId !== null">
                     <flux:select.option value="">Select a state...</flux:select.option>
                     @foreach ($geostates as $geostate)
                         <flux:select.option value="{{ $geostate->id }}">{{ $geostate->name }}</flux:select.option>
                     @endforeach
                 </flux:select>
 
-                <flux:select wire:model.live="edit_county_id" label="County" placeholder="Select a county...">
+                <flux:select wire:model.live="edit_county_id" label="County" placeholder="Select a county..." :disabled="$linkingSchoolId !== null">
                     @foreach ($editCounties as $county)
                         <flux:select.option value="{{ $county->id }}">{{ $county->name }}</flux:select.option>
                     @endforeach
@@ -272,16 +249,67 @@
                                 <flux:text class="font-medium">{{ $match['school']->name }}</flux:text>
                                 <flux:text size="sm" class="text-zinc-500">{{ $match['school']->city }}, {{ $match['school']->zip_code }} &middot; {{ $match['school']->type->label() }}</flux:text>
                             </div>
-                            <flux:button size="sm" wire:click="linkExistingSchool({{ $match['school']->id }})">This is my school</flux:button>
+
+                            @if ($linkingSchoolId === $match['school']->id)
+                                <flux:badge color="green" size="sm">Selected</flux:badge>
+                            @else
+                                <flux:button size="sm" wire:click="selectSuggestedSchool({{ $match['school']->id }})">This is my school</flux:button>
+                            @endif
                         </div>
                     @endforeach
 
                     @unless ($confirmedNewSchool)
-                        <flux:button size="sm" variant="ghost" wire:click="$set('confirmedNewSchool', true)">
+                        <flux:button size="sm" variant="ghost" wire:click="confirmNewSchool">
                             None of these — add a new school anyway
                         </flux:button>
                     @endunless
+
+                    @if ($linkingSchoolId !== null)
+                        <flux:text size="sm" class="text-zinc-500">Click Save below to link your account to the selected school.</flux:text>
+                    @endif
                 </div>
+            @endif
+
+            <flux:separator />
+
+            <flux:select wire:model="edit_role" label="Your role">
+                <flux:select.option value="primary">Primary teacher / director</flux:select.option>
+                <flux:select.option value="coteacher">Co-teacher / assistant director</flux:select.option>
+            </flux:select>
+
+            <div>
+                <flux:input wire:model.live.debounce.400ms="edit_school_email" type="email" label="School email" description="Verifying this unlocks access to student data at this school." />
+
+                @if ($this->schoolEmailDomainWarning())
+                    <flux:callout variant="warning" icon="exclamation-triangle" class="mt-2">
+                        <flux:callout.text>{{ $this->schoolEmailDomainWarning() }}</flux:callout.text>
+                    </flux:callout>
+                @endif
+            </div>
+
+            {{-- Gated on editingSchoolId/linkingSchoolId (not !$isAdding): both are null
+                 at idle and throughout an unresolved Add flow, so there's no flash-of-
+                 visible while add()'s network round-trip is still in flight after the
+                 modal has already opened client-side. It only appears once a real,
+                 known school is in scope — either being edited, or just selected from
+                 the suggestions above. --}}
+            @if ($editingSchoolId !== null || $linkingSchoolId !== null)
+                <flux:checkbox wire:model.live="edit_is_replacing_teacher" label="I'm replacing a teacher who is no longer at this school" />
+
+                @if ($edit_is_replacing_teacher)
+                    @php($replacingTeacherOptions = $this->replacingTeacherOptions())
+
+                    <flux:select
+                        wire:model.live="edit_replacing_teacher_name"
+                        label="Name of the teacher you're replacing"
+                        placeholder="{{ $replacingTeacherOptions->isEmpty() ? 'No teachers found' : 'Select a teacher...' }}"
+                        :disabled="$replacingTeacherOptions->isEmpty()"
+                    >
+                        @foreach ($replacingTeacherOptions as $name)
+                            <flux:select.option value="{{ $name }}">{{ $name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                @endif
             @endif
 
             <div class="flex gap-2">
@@ -292,9 +320,9 @@
                 <flux:button
                     type="submit"
                     variant="primary"
-                    :disabled="$isAdding && ! $confirmedNewSchool && $this->schoolSuggestions()->isNotEmpty()"
+                    :disabled="$isAdding && $linkingSchoolId === null && ! $confirmedNewSchool && $this->schoolSuggestions()->isNotEmpty()"
                 >
-                    {{ $isAdding ? 'Add school' : 'Save' }}
+                    {{ $linkingSchoolId !== null ? 'Link school' : ($isAdding ? 'Add school' : 'Save') }}
                 </flux:button>
             </div>
         </form>

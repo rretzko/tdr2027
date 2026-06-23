@@ -2,10 +2,12 @@
 
 use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\SchoolEmailVerificationController;
+use App\Http\Controllers\StopImpersonatingController;
 use App\Livewire\Auth\SocialPhoneCheck;
 use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
 use App\Livewire\Auth\TeacherRegister;
+use App\Livewire\Founder\Impersonate as FounderImpersonate;
 use App\Livewire\Onboarding\TeacherOnboardingWizard;
 use App\Livewire\Schools\Index as SchoolsIndex;
 use App\Livewire\Settings\Password;
@@ -48,6 +50,19 @@ Route::middleware('auth')->group(function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/tdr/onboarding', TeacherOnboardingWizard::class)->name('teacher.onboarding');
 });
+
+// Founder routes: kept outside the onboarding.complete-gated group below — the
+// Founder account has no Teacher profile, so that middleware would redirect it
+// to the onboarding wizard.
+Route::middleware(['auth', 'verified', 'founder'])->group(function () {
+    Route::get('/founder/impersonate', FounderImpersonate::class)->name('founder.impersonate');
+});
+
+// Not behind the 'founder' middleware: once impersonating, the active user is
+// the impersonated teacher, not the Founder — the controller itself checks
+// session('impersonator_id') to confirm an impersonation is actually in progress.
+Route::middleware(['auth'])->post('/founder/stop-impersonating', StopImpersonatingController::class)
+    ->name('founder.stop-impersonating');
 
 Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function () {
     Route::view('/dashboard', 'dashboard')->name('dashboard');

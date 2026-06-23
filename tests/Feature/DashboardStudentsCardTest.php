@@ -16,13 +16,13 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-function linkSchool(Teacher $teacher, School $school): void
+function linkSchool(Teacher $teacher, School $school, bool $isActive = true): void
 {
     SchoolTeacher::create([
         'school_id' => $school->id,
         'teacher_id' => $teacher->id,
         'role' => TeacherRole::Primary->value,
-        'is_active' => true,
+        'is_active' => $isActive,
     ]);
 }
 
@@ -107,6 +107,28 @@ test('a student claimed for two subjects with the same teacher is not double-cou
         ->assertSeeText('1 student')
         ->assertSeeText('Grade 9: 1')
         ->assertDontSeeText('2 students');
+});
+
+test('the Students card omits schools the teacher has marked inactive', function () {
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+    $teacher = Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
+    $activeSchool = School::factory()->create(['name' => 'Active School']);
+    $inactiveSchool = School::factory()->create(['name' => 'Inactive School']);
+    linkSchool($teacher, $activeSchool);
+    linkSchool($teacher, $inactiveSchool, isActive: false);
+
+    claimStudent($teacher, $activeSchool, 9);
+    claimStudent($teacher, $inactiveSchool, 10);
+
+    // The Schools card (unaffected by this change) still lists both schools by
+    // name, so the inactive school's exclusion is checked via its roster data
+    // (grade breakdown / count) rather than its name, which appears elsewhere.
+    actingAs($user)->get(route('dashboard'))
+        ->assertOk()
+        ->assertSeeText('1 student')
+        ->assertSeeText('Grade 9: 1')
+        ->assertDontSeeText('Grade 10: 1');
 });
 
 test('the Students card shows a no-students message for a school with no roster yet', function () {

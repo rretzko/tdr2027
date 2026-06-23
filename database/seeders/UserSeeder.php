@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Support\PhoneNormalizer;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -101,15 +102,24 @@ class UserSeeder extends Seeder
             return null;
         }
 
-        $value = mb_substr($value, 0, 20);
+        $digits = PhoneNormalizer::normalize($value);
 
-        if (isset($this->seenPhones[$value])) {
+        if ($digits === null) {
             return null;
         }
 
-        $this->seenPhones[$value] = true;
+        // The users table has no extension field, so anything beyond the
+        // 10-digit number (e.g. trailing "ext 1" / "x3" in the export) is
+        // dropped rather than merged into the stored digits.
+        $digits = substr($digits, 0, 10);
 
-        return $value;
+        if (isset($this->seenPhones[$digits])) {
+            return null;
+        }
+
+        $this->seenPhones[$digits] = true;
+
+        return $digits;
     }
 
     private function parseDate(string $value): ?Carbon

@@ -13,9 +13,11 @@ use App\Models\School;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
+use App\Support\ClassOfCalculator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 use function Pest\Laravel\actingAs;
@@ -249,6 +251,7 @@ test('saveAdd creates a school and links the teacher with the chosen role', func
         ->set('edit_geostate_id', (string) $geostate->id)
         ->set('edit_county_id', (string) $county->id)
         ->set('edit_role', 'coteacher')
+        ->set('edit_school_email', 'teacher@newville.edu')
         ->call('saveAdd')
         ->assertHasNoErrors()
         ->assertDispatched('toast-show', slots: ['text' => 'Brand New School added successfully.']);
@@ -344,6 +347,7 @@ test('saveAdd blocks creating a duplicate-looking school until confirmed', funct
         ->set('edit_zip_code', '99999')
         ->set('edit_geostate_id', (string) $geostate->id)
         ->set('edit_county_id', (string) $county->id)
+        ->set('edit_school_email', 'teacher@lincoln.edu')
         ->call('saveAdd')
         ->assertHasErrors('edit_name');
 
@@ -369,6 +373,7 @@ test('saveAdd creates the school anyway once the teacher confirms past the dupli
         ->set('edit_zip_code', '99999')
         ->set('edit_geostate_id', (string) $geostate->id)
         ->set('edit_county_id', (string) $county->id)
+        ->set('edit_school_email', 'teacher@lincoln.edu')
         ->set('confirmedNewSchool', true)
         ->call('saveAdd')
         ->assertHasNoErrors();
@@ -385,6 +390,7 @@ test('linkExistingSchool links the teacher to the suggested school instead of cr
         ->test(Index::class)
         ->call('add')
         ->set('edit_role', 'coteacher')
+        ->set('edit_school_email', 'teacher@lincoln.edu')
         ->call('linkExistingSchool', $existing->id)
         ->assertHasNoErrors()
         ->assertDispatched('toast-show', slots: ['text' => 'You\'re now linked to Lincoln High School.']);
@@ -407,6 +413,115 @@ test('linkExistingSchool requires a role', function () {
         ->assertHasErrors('edit_role');
 
     expect($user->teacher->schools()->find($existing->id))->toBeNull();
+});
+
+test('saveAdd requires a school_email', function () {
+    $user = makeOnboardedTeacherUser();
+    $geostate = Geostate::factory()->create();
+    $county = County::factory()->create(['geostate_id' => $geostate->id]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('edit_name', 'Brand New School')
+        ->set('edit_city', 'Newville')
+        ->set('edit_zip_code', '54321')
+        ->set('edit_geostate_id', (string) $geostate->id)
+        ->set('edit_county_id', (string) $county->id)
+        ->set('edit_school_email', '')
+        ->call('saveAdd')
+        ->assertHasErrors('edit_school_email');
+
+    expect(School::where('name', 'Brand New School')->exists())->toBeFalse();
+});
+
+test('saveEdit requires a school_email', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'school_email' => 'teacher@school.edu']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $school->id)
+        ->set('edit_school_email', '')
+        ->call('saveEdit')
+        ->assertHasErrors('edit_school_email');
+});
+
+test('clicking a suggested school only selects it — it does not save until Save is clicked', function () {
+    $user = makeOnboardedTeacherUser();
+    $existing = School::factory()->create(['name' => 'Lincoln High School']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('edit_name', 'Lincoln High School')
+        ->call('selectSuggestedSchool', $existing->id)
+        ->assertSet('linkingSchoolId', $existing->id)
+        ->assertSee('Selected')
+        ->assertNotDispatched('toast-show');
+
+    expect($user->teacher->schools()->find($existing->id))->toBeNull();
+});
+
+test('saving after selecting a suggested school links to it instead of creating a new one', function () {
+    $user = makeOnboardedTeacherUser();
+    $existing = School::factory()->create(['name' => 'Lincoln High School']);
+    $schoolCountBefore = School::count();
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('edit_name', 'Lincoln High School')
+        ->set('edit_role', 'coteacher')
+        ->set('edit_school_email', 'teacher@lincoln.edu')
+        ->call('selectSuggestedSchool', $existing->id)
+        ->call('linkExistingSchool', $existing->id)
+        ->assertHasNoErrors()
+        ->assertDispatched('toast-show', slots: ['text' => 'You\'re now linked to Lincoln High School.']);
+
+    $pivot = $user->teacher->schools()->find($existing->id)->pivot;
+    expect($pivot->getRawOriginal('role'))->toBe('coteacher');
+    expect(School::count())->toBe($schoolCountBefore);
+});
+
+test('saveAdd toast mentions the pending student transfer when a replacement teacher is identified', function () {
+    $user = makeOnboardedTeacherUser();
+    $geostate = Geostate::factory()->create();
+    $county = County::factory()->create(['geostate_id' => $geostate->id]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('edit_name', 'Brand New School')
+        ->set('edit_city', 'Newville')
+        ->set('edit_zip_code', '54321')
+        ->set('edit_geostate_id', (string) $geostate->id)
+        ->set('edit_county_id', (string) $county->id)
+        ->set('edit_school_email', 'teacher@newville.edu')
+        ->set('edit_is_replacing_teacher', true)
+        ->set('edit_replacing_teacher_name', 'Some Former Teacher')
+        ->call('saveAdd')
+        ->assertHasNoErrors()
+        ->assertDispatched('toast-show', slots: [
+            'text' => 'Brand New School added successfully. Current students will be transferred to you once your school email is verified.',
+        ]);
+});
+
+test('selecting a suggested school disables the school fields and reveals the replacing-teacher question', function () {
+    $user = makeOnboardedTeacherUser();
+    $existing = School::factory()->create(['name' => 'Lincoln High School']);
+
+    $component = Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('edit_name', 'Lincoln High School')
+        ->call('selectSuggestedSchool', $existing->id)
+        ->assertSee("I'm replacing a teacher who is no longer at this school");
+
+    $nameInputTag = Str::match('/<input[^>]*wire:model\.live\.debounce\.300ms="edit_name"[^>]*>/', $component->html());
+    expect($nameInputTag)->toContain('disabled');
 });
 
 test('edit populates the form with the school and pivot data', function () {
@@ -436,7 +551,7 @@ test('saveEdit updates both the school record and the school_teacher pivot', fun
     $county = County::factory()->create(['geostate_id' => $geostate->id]);
     $school = School::factory()->create(['name' => 'Old Name', 'city' => 'Old City']);
 
-    $user->teacher->schools()->attach($school, ['role' => 'primary']);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'school_email' => 'teacher@oldname.edu']);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -462,7 +577,7 @@ test('saveEdit shows a personalized success toast', function () {
     $user = makeOnboardedTeacherUser();
     $school = School::factory()->create(['name' => 'Old Name']);
 
-    $user->teacher->schools()->attach($school, ['role' => 'primary']);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'school_email' => 'teacher@oldname.edu']);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -486,6 +601,83 @@ test('saveEdit requires a replacing teacher name when replacing a teacher', func
         ->set('edit_replacing_teacher_name', '')
         ->call('saveEdit')
         ->assertHasErrors('edit_replacing_teacher_name');
+});
+
+test('the replacing-teacher select lists other teachers at the school but not the current teacher', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+    $otherUser = User::factory()->create(['first_name' => 'Alex', 'last_name' => 'Rivera']);
+    $otherTeacher = Teacher::factory()->create(['user_id' => $otherUser->id]);
+
+    $user->teacher->schools()->attach($school, ['role' => 'primary']);
+    $otherTeacher->schools()->attach($school);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $school->id)
+        ->set('edit_is_replacing_teacher', true)
+        ->assertSee('Select a teacher...')
+        ->assertSee($otherUser->name)
+        ->assertDontSee($user->name);
+});
+
+test('the replacing-teacher question is hidden while adding a brand-new school', function () {
+    $user = makeOnboardedTeacherUser();
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->assertDontSee("I'm replacing a teacher who is no longer at this school");
+});
+
+test('the replacing-teacher question appears once an existing school is opened for editing', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+
+    $user->teacher->schools()->attach($school, ['role' => 'primary']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $school->id)
+        ->assertSee("I'm replacing a teacher who is no longer at this school");
+});
+
+test('picking a listed teacher to replace sets the replacing-teacher name', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+    $otherUser = User::factory()->create(['first_name' => 'Alex', 'last_name' => 'Rivera']);
+    $otherTeacher = Teacher::factory()->create(['user_id' => $otherUser->id]);
+
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'school_email' => 'teacher@school.edu']);
+    $otherTeacher->schools()->attach($school);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $school->id)
+        ->set('edit_is_replacing_teacher', true)
+        ->set('edit_replacing_teacher_name', $otherUser->name)
+        ->call('saveEdit')
+        ->assertHasNoErrors();
+
+    $pivot = $user->teacher->schools()->find($school->id)->pivot;
+    expect($pivot->replacing_teacher_name)->toBe($otherUser->name);
+});
+
+test('the replacing-teacher dropdown shows "No teachers found" and is disabled when the school has no other teachers', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+
+    $user->teacher->schools()->attach($school, ['role' => 'primary']);
+
+    $component = Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $school->id)
+        ->set('edit_is_replacing_teacher', true)
+        ->assertSee('No teachers found')
+        ->assertDontSee('Select a teacher...');
+
+    $selectTag = Str::match('/<select[^>]*wire:model\.live="edit_replacing_teacher_name"[^>]*>/', $component->html());
+    expect($selectTag)->toContain('disabled');
 });
 
 test('a school with no school_email shows the missing-email message', function () {
@@ -606,15 +798,13 @@ test('saveEdit does not send mail when school_email is unchanged', function () {
     expect($pivot->verified_at)->not->toBeNull();
 });
 
-test('saveEdit treats a stray empty-string school_email the same as null', function () {
+test('saveEdit leaves an unchanged school_email as-is and sends no mail', function () {
     Mail::fake();
 
     $user = makeOnboardedTeacherUser();
     $school = School::factory()->create();
 
-    // Simulates school_email having been left as '' by a direct database edit
-    // rather than NULL — saving with the field still blank should be a no-op.
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'school_email' => '', 'verified_at' => now()]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'school_email' => 'teacher@school.edu', 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -689,6 +879,52 @@ test('visiting a valid signed verification link marks the pivot verified', funct
     get($url)->assertOk();
 
     expect($pivot->refresh()->verified_at)->not->toBeNull();
+});
+
+test('visiting the verification link transfers current students from the identified replaced teacher', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+    $replacedUser = User::factory()->create(['first_name' => 'Pat', 'last_name' => 'Former']);
+    $replacedTeacher = Teacher::factory()->create(['user_id' => $replacedUser->id]);
+
+    SchoolTeacher::create([
+        'school_id' => $school->id,
+        'teacher_id' => $replacedTeacher->id,
+        'role' => 'primary',
+        'is_active' => true,
+    ]);
+
+    $user->teacher->schools()->attach($school, [
+        'role' => 'primary',
+        'school_email' => 'teacher@theschool.edu',
+        'replacing_teacher_name' => $replacedUser->name,
+    ]);
+    $pivot = SchoolTeacher::where('school_id', $school->id)->where('teacher_id', $user->teacher->id)->first();
+
+    $currentStudent = Student::factory()->create();
+    $classOf = ClassOfCalculator::classOfFromGrade(11, $school->senior_year);
+    $school->students()->attach($currentStudent->id, ['is_active' => true, 'class_of' => $classOf]);
+    StudentTeacher::create([
+        'student_id' => $currentStudent->id,
+        'teacher_id' => $replacedTeacher->id,
+        'school_id' => $school->id,
+        'subject' => 'chorus',
+        'role' => 'primary',
+        'is_active' => true,
+    ]);
+
+    $url = URL::temporarySignedRoute(
+        'school-email.verify',
+        now()->addDays(3),
+        ['schoolTeacher' => $pivot->id, 'email' => 'teacher@theschool.edu'],
+    );
+
+    get($url)
+        ->assertOk()
+        ->assertSee('1 student has been transferred to you.');
+
+    $row = StudentTeacher::where('student_id', $currentStudent->id)->where('school_id', $school->id)->first();
+    expect($row->teacher_id)->toBe($user->teacher->id);
 });
 
 test('a verification link for a stale email no longer matches and is rejected', function () {

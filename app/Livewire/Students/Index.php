@@ -643,7 +643,7 @@ class Index extends Component
             ];
 
             if ($contact['id'] !== null) {
-                EmergencyContact::where('id', $contact['id'])->where('student_id', $student->id)->update($attributes);
+                EmergencyContact::where('id', $contact['id'])->where('student_id', $student->id)->first()?->update($attributes);
                 $keptIds[] = $contact['id'];
             } else {
                 $keptIds[] = $student->emergencyContacts()->create($attributes)->id;

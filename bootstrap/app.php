@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureTeacherHasActiveSchool;
 use App\Http\Middleware\EnsureTeacherOnboardingComplete;
+use App\Http\Middleware\EnsureUserIsFounder;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -17,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'onboarding.complete' => EnsureTeacherOnboardingComplete::class,
             'has.active.school' => EnsureTeacherHasActiveSchool::class,
+            'founder' => EnsureUserIsFounder::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -12,14 +12,15 @@ use Illuminate\Support\Collection;
 final class TeacherRosterSummary
 {
     /**
-     * Total student count and a grade-level breakdown for each school the teacher
-     * is linked to, so the dashboard can show roster counts separated by school.
+     * Total student count and a grade-level breakdown for each active school the
+     * teacher is linked to, so the dashboard can show roster counts separated by
+     * school. Inactive schools are excluded — their rosters aren't current.
      *
      * @return Collection<int, array{school: School, total: int<0, max>, byGrade: array<int, int<1, max>>}>
      */
     public static function forTeacher(Teacher $teacher): Collection
     {
-        return $teacher->schools->map(function (School $school) use ($teacher) {
+        return $teacher->schools()->wherePivot('is_active', true)->get()->map(function (School $school) use ($teacher) {
             $students = $teacher->students()
                 ->wherePivot('school_id', $school->id)
                 ->get()

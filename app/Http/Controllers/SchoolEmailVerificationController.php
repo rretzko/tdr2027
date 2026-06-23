@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\Pivots\SchoolTeacher;
+use App\Support\ReplacedTeacherStudentTransfer;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -19,10 +20,17 @@ class SchoolEmailVerificationController extends Controller
             throw new NotFoundHttpException;
         }
 
+        $transferredStudentCount = 0;
+
         if ($schoolTeacher->verified_at === null) {
             $schoolTeacher->update(['verified_at' => now()]);
+
+            $transferredStudentCount = ReplacedTeacherStudentTransfer::transfer($schoolTeacher);
         }
 
-        return view('school-email.verified', ['school' => $schoolTeacher->school]);
+        return view('school-email.verified', [
+            'school' => $schoolTeacher->school,
+            'transferredStudentCount' => $transferredStudentCount,
+        ]);
     }
 }

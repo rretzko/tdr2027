@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\EmergencyContactRelationship;
+use App\Support\PhoneNormalizer;
 use Database\Factories\EmergencyContactFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -39,5 +41,35 @@ class EmergencyContact extends Model
     public function getPreferredPhoneAttribute(): ?string
     {
         return $this->cell_phone ?? $this->work_phone ?? $this->home_phone;
+    }
+
+    /**
+     * @return Attribute<?string, ?string>
+     */
+    protected function cellPhone(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value): ?string => PhoneNormalizer::normalize($value),
+        );
+    }
+
+    /**
+     * @return Attribute<?string, ?string>
+     */
+    protected function homePhone(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value): ?string => PhoneNormalizer::normalize($value),
+        );
+    }
+
+    /**
+     * @return Attribute<?string, ?string>
+     */
+    protected function workPhone(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value): ?string => PhoneNormalizer::normalize($value),
+        );
     }
 }

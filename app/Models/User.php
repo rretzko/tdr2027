@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Support\NameFormatter;
+use App\Support\PhoneNormalizer;
 use Database\Factories\UserFactory;
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -99,9 +101,29 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->socialAccounts()->whereNotNull('provider_avatar')->value('provider_avatar');
     }
 
+    /**
+     * The Founder account is hard-coded to a single, specific email rather than
+     * a Spatie role — there is exactly one Founder and it isn't expected to grow
+     * into a general-purpose admin role.
+     */
+    public function isFounder(): bool
+    {
+        return $this->email === 'rick@mfrholdings.com';
+    }
+
     public function getSortNameAttribute(): string
     {
         return NameFormatter::buildSortName($this);
+    }
+
+    /**
+     * @return Attribute<?string, ?string>
+     */
+    protected function cellPhone(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value): ?string => PhoneNormalizer::normalize($value),
+        );
     }
 
     /**

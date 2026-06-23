@@ -48,6 +48,13 @@ class Index extends Component
 
     public bool $confirmedNewSchool = false;
 
+    /**
+     * Set once the teacher picks a suggested existing school instead of creating
+     * a new one. Only a selection — saving still waits for the Save button, which
+     * calls linkExistingSchool() against this id instead of saveAdd().
+     */
+    public ?int $linkingSchoolId = null;
+
     public string $edit_role = '';
 
     public bool $edit_is_replacing_teacher = false;
@@ -93,14 +100,9 @@ class Index extends Component
         $this->teacher()->schools()->updateExistingPivot($schoolId, ['is_active' => true]);
     }
 
-    /**
-     * A school is "Pending" until its school_email is set and verified — until
-     * then the teacher hasn't proven their affiliation, so the Active/Inactive
-     * toggle is hidden in favor of resolving verification first.
-     */
     public function isPending(SchoolTeacher $pivot): bool
     {
-        return blank($pivot->school_email) || blank($pivot->verified_at);
+        return $pivot->isPending();
     }
 
     public function remove(int $schoolId): void
@@ -126,6 +128,7 @@ class Index extends Component
         $this->editingSchoolId = null;
         $this->isAdding = true;
         $this->confirmedNewSchool = false;
+        $this->linkingSchoolId = null;
 
         $this->edit_role = TeacherRole::Primary->value;
         $this->edit_is_replacing_teacher = false;
@@ -169,6 +172,35 @@ class Index extends Component
         $this->edit_county_id = '';
     }
 
+    /**
+     * Other teachers linked to the school in scope (active or not — a departing
+     * teacher's pivot row isn't necessarily removed when they leave), so the
+     * teacher being replaced can be picked from a list instead of free-typed and
+     * risk a typo that breaks the record's usefulness. Empty while adding a
+     * brand-new school, since there's no one there yet to replace.
+     *
+     * @return Collection<int, string>
+     */
+    public function replacingTeacherOptions(?int $schoolId = null): Collection
+    {
+        $schoolId ??= $this->linkingSchoolId ?? $this->editingSchoolId;
+
+        if ($schoolId === null) {
+            return collect();
+        }
+
+        return Teacher::query()
+            ->whereHas('schools', fn ($query) => $query->where('schools.id', $schoolId))
+            ->where('id', '!=', $this->teacher()->id)
+            ->with('user')
+            ->get()
+            ->pluck('user.name')
+            ->filter(fn (?string $name): bool => filled($name))
+            ->unique()
+            ->sort()
+            ->values();
+    }
+
     public function schoolEmailDomainWarning(): ?string
     {
         if ($this->edit_school_email === '' || ! str_contains($this->edit_school_email, '@')) {
@@ -205,6 +237,26 @@ class Index extends Component
     }
 
     /**
+     * Marks a suggested school as the one the teacher means, without saving
+     * anything yet — only the Save button persists it (via linkExistingSchool()).
+     */
+    public function selectSuggestedSchool(int $schoolId): void
+    {
+        $this->linkingSchoolId = $schoolId;
+        $this->confirmedNewSchool = false;
+    }
+
+    /**
+     * Confirms the teacher wants to create a new school rather than link to one
+     * of the suggested matches.
+     */
+    public function confirmNewSchool(): void
+    {
+        $this->confirmedNewSchool = true;
+        $this->linkingSchoolId = null;
+    }
+
+    /**
      * Links the teacher to an existing school suggested as a likely duplicate,
      * instead of creating a new School record for it.
      */
@@ -236,9 +288,10 @@ class Index extends Component
 
         $this->isAdding = false;
         $this->confirmedNewSchool = false;
+        $this->linkingSchoolId = null;
         $this->modal('edit-school')->close();
 
-        Flux::toast(text: "You're now linked to {$school->name}.", variant: 'success');
+        Flux::toast(text: $this->addedSchoolToastMessage("You're now linked to {$school->name}."), variant: 'success');
     }
 
     public function saveEdit(): void
@@ -322,7 +375,21 @@ class Index extends Component
         $this->isAdding = false;
         $this->modal('edit-school')->close();
 
-        Flux::toast(text: "{$school->name} added successfully.", variant: 'success');
+        Flux::toast(text: $this->addedSchoolToastMessage("{$school->name} added successfully."), variant: 'success');
+    }
+
+    /**
+     * Appends a note about the pending student transfer to a just-added-school
+     * toast, when a replacement teacher was identified — the transfer itself only
+     * runs once the school email is verified (see ReplacedTeacherStudentTransfer).
+     */
+    private function addedSchoolToastMessage(string $message): string
+    {
+        if (! $this->edit_is_replacing_teacher) {
+            return $message;
+        }
+
+        return "{$message} Current students will be transferred to you once your school email is verified.";
     }
 
     /**
@@ -358,7 +425,7 @@ class Index extends Component
      */
     private function teacherRelationshipValidationRules(): array
     {
-        $schoolEmailRules = ['nullable', 'email', 'max:255'];
+        $schoolEmailRules = ['required', 'email', 'max:255'];
 
         if ($this->edit_school_email !== '') {
             $schoolEmailRules[] = new NotCommercialEmailDomain;
