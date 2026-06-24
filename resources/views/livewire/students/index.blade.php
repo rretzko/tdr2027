@@ -238,6 +238,14 @@
                         <flux:select.option value="{{ $option['grade'] }}">{{ $option['label'] }}</flux:select.option>
                     @endforeach
                 </flux:select>
+            @else
+                <flux:separator text="Grade" />
+
+                <flux:select wire:model="edit_grade" label="Grade" placeholder="Select a grade..." required>
+                    @foreach ($this->editGradeOptions() as $option)
+                        <flux:select.option value="{{ $option['grade'] }}">{{ $option['label'] }}</flux:select.option>
+                    @endforeach
+                </flux:select>
             @endif
 
             <flux:separator text="Profile" />
@@ -264,7 +272,11 @@
                         <flux:icon.question-mark-circle variant="micro" class="inline text-zinc-400" />
                     </flux:tooltip>
                 </flux:label>
-                <flux:input wire:model="edit_cell_phone" />
+                <flux:input
+                    wire:model="edit_cell_phone"
+                    type="tel"
+                    mask:dynamic="$input.replace(/\D/g, '').length > 10 ? '(999) 999-9999 x9999' : '(999) 999-9999'"
+                />
                 <flux:error name="edit_cell_phone" />
             </flux:field>
 
@@ -391,9 +403,24 @@
                     <flux:input wire:model="edit_emergency_contacts.{{ $index }}.email" type="email" label="Email" />
 
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        <flux:input wire:model="edit_emergency_contacts.{{ $index }}.cell_phone" label="Cell phone" />
-                        <flux:input wire:model="edit_emergency_contacts.{{ $index }}.home_phone" label="Home phone (optional)" />
-                        <flux:input wire:model="edit_emergency_contacts.{{ $index }}.work_phone" label="Work phone (optional)" />
+                        <flux:input
+                            wire:model="edit_emergency_contacts.{{ $index }}.cell_phone"
+                            label="Cell phone"
+                            type="tel"
+                            mask:dynamic="$input.replace(/\D/g, '').length > 10 ? '(999) 999-9999 x9999' : '(999) 999-9999'"
+                        />
+                        <flux:input
+                            wire:model="edit_emergency_contacts.{{ $index }}.home_phone"
+                            label="Home phone (optional)"
+                            type="tel"
+                            mask:dynamic="$input.replace(/\D/g, '').length > 10 ? '(999) 999-9999 x9999' : '(999) 999-9999'"
+                        />
+                        <flux:input
+                            wire:model="edit_emergency_contacts.{{ $index }}.work_phone"
+                            label="Work phone (optional)"
+                            type="tel"
+                            mask:dynamic="$input.replace(/\D/g, '').length > 10 ? '(999) 999-9999 x9999' : '(999) 999-9999'"
+                        />
                     </div>
                 </div>
             @endforeach

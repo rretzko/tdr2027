@@ -19,11 +19,19 @@
         <flux:sidebar sticky stashable collapsible class="border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
             <flux:sidebar.toggle class="lg:hidden" icon="x-mark" />
 
-            <flux:sidebar.brand href="{{ route('dashboard') }}" :name="config('app.name')">
-                <x-slot name="logo">
-                    <img src="{{ asset('images/tdr-logo.svg') }}" alt="">
-                </x-slot>
-            </flux:sidebar.brand>
+            <flux:sidebar.header>
+                <flux:sidebar.brand
+                    href="{{ route('dashboard') }}"
+                    :name="config('app.name')"
+                    class="pointer-coarse:in-data-flux-sidebar-collapsed-desktop:absolute! pointer-coarse:in-data-flux-sidebar-collapsed-desktop:opacity-0!"
+                >
+                    <x-slot name="logo">
+                        <img src="{{ asset('images/tdr-logo.svg') }}" alt="">
+                    </x-slot>
+                </flux:sidebar.brand>
+
+                <flux:sidebar.collapse class="hidden lg:flex pointer-coarse:opacity-100!" />
+            </flux:sidebar.header>
 
             <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')">
                 Dashboard
@@ -95,8 +103,6 @@
                     <span class="in-data-flux-sidebar-collapsed-desktop:hidden">Log out</span>
                 </flux:button>
             </form>
-
-            <flux:sidebar.collapse class="hidden lg:flex" />
         </flux:sidebar>
 
         <flux:header class="lg:hidden">

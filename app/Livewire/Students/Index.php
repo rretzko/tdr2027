@@ -93,6 +93,8 @@ class Index extends Component
 
     public string $edit_voice_part_id = '';
 
+    public string $edit_grade = '';
+
     // Home address (optional, all-or-nothing)
     public string $edit_home_address1 = '';
 
@@ -223,7 +225,7 @@ class Index extends Component
     }
 
     /**
-     * @return list<array{grade: int, class_of: int, label: string}>
+     * @return list<array{grade: int, label: string}>
      */
     public function addGradeOptions(): array
     {
@@ -237,24 +239,39 @@ class Index extends Component
             return [];
         }
 
-        return array_map(
-            fn (int $grade) => [
-                'grade' => $grade,
-                'class_of' => ClassOfCalculator::classOfFromGrade($grade, $school->senior_year),
-                'label' => "{$grade}th Grade (Class of ".ClassOfCalculator::classOfFromGrade($grade, $school->senior_year).')',
-            ],
-            range(12, 4),
-        );
+        return $this->gradeOptionsForSchool($school);
+    }
+
+    /**
+     * @return list<array{grade: int, label: string}>
+     */
+    public function editGradeOptions(): array
+    {
+        if ($this->editingRowId === null) {
+            return [];
+        }
+
+        $row = $this->teacherRow($this->editingRowId)->with('school')->first();
+
+        if ($row === null) {
+            return [];
+        }
+
+        return $this->gradeOptionsForSchool($row->school);
     }
 
     public function edit(int $rowId): void
     {
-        $row = $this->teacherRow($rowId)->with(['student.user', 'student.emergencyContacts'])->firstOrFail();
+        $row = $this->teacherRow($rowId)->with(['student.user', 'student.emergencyContacts', 'school'])->firstOrFail();
         $student = $row->student;
         $user = $student->user;
         $homeAddress = HomeAddress::where('student_id', $student->id)->first();
+        $schoolStudent = SchoolStudent::where('student_id', $row->student_id)->where('school_id', $row->school_id)->first();
 
         $this->editingRowId = $row->id;
+        $this->edit_grade = $schoolStudent !== null
+            ? (string) ClassOfCalculator::gradeFromClassOf((int) $schoolStudent->class_of, $row->school->senior_year)
+            : '';
         $this->edit_subject = StudentTeacher::where('student_id', $row->student_id)
             ->where('teacher_id', $this->teacher()->id)
             ->where('school_id', $row->school_id)
@@ -345,22 +362,21 @@ class Index extends Component
 
     public function saveEdit(): void
     {
-        $row = $this->teacherRow($this->editingRowId)->with('student.user')->firstOrFail();
+        $row = $this->teacherRow($this->editingRowId)->with(['student.user', 'school'])->firstOrFail();
         $student = $row->student;
         $user = $student->user;
+
+        $this->stripPhoneFormatting();
 
         $homeAddressProvided = $this->edit_home_address1 !== ''
             || $this->edit_home_city !== ''
             || $this->edit_home_geo_state !== ''
             || $this->edit_home_zip_code !== '';
 
-        $this->validate($this->profileValidationRules($user->id, $homeAddressProvided), [
-            'edit_birthday.before_or_equal' => 'The student must be at least 9 years old.',
-            'edit_birthday.after' => 'The student must be no older than 19.',
-            'edit_first_name.regex' => 'First name may only contain letters, spaces, hyphens, and apostrophes.',
-            'edit_middle_name.regex' => 'Middle name may only contain letters, spaces, hyphens, and apostrophes.',
-            'edit_last_name.regex' => 'Last name may only contain letters, spaces, hyphens, and apostrophes.',
-        ]);
+        $this->validate([
+            'edit_grade' => ['required', 'integer', 'min:4', 'max:12'],
+            ...$this->profileValidationRules($user->id, $homeAddressProvided),
+        ], $this->profileValidationMessages());
 
         // Students aren't required to verify email, and a default address is used
         // whenever none is given or the requested one is already taken (e.g. a
@@ -392,6 +408,10 @@ class Index extends Component
             'instrument_id' => $this->edit_instrument_id !== '' ? (int) $this->edit_instrument_id : null,
             'voice_part_id' => $this->edit_voice_part_id !== '' ? (int) $this->edit_voice_part_id : null,
         ]);
+
+        SchoolStudent::where('student_id', $row->student_id)
+            ->where('school_id', $row->school_id)
+            ->update(['class_of' => ClassOfCalculator::classOfFromGrade((int) $this->edit_grade, $row->school->senior_year)]);
 
         if ($homeAddressProvided) {
             $student->homeAddress()->updateOrCreate([], [
@@ -432,6 +452,8 @@ class Index extends Component
 
     public function saveAdd(): void
     {
+        $this->stripPhoneFormatting();
+
         $homeAddressProvided = $this->edit_home_address1 !== ''
             || $this->edit_home_city !== ''
             || $this->edit_home_geo_state !== ''
@@ -456,13 +478,7 @@ class Index extends Component
             'add_school_id' => ['required', 'integer', Rule::in($activeSchoolIds)],
             'add_grade' => ['required', 'integer', 'min:4', 'max:12'],
             ...$this->profileValidationRules(null, $homeAddressProvided, emergencyContactsRequired: false),
-        ], [
-            'edit_birthday.before_or_equal' => 'The student must be at least 9 years old.',
-            'edit_birthday.after' => 'The student must be no older than 19.',
-            'edit_first_name.regex' => 'First name may only contain letters, spaces, hyphens, and apostrophes.',
-            'edit_middle_name.regex' => 'Middle name may only contain letters, spaces, hyphens, and apostrophes.',
-            'edit_last_name.regex' => 'Last name may only contain letters, spaces, hyphens, and apostrophes.',
-        ]);
+        ], $this->profileValidationMessages());
 
         $school = School::findOrFail((int) $this->add_school_id);
 
@@ -577,6 +593,38 @@ class Index extends Component
     }
 
     /**
+     * The cell/home/work phone inputs display a "(999) 999-9999" mask (see
+     * mask:dynamic in the blade), but the mask plugin writes its formatted
+     * text straight into the bound Livewire property — strip it back to
+     * digits-only before validating or saving, matching the convention used
+     * by Login, Profile, and TeacherRegister.
+     */
+    private function stripPhoneFormatting(): void
+    {
+        $this->edit_cell_phone = preg_replace('/\D/', '', $this->edit_cell_phone);
+
+        foreach ($this->edit_emergency_contacts as $index => $contact) {
+            $this->edit_emergency_contacts[$index]['cell_phone'] = preg_replace('/\D/', '', $contact['cell_phone']);
+            $this->edit_emergency_contacts[$index]['home_phone'] = preg_replace('/\D/', '', $contact['home_phone']);
+            $this->edit_emergency_contacts[$index]['work_phone'] = preg_replace('/\D/', '', $contact['work_phone']);
+        }
+    }
+
+    /**
+     * @return list<array{grade: int, label: string}>
+     */
+    private function gradeOptionsForSchool(School $school): array
+    {
+        return array_map(
+            fn (int $grade) => [
+                'grade' => $grade,
+                'label' => "{$grade}th Grade (Class of ".ClassOfCalculator::classOfFromGrade($grade, $school->senior_year).')',
+            ],
+            range(12, 4),
+        );
+    }
+
+    /**
      * Validation rules shared by saveEdit() and saveAdd() — the profile, home
      * address, emergency contact, and subject/role fields are identical for both;
      * only the school/grade fields (add-only), ignored-user-id, and whether an
@@ -625,6 +673,31 @@ class Index extends Component
             'edit_subject' => ['required', 'array', 'min:1'],
             'edit_subject.*' => [Rule::in($subjectValues)],
             'edit_role' => ['required', Rule::in([TeacherRole::Primary->value, TeacherRole::Coteacher->value])],
+        ];
+    }
+
+    /**
+     * Shared by saveEdit() and saveAdd() alongside profileValidationRules() —
+     * :position is a Laravel placeholder that resolves to the contact's
+     * 1-based position in edit_emergency_contacts, matching the "Contact N"
+     * heading shown above each row in the form.
+     *
+     * @return array<string, string>
+     */
+    private function profileValidationMessages(): array
+    {
+        return [
+            'edit_birthday.before_or_equal' => 'The student must be at least 9 years old.',
+            'edit_birthday.after' => 'The student must be no older than 19.',
+            'edit_first_name.regex' => 'First name may only contain letters, spaces, hyphens, and apostrophes.',
+            'edit_middle_name.regex' => 'Middle name may only contain letters, spaces, hyphens, and apostrophes.',
+            'edit_last_name.regex' => 'Last name may only contain letters, spaces, hyphens, and apostrophes.',
+
+            'edit_emergency_contacts.*.name.required' => 'Contact :position needs a name.',
+            'edit_emergency_contacts.*.relationship.required' => 'Contact :position needs a relationship.',
+            'edit_emergency_contacts.*.email.required' => 'Contact :position needs an email address.',
+            'edit_emergency_contacts.*.email.email' => 'Contact :position needs a valid email address.',
+            'edit_emergency_contacts.*.cell_phone.required' => 'Contact :position needs a cell phone number.',
         ];
     }
 
