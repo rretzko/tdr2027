@@ -3,11 +3,13 @@
 use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\SchoolEmailVerificationController;
 use App\Http\Controllers\StopImpersonatingController;
+use App\Http\Controllers\StudentClaimController;
 use App\Livewire\Auth\SocialPhoneCheck;
 use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
 use App\Livewire\Auth\TeacherRegister;
 use App\Livewire\Founder\Impersonate as FounderImpersonate;
+use App\Livewire\Founder\TrackablePages as FounderTrackablePages;
 use App\Livewire\Onboarding\TeacherOnboardingWizard;
 use App\Livewire\Schools\Index as SchoolsIndex;
 use App\Livewire\Settings\Password;
@@ -40,6 +42,15 @@ Route::get('/school-email/verify/{schoolTeacher}', [SchoolEmailVerificationContr
     ->middleware('signed')
     ->name('school-email.verify');
 
+// Signed, unauthenticated: approve/deny links emailed to a student's existing
+// teacher(s) when a different school/studio tries to claim that student.
+Route::get('/student-claim/{student}/{teacher}/{school}/approve', [StudentClaimController::class, 'approve'])
+    ->middleware('signed')
+    ->name('student-claim.approve');
+Route::get('/student-claim/{student}/{teacher}/{school}/deny', [StudentClaimController::class, 'deny'])
+    ->middleware('signed')
+    ->name('student-claim.deny');
+
 // Profile completion: auth only — user may not yet have a verified email.
 Route::middleware('auth')->group(function () {
     Route::get('/tdr/profile/complete', SocialProfileComplete::class)
@@ -56,6 +67,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 // to the onboarding wizard.
 Route::middleware(['auth', 'verified', 'founder'])->group(function () {
     Route::get('/founder/impersonate', FounderImpersonate::class)->name('founder.impersonate');
+    Route::get('/founder/trackable-pages', FounderTrackablePages::class)->name('founder.trackable-pages');
 });
 
 // Not behind the 'founder' middleware: once impersonating, the active user is

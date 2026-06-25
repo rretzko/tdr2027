@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Enums\ClaimStatus;
 use App\Livewire\Students\Index;
+use App\Mail\StudentClaimMail;
 use App\Models\County;
 use App\Models\EmergencyContact;
 use App\Models\HomeAddress;
@@ -21,6 +23,7 @@ use App\Support\ClassOfCalculator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 
@@ -1298,7 +1301,7 @@ test('saveAdd blocks on a strong match (same name and birthday) even in a school
         ->assertHasErrors('edit_first_name');
 });
 
-test('a matched student already at the school being added to offers to attach instead of dismiss-only', function () {
+test('a matched student already at the school being added to offers to attach instead of a claim request', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
     $otherTeacherUser = makeStudentsIndexTeacherUser();
@@ -1312,10 +1315,10 @@ test('a matched student already at the school being added to offers to attach in
         ->set('edit_first_name', 'Wendel')
         ->set('edit_last_name', 'Quoxbury')
         ->assertSee('This is my student')
-        ->assertDontSee('Enrolled elsewhere');
+        ->assertDontSee('Request to add');
 });
 
-test('a matched student enrolled at a different school only offers to dismiss, not attach', function () {
+test('a matched student enrolled at a different school offers a claim request instead of attach', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
     $otherSchool = School::factory()->create();
@@ -1330,7 +1333,7 @@ test('a matched student enrolled at a different school only offers to dismiss, n
         ->set('edit_first_name', 'Wendel')
         ->set('edit_last_name', 'Quoxbury')
         ->assertDontSee('This is my student')
-        ->assertSee('Enrolled elsewhere');
+        ->assertSee('Request to add');
 });
 
 test('attaching to an existing same-school student claims them without creating a duplicate', function () {
@@ -1383,4 +1386,217 @@ test('attachExistingStudent requires a subject', function () {
         ->set('edit_subject', [])
         ->call('attachExistingStudent')
         ->assertHasErrors('edit_subject');
+});
+
+test('a student already on the teacher own roster at that school is not suggested as a possible duplicate', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    claimStudentForTeacher($user->teacher, $school, 'Wendel', 'Quoxbury', subject: 'chorus');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_last_name', 'Quoxbury')
+        ->assertDontSee('This may already be one of your students');
+});
+
+test('attachExistingStudent does not error when the teacher already claims that subject (regression)', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $existingRow = claimStudentForTeacher($user->teacher, $school, 'Wendel', 'Quoxbury', subject: 'chorus');
+
+    // The teacher already has this exact (student, teacher, school, subject)
+    // row — selectStudentMatch()/attachExistingStudent() are called directly
+    // here (bypassing the suggestion-list exclusion that normally prevents
+    // this) to pin down the underlying bug: attaching used to insert
+    // unconditionally and crash on student_teacher's unique constraint.
+    $component = Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->call('selectStudentMatch', $existingRow->student_id)
+        ->set('edit_subject', ['chorus'])
+        ->set('edit_role', 'primary')
+        ->call('attachExistingStudent')
+        ->assertHasNoErrors();
+
+    expect(StudentTeacher::where('student_id', $existingRow->student_id)
+        ->where('teacher_id', $user->teacher->id)
+        ->where('school_id', $school->id)
+        ->where('subject', 'chorus')
+        ->count())->toBe(1);
+});
+
+test('attachExistingStudent reactivates a previously deactivated subject claim', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $existingRow = claimStudentForTeacher($user->teacher, $school, 'Wendel', 'Quoxbury', subject: 'chorus');
+    $existingRow->update(['is_active' => false]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->call('selectStudentMatch', $existingRow->student_id)
+        ->set('edit_subject', ['chorus'])
+        ->set('edit_role', 'primary')
+        ->call('attachExistingStudent')
+        ->assertHasNoErrors();
+
+    expect($existingRow->refresh()->is_active)->toBeTrue();
+});
+
+test('attachExistingStudent creates only the new subject when one is already claimed', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $existingRow = claimStudentForTeacher($user->teacher, $school, 'Wendel', 'Quoxbury', subject: 'chorus');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->call('selectStudentMatch', $existingRow->student_id)
+        ->set('edit_subject', ['chorus', 'band'])
+        ->set('edit_role', 'primary')
+        ->call('attachExistingStudent')
+        ->assertHasNoErrors();
+
+    $subjects = StudentTeacher::where('student_id', $existingRow->student_id)
+        ->where('teacher_id', $user->teacher->id)
+        ->where('school_id', $school->id)
+        ->get()
+        ->map(fn (StudentTeacher $row) => $row->getRawOriginal('subject'))
+        ->sort()
+        ->values()
+        ->all();
+
+    expect($subjects)->toBe(['band', 'chorus']);
+});
+
+// Phase 2: cross-org claim (pending approval) tests
+
+test('submitStudentClaim auto-approves when the matched student has no active teachers', function () {
+    Mail::fake();
+
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    // Student exists in the system but has no active student_teacher rows (orphaned).
+    $orphan = Student::factory()->create();
+    SchoolStudent::create(['student_id' => $orphan->id, 'school_id' => $school->id, 'is_active' => true, 'class_of' => 2026]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->call('selectStudentClaim', $orphan->id)
+        ->set('claim_grade', '9')
+        ->set('edit_subject', ['chorus'])
+        ->set('edit_role', 'primary')
+        ->call('submitStudentClaim')
+        ->assertHasNoErrors();
+
+    $row = StudentTeacher::where('student_id', $orphan->id)
+        ->where('teacher_id', $user->teacher->id)
+        ->where('school_id', $school->id)
+        ->first();
+
+    expect($row)->not->toBeNull();
+    expect($row->getRawOriginal('claim_status'))->toBe(ClaimStatus::Approved->value);
+    expect($row->is_active)->toBeTrue();
+
+    Mail::assertNothingSent();
+});
+
+test('submitStudentClaim creates pending rows and emails the existing teacher', function () {
+    Mail::fake();
+
+    $user = makeStudentsIndexTeacherUser();
+    $studio = School::factory()->studio()->create();
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+    $existingTeacherUser = makeStudentsIndexTeacherUser();
+    $existingTeacherUser->update(['email' => 'existing.teacher@school.edu']);
+    $existingRow = claimStudentForTeacher($existingTeacherUser->teacher, School::factory()->create(), 'Wendel', 'Quoxbury', subject: 'chorus');
+    $homeSchoolId = School::factory()->create()->id;
+    $existingRow->student->update(['home_school_id' => $homeSchoolId]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $studio->id)
+        ->call('selectStudentClaim', $existingRow->student_id)
+        ->set('claim_grade', '10')
+        ->set('edit_subject', ['chorus'])
+        ->set('edit_role', 'primary')
+        ->call('submitStudentClaim')
+        ->assertHasNoErrors();
+
+    $pending = StudentTeacher::where('student_id', $existingRow->student_id)
+        ->where('teacher_id', $user->teacher->id)
+        ->where('school_id', $studio->id)
+        ->first();
+
+    expect($pending)->not->toBeNull();
+    expect($pending->getRawOriginal('claim_status'))->toBe(ClaimStatus::Pending->value);
+    expect($pending->is_active)->toBeFalse();
+    expect($pending->pending_class_of)->toBe(
+        ClassOfCalculator::classOfFromGrade(10, $studio->senior_year)
+    );
+
+    expect(SchoolStudent::where('student_id', $existingRow->student_id)->where('school_id', $studio->id)->exists())->toBeFalse();
+
+    Mail::assertSent(StudentClaimMail::class, fn (StudentClaimMail $mail) => $mail->hasTo('existing.teacher@school.edu'));
+});
+
+// Controller route tests for student-claim.approve / .deny live in
+// tests/Feature/StudentClaimControllerTest.php (class-based, for proper $this->get() typing).
+
+test('a pending row shows a Pending badge in the students index', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $studio = School::factory()->create();
+    $existingTeacherUser = makeStudentsIndexTeacherUser();
+    $existingRow = claimStudentForTeacher($existingTeacherUser->teacher, School::factory()->create(), 'Wendel', 'Quoxbury');
+    SchoolStudent::create(['student_id' => $existingRow->student_id, 'school_id' => $studio->id, 'is_active' => true, 'class_of' => 2026]);
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+
+    StudentTeacher::create([
+        'student_id' => $existingRow->student_id,
+        'teacher_id' => $user->teacher->id,
+        'school_id' => $studio->id,
+        'subject' => 'chorus',
+        'role' => 'primary',
+        'is_active' => false,
+        'claim_status' => ClaimStatus::Pending->value,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('Pending');
+});
+
+test('edit() refuses to open a pending row and shows a warning toast', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $studio = School::factory()->create();
+    $existingTeacherUser = makeStudentsIndexTeacherUser();
+    $existingRow = claimStudentForTeacher($existingTeacherUser->teacher, School::factory()->create(), 'Wendel', 'Quoxbury');
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+
+    $pendingRow = StudentTeacher::create([
+        'student_id' => $existingRow->student_id,
+        'teacher_id' => $user->teacher->id,
+        'school_id' => $studio->id,
+        'subject' => 'chorus',
+        'role' => 'primary',
+        'is_active' => false,
+        'claim_status' => ClaimStatus::Pending->value,
+    ]);
+
+    $component = Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $pendingRow->id);
+
+    expect($component->get('editingRowId'))->toBeNull();
+    expect($component->get('edit_first_name'))->toBe('');
 });

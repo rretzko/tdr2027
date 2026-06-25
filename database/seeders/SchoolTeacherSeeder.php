@@ -40,6 +40,19 @@ class SchoolTeacherSeeder extends Seeder
                 'verified_at', 'is_active', 'updated_at',
             ]
         );
+
+        $now = now();
+
+        DB::table('school_teacher_subject')->upsert(
+            array_map(fn (array $row) => [
+                'school_teacher_id' => $row['id'],
+                'subject' => 'chorus',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ], $rows),
+            ['school_teacher_id', 'subject'],
+            ['updated_at']
+        );
     }
 
     /**

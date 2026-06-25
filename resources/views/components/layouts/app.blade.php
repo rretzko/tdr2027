@@ -98,8 +98,11 @@
                 <flux:separator />
 
                 <flux:sidebar.group heading="Founder" expandable>
-                    <flux:sidebar.item icon="user-circle" :href="route('founder.impersonate')" :current="request()->routeIs('founder.*')">
+                    <flux:sidebar.item icon="user-circle" :href="route('founder.impersonate')" :current="request()->routeIs('founder.impersonate')">
                         Impersonate User
+                    </flux:sidebar.item>
+                    <flux:sidebar.item icon="bolt" :href="route('founder.trackable-pages')" :current="request()->routeIs('founder.trackable-pages')">
+                        Trackable Pages
                     </flux:sidebar.item>
                 </flux:sidebar.group>
             @endif

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models\Pivots;
 
+use App\Enums\ClaimStatus;
 use App\Enums\Subject;
 use App\Enums\TeacherRole;
 use App\Models\School;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
-#[Fillable(['student_id', 'teacher_id', 'school_id', 'subject', 'role', 'is_active'])]
+#[Fillable(['student_id', 'teacher_id', 'school_id', 'subject', 'role', 'is_active', 'claim_status', 'pending_class_of'])]
 class StudentTeacher extends Pivot
 {
     /** @use HasFactory<StudentTeacherFactory> */
@@ -34,6 +35,7 @@ class StudentTeacher extends Pivot
             'subject' => Subject::class,
             'role' => TeacherRole::class,
             'is_active' => 'boolean',
+            'claim_status' => ClaimStatus::class,
         ];
     }
 
@@ -59,5 +61,16 @@ class StudentTeacher extends Pivot
     public function school(): BelongsTo
     {
         return $this->belongsTo(School::class);
+    }
+
+    /**
+     * A cross-org claim awaiting approval from the student's existing
+     * teacher(s) — mirrors SchoolTeacher::isPending(). Until approved, the
+     * requesting teacher hasn't been granted access to the existing
+     * student's full profile (see Students\Index::edit()'s guard).
+     */
+    public function isPending(): bool
+    {
+        return $this->getRawOriginal('claim_status') === ClaimStatus::Pending->value;
     }
 }

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Livewire\Students;
 
+use App\Enums\ClaimStatus;
 use App\Enums\EmergencyContactRelationship;
 use App\Enums\SchoolType;
 use App\Enums\ShirtSize;
 use App\Enums\Subject;
 use App\Enums\TeacherRole;
+use App\Mail\StudentClaimMail;
 use App\Models\County;
 use App\Models\EmergencyContact;
 use App\Models\Geostate;
@@ -35,6 +37,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL as UrlFacade;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -103,6 +107,21 @@ class Index extends Component
     public string $attachingStudentSchoolName = '';
 
     public ?int $attachingStudentGrade = null;
+
+    // Cross-org claim — a matched student already enrolled at a *different*
+    // school/studio than the one being added to. Unlike attachingStudentId,
+    // submitting this doesn't attach immediately (see submitStudentClaim())
+    // unless claimWillAutoApprove is true, meaning nobody currently has an
+    // active teacher relationship with this student in the system.
+    public ?int $claimingStudentId = null;
+
+    public string $claimingStudentName = '';
+
+    public string $claimingStudentSchoolName = '';
+
+    public string $claim_grade = '';
+
+    public bool $claimWillAutoApprove = false;
 
     // Teacher relationship — a teacher can claim a student under several subjects
     // at once (school_teacher_subject is many-to-one against school_teacher, and
@@ -264,6 +283,7 @@ class Index extends Component
 
         $this->dismissedStudentMatchIds = [];
         $this->resetAttachingStudent();
+        $this->resetStudentClaim();
 
         $this->emailFallbackNotice = null;
         $this->passwordResetNotice = null;
@@ -312,11 +332,18 @@ class Index extends Component
      * teacher has actually committed to attaching to one of them, so the
      * suggestion list doesn't keep competing with the attach-mode form.
      *
+     * Excludes a candidate the requesting teacher already has *any*
+     * student_teacher row for at this school (active or not) — that's not an
+     * identity ambiguity to resolve, it's just their own existing roster
+     * entry, which Edit already handles. Without this, "attach" on such a
+     * match would try to create a row that already exists and violate
+     * student_teacher's unique constraint.
+     *
      * @return Collection<int, array{student: Student, tier: string}>
      */
     public function studentMatcherMatches(): Collection
     {
-        if (! $this->isAdding || $this->attachingStudentId !== null) {
+        if (! $this->isAdding || $this->attachingStudentId !== null || $this->claimingStudentId !== null) {
             return collect();
         }
 
@@ -328,7 +355,19 @@ class Index extends Component
             $this->edit_birthday !== '' ? $this->edit_birthday : null,
             $contact['email'] ?? null,
             $contact['cell_phone'] ?? null,
-        );
+        )->reject(fn (array $match) => $this->teacherAlreadyHasStudentAtAddSchool($match['student']->id));
+    }
+
+    private function teacherAlreadyHasStudentAtAddSchool(int $studentId): bool
+    {
+        if ($this->add_school_id === '') {
+            return false;
+        }
+
+        return StudentTeacher::where('student_id', $studentId)
+            ->where('teacher_id', $this->teacher()->id)
+            ->where('school_id', (int) $this->add_school_id)
+            ->exists();
     }
 
     /**
@@ -417,6 +456,15 @@ class Index extends Component
      * subject(s), instead of creating a new Student record. Only reachable
      * for a same-school match (see studentMatchIsSameSchool()) — the existing
      * record's own profile, contacts, and address are left untouched.
+     *
+     * studentMatcherMatches() already excludes a student the teacher has any
+     * row for at this school, but that's a UI nicety, not a guarantee (e.g. a
+     * second roster claim could appear between the suggestion rendering and
+     * this submit) — so each subject is still checked individually here
+     * rather than blindly inserting, to avoid student_teacher's unique
+     * (student_id, teacher_id, school_id, subject) constraint ever rejecting
+     * the request outright. An existing inactive row is reactivated instead
+     * of left stale; an existing active row for that subject is left as-is.
      */
     public function attachExistingStudent(): void
     {
@@ -428,7 +476,24 @@ class Index extends Component
             'edit_role' => ['required', Rule::in([TeacherRole::Primary->value, TeacherRole::Coteacher->value])],
         ]);
 
+        $changedAnything = false;
+
         foreach ($this->edit_subject as $subject) {
+            $existing = StudentTeacher::where('student_id', $student->id)
+                ->where('teacher_id', $this->teacher()->id)
+                ->where('school_id', (int) $this->add_school_id)
+                ->where('subject', $subject)
+                ->first();
+
+            if ($existing !== null) {
+                if (! $existing->is_active) {
+                    $existing->update(['is_active' => true, 'role' => $this->edit_role]);
+                    $changedAnything = true;
+                }
+
+                continue;
+            }
+
             StudentTeacher::create([
                 'student_id' => $student->id,
                 'teacher_id' => $this->teacher()->id,
@@ -437,6 +502,7 @@ class Index extends Component
                 'role' => $this->edit_role,
                 'is_active' => true,
             ]);
+            $changedAnything = true;
         }
 
         $this->isAdding = false;
@@ -448,7 +514,160 @@ class Index extends Component
 
         $this->modal('edit-student')->close();
 
-        Flux::toast(text: "{$student->user->name} added to your roster.", variant: 'success');
+        Flux::toast(
+            text: $changedAnything
+                ? "{$student->user->name} added to your roster."
+                : "{$student->user->name} is already on your roster under the selected subject(s) — no changes made.",
+            variant: $changedAnything ? 'success' : 'warning',
+        );
+    }
+
+    /**
+     * Enters claim-request mode for a matched student enrolled at a
+     * *different* school/studio — unlike selectStudentMatch(), submitting
+     * this doesn't attach immediately (see submitStudentClaim()).
+     */
+    public function selectStudentClaim(int $studentId): void
+    {
+        $student = Student::with('user')->findOrFail($studentId);
+        $schoolSubjects = $this->subjectsForAddSchool();
+
+        $this->claimingStudentId = $student->id;
+        $this->claimingStudentName = $student->user->name;
+        $this->claimingStudentSchoolName = $this->studentMatchCurrentSchoolName($student);
+        $this->claim_grade = $this->add_grade;
+        $this->edit_subject = count($schoolSubjects) === 1 ? $schoolSubjects : [];
+        $this->claimWillAutoApprove = $this->activeTeachersFor($studentId)->isEmpty();
+    }
+
+    public function cancelStudentClaim(): void
+    {
+        $this->resetStudentClaim();
+    }
+
+    /**
+     * Requests this teacher be added as a teacher for a student who already
+     * belongs to a different school/studio. If nobody currently has an active
+     * claim on the student anywhere, there's no one to ask, so this attaches
+     * immediately instead of creating a pending request (see the "zero active
+     * teachers" decision in docs/plans/student-duplicate-prevention.md) —
+     * otherwise every existing active teacher is emailed an approve/deny link
+     * and the new row(s) sit as pending until one of them responds.
+     */
+    public function submitStudentClaim(): void
+    {
+        $student = Student::with('user')->findOrFail($this->claimingStudentId);
+        $school = School::findOrFail((int) $this->add_school_id);
+
+        $this->validate([
+            'edit_subject' => ['required', 'array', 'min:1'],
+            'edit_subject.*' => [Rule::in(array_map(fn (Subject $subject) => $subject->value, Subject::cases()))],
+            'edit_role' => ['required', Rule::in([TeacherRole::Primary->value, TeacherRole::Coteacher->value])],
+            'claim_grade' => ['required', 'integer', 'min:4', 'max:12'],
+        ]);
+
+        $classOf = ClassOfCalculator::classOfFromGrade((int) $this->claim_grade, $school->senior_year);
+        $approvers = $this->activeTeachersFor($student->id);
+        $autoApprove = $approvers->isEmpty();
+
+        if ($autoApprove) {
+            SchoolStudent::firstOrCreate(
+                ['student_id' => $student->id, 'school_id' => $school->id],
+                ['is_active' => true, 'class_of' => $classOf]
+            );
+        }
+
+        foreach ($this->edit_subject as $subject) {
+            StudentTeacher::create([
+                'student_id' => $student->id,
+                'teacher_id' => $this->teacher()->id,
+                'school_id' => $school->id,
+                'subject' => $subject,
+                'role' => $this->edit_role,
+                'is_active' => $autoApprove,
+                'claim_status' => $autoApprove ? ClaimStatus::Approved->value : ClaimStatus::Pending->value,
+                'pending_class_of' => $autoApprove ? null : $classOf,
+            ]);
+        }
+
+        $this->isAdding = false;
+        $this->resetStudentClaim();
+        $this->editingRowId = StudentTeacher::where('student_id', $student->id)
+            ->where('teacher_id', $this->teacher()->id)
+            ->where('school_id', $school->id)
+            ->value('id');
+
+        $this->modal('edit-student')->close();
+
+        if ($autoApprove) {
+            Flux::toast(text: "{$student->user->name} added to your roster.", variant: 'success');
+
+            return;
+        }
+
+        $this->sendClaimRequestEmails($approvers, $student, $school);
+
+        Flux::toast(
+            text: "Request sent — {$student->user->name} will be added once their current teacher approves.",
+            variant: 'success',
+        );
+    }
+
+    /**
+     * Distinct teachers with an active claim on this student anywhere in the
+     * system — the people who need to approve (or could deny) a cross-org
+     * request, since they're the ones who'd otherwise lose any say in who
+     * else gets access to this student's profile.
+     *
+     * @return Collection<int, Teacher>
+     */
+    /**
+     * Teachers who currently have an active roster claim on this student
+     * (any school, any subject) — the people who need to approve a cross-org
+     * request before the requesting teacher gains access to the student's
+     * profile. Uses a direct subquery on student_teacher rather than
+     * whereHas/wherePivot, which can behave unexpectedly with custom pivot
+     * classes (::using()) in a whereHas callback.
+     */
+    private function activeTeachersFor(int $studentId): Collection
+    {
+        return Teacher::query()
+            ->whereIn('id', function ($q) use ($studentId) {
+                $q->select('teacher_id')
+                    ->from('student_teacher')
+                    ->where('student_id', $studentId)
+                    ->where('is_active', true);
+            })
+            ->with('user')
+            ->get();
+    }
+
+    /**
+     * @param  Collection<int, Teacher>  $approvers
+     */
+    private function sendClaimRequestEmails(Collection $approvers, Student $student, School $school): void
+    {
+        $requestingTeacher = $this->teacher();
+        $expiresAt = now()->addDays(7);
+
+        foreach ($approvers as $approver) {
+            if ($approver->user->email === null) {
+                continue;
+            }
+
+            $approveUrl = UrlFacade::temporarySignedRoute(
+                'student-claim.approve',
+                $expiresAt,
+                ['student' => $student->id, 'teacher' => $requestingTeacher->id, 'school' => $school->id],
+            );
+            $denyUrl = UrlFacade::temporarySignedRoute(
+                'student-claim.deny',
+                $expiresAt,
+                ['student' => $student->id, 'teacher' => $requestingTeacher->id, 'school' => $school->id],
+            );
+
+            Mail::to($approver->user->email)->send(new StudentClaimMail($requestingTeacher, $student, $school, $approveUrl, $denyUrl, $expiresAt));
+        }
     }
 
     /**
@@ -490,6 +709,18 @@ class Index extends Component
     public function edit(int $rowId): void
     {
         $row = $this->teacherRow($rowId)->with(['student.user', 'student.emergencyContacts', 'student.homeSchool', 'school'])->firstOrFail();
+
+        // A pending cross-org claim hasn't been approved by the student's
+        // existing teacher(s) yet — loading the full profile here would hand
+        // over emergency contacts, address, and birthday before that approval,
+        // defeating the whole point of the claim workflow. The Edit trigger is
+        // also disabled in the blade for a pending row; this is the backstop.
+        if ($row->isPending()) {
+            Flux::toast(text: 'This request is still pending approval — nothing to edit yet.', variant: 'warning');
+
+            return;
+        }
+
         $student = $row->student;
         $user = $student->user;
         $homeAddress = HomeAddress::where('student_id', $student->id)->first();
@@ -500,6 +731,7 @@ class Index extends Component
         $this->editingSchoolIsStudio = $row->school->getRawOriginal('type') === SchoolType::Studio->value;
         $this->dismissedStudentMatchIds = [];
         $this->resetAttachingStudent();
+        $this->resetStudentClaim();
         $this->edit_grade = $schoolStudent !== null
             ? (string) ClassOfCalculator::gradeFromClassOf((int) $schoolStudent->class_of, $row->school->senior_year)
             : '';
@@ -951,6 +1183,15 @@ class Index extends Component
         $this->attachingStudentGrade = null;
     }
 
+    private function resetStudentClaim(): void
+    {
+        $this->claimingStudentId = null;
+        $this->claimingStudentName = '';
+        $this->claimingStudentSchoolName = '';
+        $this->claim_grade = '';
+        $this->claimWillAutoApprove = false;
+    }
+
     /**
      * Unresolved matches that must be addressed before saveAdd() can proceed.
      * A strong match (effectively certain — same birthday and name) blocks
@@ -1171,6 +1412,34 @@ class Index extends Component
     private function teacher(): Teacher
     {
         return Auth::user()->teacher;
+    }
+
+    /**
+     * Subjects this teacher teaches at the currently-selected add school specifically,
+     * used to default the Subject field in the claim modal.
+     *
+     * @return list<string>
+     */
+    private function subjectsForAddSchool(): array
+    {
+        if ($this->add_school_id === '') {
+            return [];
+        }
+
+        $schoolTeacher = SchoolTeacher::where('teacher_id', $this->teacher()->id)
+            ->where('school_id', (int) $this->add_school_id)
+            ->where('is_active', true)
+            ->first();
+
+        if ($schoolTeacher === null) {
+            return [];
+        }
+
+        return SchoolTeacherSubject::where('school_teacher_id', $schoolTeacher->id)
+            ->get()
+            ->map(fn (SchoolTeacherSubject $row) => $row->getRawOriginal('subject'))
+            ->values()
+            ->all();
     }
 
     /**

@@ -40,7 +40,9 @@
                         <flux:text size="sm" class="text-zinc-500">{{ $row->school->name }}</flux:text>
                     </div>
 
-                    @if ($row->is_active)
+                    @if ($row->isPending())
+                        <flux:badge color="amber" size="sm">Pending</flux:badge>
+                    @elseif ($row->is_active)
                         <flux:badge color="green" size="sm">Active</flux:badge>
                     @else
                         <flux:badge color="zinc" size="sm">Inactive</flux:badge>
@@ -83,16 +85,21 @@
                 </dl>
 
                 <div class="mt-4 grid grid-cols-3 gap-2">
-                    <flux:modal.trigger name="edit-student">
-                        <flux:button size="sm" variant="outline" class="w-full" wire:click="edit({{ $row->id }})">
+                    <flux:modal.trigger name="edit-student" :disabled="$row->isPending()">
+                        <flux:button size="sm" variant="outline" class="w-full" :disabled="$row->isPending()" wire:click="edit({{ $row->id }})">
                             Edit
                         </flux:button>
                     </flux:modal.trigger>
                     <flux:button size="sm" variant="outline" :disabled="! $row->is_active" wire:click="deactivate({{ $row->id }})">
                         Deactivate
                     </flux:button>
-                    <flux:button size="sm" variant="danger" wire:click="remove({{ $row->id }})" wire:confirm="Remove {{ $row->student->user->name }} from your roster? This cannot be undone.">
-                        Remove
+                    <flux:button
+                        size="sm"
+                        variant="danger"
+                        wire:click="remove({{ $row->id }})"
+                        wire:confirm="{{ $row->isPending() ? 'Cancel this pending request?' : 'Remove '.$row->student->user->name.' from your roster? This cannot be undone.' }}"
+                    >
+                        {{ $row->isPending() ? 'Cancel request' : 'Remove' }}
                     </flux:button>
                 </div>
             </flux:card>
@@ -167,7 +174,9 @@
                             </div>
                         </flux:table.cell>
                         <flux:table.cell>
-                            @if ($row->is_active)
+                            @if ($row->isPending())
+                                <flux:badge color="amber" size="sm">Pending</flux:badge>
+                            @elseif ($row->is_active)
                                 <flux:badge color="green" size="sm">Active</flux:badge>
                             @else
                                 <flux:badge color="zinc" size="sm">Inactive</flux:badge>
@@ -175,8 +184,8 @@
                         </flux:table.cell>
                         <flux:table.cell>
                             <div class="flex items-center justify-center gap-1">
-                                <flux:modal.trigger name="edit-student">
-                                    <flux:button size="sm" variant="ghost" icon="pencil" aria-label="Edit student" wire:click="edit({{ $row->id }})" />
+                                <flux:modal.trigger name="edit-student" :disabled="$row->isPending()">
+                                    <flux:button size="sm" variant="ghost" icon="pencil" aria-label="Edit student" :disabled="$row->isPending()" wire:click="edit({{ $row->id }})" />
                                 </flux:modal.trigger>
 
                                 <flux:dropdown position="bottom" align="end">
@@ -186,8 +195,12 @@
                                         <flux:menu.item :disabled="! $row->is_active" wire:click="deactivate({{ $row->id }})">
                                             Deactivate
                                         </flux:menu.item>
-                                        <flux:menu.item variant="danger" wire:click="remove({{ $row->id }})" wire:confirm="Remove {{ $row->student->user->name }} from your roster? This cannot be undone.">
-                                            Remove
+                                        <flux:menu.item
+                                            variant="danger"
+                                            wire:click="remove({{ $row->id }})"
+                                            wire:confirm="{{ $row->isPending() ? 'Cancel this pending request?' : 'Remove '.$row->student->user->name.' from your roster? This cannot be undone.' }}"
+                                        >
+                                            {{ $row->isPending() ? 'Cancel request' : 'Remove' }}
                                         </flux:menu.item>
                                     </flux:menu>
                                 </flux:dropdown>
@@ -206,10 +219,10 @@
     </div>
 
     <flux:modal name="edit-student" scroll="body" class="md:w-[36rem] border-2 border-zinc-300 dark:border-zinc-400">
-        <form wire:submit="{{ $attachingStudentId !== null ? 'attachExistingStudent' : ($isAdding ? 'saveAdd' : 'saveEdit') }}" class="space-y-6">
+        <form wire:submit="{{ $attachingStudentId !== null ? 'attachExistingStudent' : ($claimingStudentId !== null ? 'submitStudentClaim' : ($isAdding ? 'saveAdd' : 'saveEdit')) }}" class="space-y-6">
             <div>
                 <flux:heading size="lg">
-                    @if ($attachingStudentId !== null)
+                    @if ($attachingStudentId !== null || $claimingStudentId !== null)
                         Add existing student to your roster
                     @else
                         {{ $isAdding ? 'Add student' : 'Edit student' }}
@@ -218,6 +231,12 @@
                 <flux:subheading>
                     @if ($attachingStudentId !== null)
                         {{ $attachingStudentName }} is already in the system — you'll be added as a teacher for them, not creating a new student record.
+                    @elseif ($claimingStudentId !== null)
+                        @if ($claimWillAutoApprove)
+                            {{ $claimingStudentName }} is in the system at {{ $claimingStudentSchoolName }} but has no active teacher — they'll be added directly to your roster.
+                        @else
+                            {{ $claimingStudentName }} is already a student of another teacher at {{ $claimingStudentSchoolName }}. They'll need to approve this before you're added.
+                        @endif
                     @elseif ($isAdding)
                         Add a new student to your roster.
                     @else
@@ -259,6 +278,54 @@
                         <flux:button variant="ghost">Cancel</flux:button>
                     </flux:modal.close>
                     <flux:button type="submit" variant="primary">Add to my roster</flux:button>
+                </div>
+            @elseif ($claimingStudentId !== null)
+                <flux:input value="{{ $claimingStudentName }}" label="Student" disabled />
+                <flux:input value="{{ $claimingStudentSchoolName }}" label="Currently at" disabled />
+
+                <flux:select wire:model="claim_grade" label="Grade" placeholder="Select a grade..." required>
+                    @foreach ($this->addGradeOptions() as $option)
+                        <flux:select.option value="{{ $option['grade'] }}">{{ $option['label'] }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <flux:error name="claim_grade" />
+
+                <flux:separator text="Your role with this student" />
+
+                <flux:select wire:model.live="edit_subject" label="Subject" variant="listbox" multiple placeholder="Select subjects...">
+                    @foreach ($subjectOptions as $subject)
+                        <flux:select.option value="{{ $subject->value }}">{{ $subject->label() }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+
+                <flux:select wire:model="edit_role" label="Your role">
+                    <flux:select.option value="primary">Primary teacher / director</flux:select.option>
+                    <flux:select.option value="coteacher">Co-teacher / assistant director</flux:select.option>
+                </flux:select>
+
+                @if ($claimWillAutoApprove)
+                    <flux:callout variant="info" icon="information-circle">
+                        <flux:callout.text>{{ $claimingStudentName }} has no active teacher in the system — they'll be added directly to your roster without requiring approval.</flux:callout.text>
+                    </flux:callout>
+                @else
+                    <flux:callout variant="warning" icon="exclamation-triangle">
+                        <flux:callout.text>Click the 'Send Request' button to send an email to {{ $claimingStudentName }}'s current teacher to approve or deny this request. The student will display in Pending status on your roster until that teacher approves the request. If the current teacher denies the request, the student's name will be removed from your roster.</flux:callout.text>
+                    </flux:callout>
+                @endif
+
+                @if ($errors->any())
+                    <flux:callout variant="danger" icon="exclamation-triangle">
+                        <flux:callout.text>This form has not been saved. Please fix the highlighted fields above before saving.</flux:callout.text>
+                    </flux:callout>
+                @endif
+
+                <div class="flex items-center gap-2">
+                    <flux:button variant="ghost" wire:click="cancelStudentClaim">Back</flux:button>
+                    <flux:spacer />
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Cancel</flux:button>
+                    </flux:modal.close>
+                    <flux:button type="submit" variant="primary">{{ $claimWillAutoApprove ? 'Add to my roster' : 'Send request' }}</flux:button>
                 </div>
             @else
                 @if ($emailFallbackNotice)
@@ -394,7 +461,7 @@
                                 @if ($this->studentMatchIsSameSchool($match['student']))
                                     <flux:button size="sm" wire:click="selectStudentMatch({{ $match['student']->id }})">This is my student</flux:button>
                                 @else
-                                    <flux:text size="sm" class="text-zinc-500 italic">Enrolled elsewhere</flux:text>
+                                    <flux:button size="sm" wire:click="selectStudentClaim({{ $match['student']->id }})">Request to add</flux:button>
                                 @endif
                                 <flux:button size="sm" variant="ghost" wire:click="dismissStudentMatch({{ $match['student']->id }})">Not this student</flux:button>
                             </div>

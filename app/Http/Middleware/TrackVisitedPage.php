@@ -17,7 +17,7 @@ class TrackVisitedPage
 
         $user = $request->user();
         $routeName = $request->route()?->getName();
-        $label = $routeName !== null ? config("fast_pass.trackable_routes.{$routeName}") : null;
+        $label = $routeName !== null ? (FastPass::activeRouteMap()[$routeName] ?? null) : null;
 
         if ($user !== null && $label !== null && $response->isSuccessful()) {
             FastPass::record($user, $routeName, $label);

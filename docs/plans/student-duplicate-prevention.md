@@ -162,6 +162,19 @@ loser. Phase 3 — useful insurance, doesn't block shipping the rest.
   but means new tests touching `saveAdd`/`saveEdit` should use distinctive
   fixture names (not "New"/"Student" or similar generic placeholders) to stay
   deterministic regardless of what's in the local seed data.
+- **Production bug found and fixed same day**: a real teacher hit a 500 error
+  (`student_teacher`'s unique constraint violated) adding a student who turned
+  out to already be on their own roster at that school under the same
+  subject — the suggestion list had no reason to hide that match (it wasn't
+  excluding "students I already claim here"), and `attachExistingStudent()`
+  inserted unconditionally instead of checking first. Fixed by (1) excluding
+  any candidate the requesting teacher already has *any* `student_teacher`
+  row for at that school from the suggestion list at all
+  (`teacherAlreadyHasStudentAtAddSchool()`), and (2) hardening
+  `attachExistingStudent()` itself to check per-subject before inserting —
+  reactivating a deactivated claim, skipping an already-active one, and only
+  creating genuinely new subject rows — so the same situation can never crash
+  even if reached another way. Regression tests added.
 
 ## Forward compatibility: StudentFolder.info self-registration
 
