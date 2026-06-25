@@ -96,6 +96,14 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->hasMany(SocialAccount::class);
     }
 
+    /**
+     * @return HasMany<PageVisit, $this>
+     */
+    public function pageVisits(): HasMany
+    {
+        return $this->hasMany(PageVisit::class);
+    }
+
     public function avatarUrl(): ?string
     {
         return $this->socialAccounts()->whereNotNull('provider_avatar')->value('provider_avatar');

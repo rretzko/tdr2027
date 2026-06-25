@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Livewire\Students\Index;
+use App\Models\County;
 use App\Models\EmergencyContact;
 use App\Models\HomeAddress;
 use App\Models\Instrument;
@@ -1065,4 +1066,321 @@ test('saveAdd assigns a default email when left blank', function () {
 
     $user2 = User::where('first_name', 'New')->where('last_name', 'Student')->firstOrFail();
     expect($user2->email)->toEndWith('@studentfolder.info');
+});
+
+test('the Add-student School label becomes Studio once a studio is selected', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $studio = School::factory()->studio()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->assertDontSee('Student\'s School')
+        ->set('add_school_id', (string) $studio->id)
+        ->assertSee('Student\'s School');
+});
+
+test('the Edit-student modal flags a studio row as a studio context', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $studio = School::factory()->studio()->create();
+    $row = claimStudentForTeacher($user->teacher, $studio, 'Vera', 'Vocalist');
+
+    $component = Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $row->id);
+
+    expect($component->get('editingSchoolIsStudio'))->toBeTrue();
+    expect($component->get('editingSchoolName'))->toBe($studio->name);
+    $component->assertSee('Student\'s School');
+});
+
+test('saveAdd requires a home school when adding a student to a studio', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $studio = School::factory()->studio()->create();
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $studio->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'Quillon')
+        ->set('edit_last_name', 'Hawthorpe')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_shirt_size', 'lg')
+        ->set('edit_subject', ['chorus'])
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveAdd')
+        ->assertHasErrors('edit_home_school_name');
+});
+
+test('saveAdd records the matched home school for a studio student', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $studio = School::factory()->studio()->create();
+    $homeSchool = School::factory()->create();
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $studio->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'Quillon')
+        ->set('edit_last_name', 'Hawthorpe')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_shirt_size', 'lg')
+        ->set('edit_subject', ['chorus'])
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->set('edit_home_school_name', $homeSchool->name)
+        ->call('selectHomeSchool', $homeSchool->id)
+        ->call('saveAdd')
+        ->assertHasNoErrors();
+
+    $student = User::where('first_name', 'Quillon')->where('last_name', 'Hawthorpe')->firstOrFail()->student;
+    expect($student->home_school_id)->toBe($homeSchool->id);
+});
+
+test('saveAdd creates a new home school when the teacher confirms one', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $studio = School::factory()->studio()->create();
+    $county = County::factory()->create();
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $studio->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'Quillon')
+        ->set('edit_last_name', 'Hawthorpe')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_shirt_size', 'lg')
+        ->set('edit_subject', ['chorus'])
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->set('edit_home_school_name', 'Brand New High School')
+        ->call('confirmNewHomeSchool')
+        ->set('edit_home_school_city', 'Anytown')
+        ->set('edit_home_school_zip_code', '08901')
+        ->set('edit_home_school_county_id', (string) $county->id)
+        ->call('saveAdd')
+        ->assertHasNoErrors();
+
+    $newSchool = School::where('name', 'Brand New High School')->firstOrFail();
+    expect($newSchool->getRawOriginal('type'))->toBe('school');
+
+    $student = User::where('first_name', 'Quillon')->where('last_name', 'Hawthorpe')->firstOrFail()->student;
+    expect($student->home_school_id)->toBe($newSchool->id);
+});
+
+test('saveAdd does not require a home school when the school is not a studio', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'Quillon')
+        ->set('edit_last_name', 'Hawthorpe')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_shirt_size', 'lg')
+        ->set('edit_subject', ['band'])
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveAdd')
+        ->assertHasNoErrors();
+
+    $student = User::where('first_name', 'Quillon')->where('last_name', 'Hawthorpe')->firstOrFail()->student;
+    expect($student->home_school_id)->toBeNull();
+});
+
+test('saveEdit updates the home school for an existing studio student', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $studio = School::factory()->studio()->create();
+    $oldHomeSchool = School::factory()->create();
+    $newHomeSchool = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $studio, 'Vera', 'Vocalist', subject: 'chorus');
+    $row->student->update(['home_school_id' => $oldHomeSchool->id]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $row->id)
+        ->call('changeHomeSchool')
+        ->set('edit_home_school_name', $newHomeSchool->name)
+        ->call('selectHomeSchool', $newHomeSchool->id)
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveEdit')
+        ->assertHasNoErrors();
+
+    expect($row->student->refresh()->home_school_id)->toBe($newHomeSchool->id);
+});
+
+test('saveAdd shows a weak name match but does not block submission in a school context', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $existing = Student::factory()->create();
+    $existing->user->update(['first_name' => 'Wendel', 'last_name' => 'Quoxbury']);
+
+    $component = Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_last_name', 'Quoxbury')
+        ->assertSee('This may already be one of your students');
+
+    $component->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_shirt_size', 'lg')
+        ->set('edit_subject', ['band'])
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveAdd')
+        ->assertHasNoErrors();
+});
+
+test('saveAdd blocks on a weak name match until resolved in a studio context', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $studio = School::factory()->studio()->create();
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+    $existing = Student::factory()->create();
+    $existing->user->update(['first_name' => 'Wendel', 'last_name' => 'Quoxbury']);
+
+    $component = Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $studio->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_last_name', 'Quoxbury')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_shirt_size', 'lg')
+        ->set('edit_subject', ['chorus'])
+        ->set('edit_home_school_name', 'Quoxbury Family School')
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveAdd')
+        ->assertHasErrors('edit_first_name');
+
+    $component->call('dismissStudentMatch', $existing->id)
+        ->call('confirmNewHomeSchool')
+        ->set('edit_home_school_city', 'Anytown')
+        ->set('edit_home_school_zip_code', '08901')
+        ->set('edit_home_school_county_id', (string) County::factory()->create()->id)
+        ->call('saveAdd')
+        ->assertHasNoErrors();
+});
+
+test('saveAdd blocks on a strong match (same name and birthday) even in a school context', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $existing = Student::factory()->create(['birthday' => '2012-04-01']);
+    $existing->user->update(['first_name' => 'Wendel', 'last_name' => 'Quoxbury']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_last_name', 'Quoxbury')
+        ->set('edit_birthday', '2012-04-01')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_shirt_size', 'lg')
+        ->set('edit_subject', ['band'])
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveAdd')
+        ->assertHasErrors('edit_first_name');
+});
+
+test('a matched student already at the school being added to offers to attach instead of dismiss-only', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $otherTeacherUser = makeStudentsIndexTeacherUser();
+    $row = claimStudentForTeacher($otherTeacherUser->teacher, $school, 'Wendel', 'Quoxbury');
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_last_name', 'Quoxbury')
+        ->assertSee('This is my student')
+        ->assertDontSee('Enrolled elsewhere');
+});
+
+test('a matched student enrolled at a different school only offers to dismiss, not attach', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $otherSchool = School::factory()->create();
+    $otherTeacherUser = makeStudentsIndexTeacherUser();
+    claimStudentForTeacher($otherTeacherUser->teacher, $otherSchool, 'Wendel', 'Quoxbury');
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_last_name', 'Quoxbury')
+        ->assertDontSee('This is my student')
+        ->assertSee('Enrolled elsewhere');
+});
+
+test('attaching to an existing same-school student claims them without creating a duplicate', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $otherTeacherUser = makeStudentsIndexTeacherUser();
+    $existingRow = claimStudentForTeacher($otherTeacherUser->teacher, $school, 'Wendel', 'Quoxbury', subject: 'band');
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+
+    $userCountBefore = User::count();
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_last_name', 'Quoxbury')
+        ->call('selectStudentMatch', $existingRow->student_id)
+        ->set('edit_subject', ['chorus'])
+        ->set('edit_role', 'coteacher')
+        ->call('attachExistingStudent')
+        ->assertHasNoErrors();
+
+    expect(User::count())->toBe($userCountBefore);
+
+    $newClaim = StudentTeacher::where('student_id', $existingRow->student_id)
+        ->where('teacher_id', $user->teacher->id)
+        ->where('school_id', $school->id)
+        ->first();
+
+    expect($newClaim)->not->toBeNull();
+    expect($newClaim->getRawOriginal('subject'))->toBe('chorus');
+    expect($newClaim->getRawOriginal('role'))->toBe('coteacher');
+});
+
+test('attachExistingStudent requires a subject', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $otherTeacherUser = makeStudentsIndexTeacherUser();
+    $existingRow = claimStudentForTeacher($otherTeacherUser->teacher, $school, 'Wendel', 'Quoxbury');
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_last_name', 'Quoxbury')
+        ->call('selectStudentMatch', $existingRow->student_id)
+        ->set('edit_subject', [])
+        ->call('attachExistingStudent')
+        ->assertHasErrors('edit_subject');
 });

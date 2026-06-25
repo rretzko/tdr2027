@@ -206,11 +206,19 @@
     </div>
 
     <flux:modal name="edit-student" scroll="body" class="md:w-[36rem] border-2 border-zinc-300 dark:border-zinc-400">
-        <form wire:submit="{{ $isAdding ? 'saveAdd' : 'saveEdit' }}" class="space-y-6">
+        <form wire:submit="{{ $attachingStudentId !== null ? 'attachExistingStudent' : ($isAdding ? 'saveAdd' : 'saveEdit') }}" class="space-y-6">
             <div>
-                <flux:heading size="lg">{{ $isAdding ? 'Add student' : 'Edit student' }}</flux:heading>
+                <flux:heading size="lg">
+                    @if ($attachingStudentId !== null)
+                        Add existing student to your roster
+                    @else
+                        {{ $isAdding ? 'Add student' : 'Edit student' }}
+                    @endif
+                </flux:heading>
                 <flux:subheading>
-                    @if ($isAdding)
+                    @if ($attachingStudentId !== null)
+                        {{ $attachingStudentName }} is already in the system — you'll be added as a teacher for them, not creating a new student record.
+                    @elseif ($isAdding)
                         Add a new student to your roster.
                     @else
                         Update this student's profile, contacts, and your role with them.
@@ -218,16 +226,51 @@
                 </flux:subheading>
             </div>
 
-            @if ($emailFallbackNotice)
-                <flux:callout variant="warning" icon="exclamation-triangle">
-                    <flux:callout.text>{{ $emailFallbackNotice }}</flux:callout.text>
-                </flux:callout>
-            @endif
+            @if ($attachingStudentId !== null)
+                <flux:input value="{{ $attachingStudentName }}" label="Student" disabled />
+                <flux:input value="{{ $attachingStudentSchoolName }}" :label="$this->schoolOrStudioLabel()" disabled />
+                @if ($attachingStudentGrade !== null)
+                    <flux:input value="{{ $attachingStudentGrade }}th grade" label="Grade" disabled />
+                @endif
+
+                <flux:separator text="Your role with this student" />
+
+                <flux:select wire:model.live="edit_subject" label="Subject" variant="listbox" multiple placeholder="Select subjects...">
+                    @foreach ($subjectOptions as $subject)
+                        <flux:select.option value="{{ $subject->value }}">{{ $subject->label() }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+
+                <flux:select wire:model="edit_role" label="Your role">
+                    <flux:select.option value="primary">Primary teacher / director</flux:select.option>
+                    <flux:select.option value="coteacher">Co-teacher / assistant director</flux:select.option>
+                </flux:select>
+
+                @if ($errors->any())
+                    <flux:callout variant="danger" icon="exclamation-triangle">
+                        <flux:callout.text>This form has not been saved. Please fix the highlighted fields above before saving.</flux:callout.text>
+                    </flux:callout>
+                @endif
+
+                <div class="flex items-center gap-2">
+                    <flux:button variant="ghost" wire:click="cancelAttachExistingStudent">Back</flux:button>
+                    <flux:spacer />
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Cancel</flux:button>
+                    </flux:modal.close>
+                    <flux:button type="submit" variant="primary">Add to my roster</flux:button>
+                </div>
+            @else
+                @if ($emailFallbackNotice)
+                    <flux:callout variant="warning" icon="exclamation-triangle">
+                        <flux:callout.text>{{ $emailFallbackNotice }}</flux:callout.text>
+                    </flux:callout>
+                @endif
 
             @if ($isAdding)
-                <flux:separator text="School" />
+                <flux:separator :text="$this->schoolOrStudioLabel()" />
 
-                <flux:select wire:model.live="add_school_id" label="School" placeholder="Select a school..." required>
+                <flux:select wire:model.live="add_school_id" :label="$this->schoolOrStudioLabel()" placeholder="Select a school..." required>
                     @foreach ($addSchoolOptions as $school)
                         <flux:select.option value="{{ $school->id }}">{{ $school->name }}</flux:select.option>
                     @endforeach
@@ -239,6 +282,10 @@
                     @endforeach
                 </flux:select>
             @else
+                <flux:separator :text="$this->schoolOrStudioLabel()" />
+
+                <flux:input value="{{ $editingSchoolName }}" :label="$this->schoolOrStudioLabel()" disabled />
+
                 <flux:separator text="Grade" />
 
                 <flux:select wire:model="edit_grade" label="Grade" placeholder="Select a grade..." required>
@@ -248,12 +295,113 @@
                 </flux:select>
             @endif
 
+            @if ($this->isStudioContext())
+                <flux:separator text="Student's School" />
+
+                @if ($edit_home_school_id !== '')
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 p-3 dark:border-white/10">
+                        <flux:text class="font-medium">{{ $edit_home_school_name }}</flux:text>
+                        <flux:button size="sm" variant="ghost" wire:click="changeHomeSchool">Change</flux:button>
+                    </div>
+                @else
+                    <flux:field>
+                        <flux:label>
+                            Student's school
+                            <flux:tooltip content="The school where this student takes their regular class with their school teacher — used to flag event scheduling conflicts.">
+                                <flux:icon.question-mark-circle variant="micro" class="inline text-zinc-400" />
+                            </flux:tooltip>
+                        </flux:label>
+                        <flux:input wire:model.live.debounce.300ms="edit_home_school_name" placeholder="Start typing a school name..." />
+                        <flux:error name="edit_home_school_name" />
+                    </flux:field>
+
+                    @unless ($edit_home_school_confirmed_new)
+                        @if ($this->homeSchoolSuggestions()->isNotEmpty())
+                            <div class="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+                                <flux:text size="sm" class="font-medium">Did you mean:</flux:text>
+
+                                @foreach ($this->homeSchoolSuggestions() as $match)
+                                    <div class="flex items-center justify-between gap-3 rounded-md border border-zinc-200 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-800">
+                                        <div>
+                                            <flux:text class="font-medium">{{ $match['school']->name }}</flux:text>
+                                            <flux:text size="sm" class="text-zinc-500">{{ $match['school']->city }}, {{ $match['school']->zip_code }}</flux:text>
+                                        </div>
+                                        <flux:button size="sm" wire:click="selectHomeSchool({{ $match['school']->id }})">This is it</flux:button>
+                                    </div>
+                                @endforeach
+
+                                <flux:button size="sm" variant="ghost" wire:click="confirmNewHomeSchool">
+                                    None of these — add a new school
+                                </flux:button>
+                            </div>
+                        @elseif (trim($edit_home_school_name) !== '')
+                            <flux:button size="sm" variant="ghost" wire:click="confirmNewHomeSchool">
+                                Add "{{ $edit_home_school_name }}" as a new school
+                            </flux:button>
+                        @endif
+                    @endunless
+
+                    @if ($edit_home_school_confirmed_new)
+                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <flux:input wire:model="edit_home_school_city" label="City" />
+                            <flux:input wire:model="edit_home_school_zip_code" label="Zip code" />
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <flux:select wire:model.live="edit_home_school_geostate_id" label="State">
+                                <flux:select.option value="">Select a state...</flux:select.option>
+                                @foreach ($geostates as $geostate)
+                                    <flux:select.option value="{{ $geostate->id }}">{{ $geostate->name }}</flux:select.option>
+                                @endforeach
+                            </flux:select>
+
+                            <flux:select wire:model="edit_home_school_county_id" label="County" placeholder="Select a county...">
+                                @foreach ($homeSchoolCounties as $county)
+                                    <flux:select.option value="{{ $county->id }}">{{ $county->name }}</flux:select.option>
+                                @endforeach
+                            </flux:select>
+                        </div>
+
+                        <flux:button size="sm" variant="ghost" wire:click="cancelNewHomeSchool">Cancel</flux:button>
+                    @endif
+                @endif
+            @endif
+
             <flux:separator text="Profile" />
 
-            <flux:input wire:model="edit_first_name" label="First name" />
+            <flux:input wire:model.live.debounce.300ms="edit_first_name" label="First name" />
             <flux:input wire:model="edit_middle_name" label="Middle name (optional)" />
-            <flux:input wire:model="edit_last_name" label="Last name" />
+            <flux:input wire:model.live.debounce.300ms="edit_last_name" label="Last name" />
             <flux:input wire:model="edit_suffix_name" label="Suffix (optional)" />
+
+            @if ($isAdding && $this->unresolvedStudentMatches()->isNotEmpty())
+                <div class="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+                    <flux:text size="sm" class="font-medium">This may already be one of your students:</flux:text>
+
+                    @foreach ($this->unresolvedStudentMatches() as $match)
+                        <div class="flex items-center justify-between gap-3 rounded-md border border-zinc-200 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-800">
+                            <div>
+                                <flux:text class="font-medium">{{ $match['student']->user->name }}</flux:text>
+                                <flux:text size="sm" class="text-zinc-500">
+                                    Currently at {{ $this->studentMatchCurrentSchoolName($match['student']) }}
+                                    @if ($this->studentMatchGrade($match['student']) !== null)
+                                        &middot; {{ $this->studentMatchGrade($match['student']) }}th grade
+                                    @endif
+                                </flux:text>
+                            </div>
+
+                            <div class="flex items-center gap-2">
+                                @if ($this->studentMatchIsSameSchool($match['student']))
+                                    <flux:button size="sm" wire:click="selectStudentMatch({{ $match['student']->id }})">This is my student</flux:button>
+                                @else
+                                    <flux:text size="sm" class="text-zinc-500 italic">Enrolled elsewhere</flux:text>
+                                @endif
+                                <flux:button size="sm" variant="ghost" wire:click="dismissStudentMatch({{ $match['student']->id }})">Not this student</flux:button>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
 
             <flux:select wire:model="edit_pronoun_id" label="Pronouns" placeholder="Select pronouns..." required>
                 @foreach ($pronouns as $pronoun)
@@ -472,6 +620,7 @@
                 </flux:modal.close>
                 <flux:button type="submit" variant="primary">{{ $isAdding ? 'Add student' : 'Save' }}</flux:button>
             </div>
+            @endif
         </form>
     </flux:modal>
 </div>

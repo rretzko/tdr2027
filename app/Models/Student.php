@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['user_id', 'height', 'birthday', 'shirt_size', 'instrument_id', 'voice_part_id'])]
+#[Fillable(['user_id', 'height', 'birthday', 'shirt_size', 'instrument_id', 'voice_part_id', 'home_school_id'])]
 class Student extends Model
 {
     /** @use HasFactory<StudentFactory> */
@@ -56,6 +56,20 @@ class Student extends Model
     public function instrument(): BelongsTo
     {
         return $this->belongsTo(Instrument::class);
+    }
+
+    /**
+     * The student's actual school — recorded when a studio teacher adds this
+     * student, since a studio's own school_student row represents the studio
+     * itself, not where the student attends their regular chorus/band/orchestra
+     * class. Used to flag event eligibility conflicts between a studio and the
+     * student's school-based teacher for the same subject.
+     *
+     * @return BelongsTo<School, $this>
+     */
+    public function homeSchool(): BelongsTo
+    {
+        return $this->belongsTo(School::class, 'home_school_id');
     }
 
     /**

@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Livewire\Students;
 
 use App\Enums\EmergencyContactRelationship;
+use App\Enums\SchoolType;
 use App\Enums\ShirtSize;
 use App\Enums\Subject;
 use App\Enums\TeacherRole;
+use App\Models\County;
 use App\Models\EmergencyContact;
+use App\Models\Geostate;
 use App\Models\HomeAddress;
 use App\Models\Instrument;
 use App\Models\Pivots\SchoolStudent;
@@ -22,6 +25,8 @@ use App\Models\Teacher;
 use App\Models\User;
 use App\Models\VoicePart;
 use App\Support\ClassOfCalculator;
+use App\Support\SchoolMatcher;
+use App\Support\StudentMatcher;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\JoinClause;
@@ -59,6 +64,45 @@ class Index extends Component
     public string $add_school_id = '';
 
     public string $add_grade = '';
+
+    // Read-only context shown in the Edit modal for the row's own school — Add
+    // shows this via the add_school_id select instead, so these are edit-only.
+    public string $editingSchoolName = '';
+
+    public bool $editingSchoolIsStudio = false;
+
+    // The student's actual/home school — only collected when the row's school is
+    // a studio (see Student::homeSchool()). Mirrors the suggest-or-add-new pattern
+    // used by Schools index's "School name" field, scoped to type=school.
+    public string $edit_home_school_name = '';
+
+    public string $edit_home_school_id = '';
+
+    public bool $edit_home_school_confirmed_new = false;
+
+    public string $edit_home_school_city = '';
+
+    public string $edit_home_school_zip_code = '';
+
+    public string $edit_home_school_geostate_id = '';
+
+    public string $edit_home_school_county_id = '';
+
+    // Possible-duplicate matches against the name/birthday/contact info typed
+    // into the Add-student form (see App\Support\StudentMatcher) — gated to
+    // isAdding, since an existing row's identity is already settled. A match
+    // is "resolved" once its student id lands in dismissedStudentMatchIds (the
+    // teacher said "not this person") or attachingStudentId (they confirmed it).
+    /** @var list<int> */
+    public array $dismissedStudentMatchIds = [];
+
+    public ?int $attachingStudentId = null;
+
+    public string $attachingStudentName = '';
+
+    public string $attachingStudentSchoolName = '';
+
+    public ?int $attachingStudentGrade = null;
 
     // Teacher relationship — a teacher can claim a student under several subjects
     // at once (school_teacher_subject is many-to-one against school_teacher, and
@@ -214,6 +258,13 @@ class Index extends Component
         $this->add_school_id = $activeSchools->count() === 1 ? (string) $activeSchools->first()->id : '';
         $this->add_grade = '';
 
+        $this->editingSchoolName = '';
+        $this->editingSchoolIsStudio = false;
+        $this->resetHomeSchoolFields();
+
+        $this->dismissedStudentMatchIds = [];
+        $this->resetAttachingStudent();
+
         $this->emailFallbackNotice = null;
         $this->passwordResetNotice = null;
         $this->resetErrorBag();
@@ -222,6 +273,182 @@ class Index extends Component
     public function updatedAddSchoolId(): void
     {
         $this->add_grade = '';
+    }
+
+    public function addSchoolType(): ?SchoolType
+    {
+        if ($this->add_school_id === '') {
+            return null;
+        }
+
+        $school = School::find((int) $this->add_school_id);
+
+        if ($school === null) {
+            return null;
+        }
+
+        return SchoolType::from($school->getRawOriginal('type'));
+    }
+
+    /**
+     * Whether the school in scope for the open modal — the picked add_school_id
+     * while adding, or the row's own school while editing — is a studio, which
+     * gates the Student's School field and the "Studio" vs "School" labels.
+     */
+    public function isStudioContext(): bool
+    {
+        return $this->isAdding ? $this->addSchoolType() === SchoolType::Studio : $this->editingSchoolIsStudio;
+    }
+
+    public function schoolOrStudioLabel(): string
+    {
+        return $this->isStudioContext() ? 'Studio' : 'School';
+    }
+
+    /**
+     * Possible-duplicate matches against what's been typed so far — only
+     * meaningful while adding (an existing row's identity is already
+     * settled) and only once a name has been typed. Suppressed once the
+     * teacher has actually committed to attaching to one of them, so the
+     * suggestion list doesn't keep competing with the attach-mode form.
+     *
+     * @return Collection<int, array{student: Student, tier: string}>
+     */
+    public function studentMatcherMatches(): Collection
+    {
+        if (! $this->isAdding || $this->attachingStudentId !== null) {
+            return collect();
+        }
+
+        $contact = $this->edit_emergency_contacts[0] ?? null;
+
+        return StudentMatcher::suggestions(
+            $this->edit_first_name,
+            $this->edit_last_name,
+            $this->edit_birthday !== '' ? $this->edit_birthday : null,
+            $contact['email'] ?? null,
+            $contact['cell_phone'] ?? null,
+        );
+    }
+
+    /**
+     * @return Collection<int, array{student: Student, tier: string}>
+     */
+    public function unresolvedStudentMatches(): Collection
+    {
+        return $this->studentMatcherMatches()
+            ->reject(fn (array $match) => in_array($match['student']->id, $this->dismissedStudentMatchIds, true));
+    }
+
+    /**
+     * Whether a matched student already has an active enrollment at the
+     * school/studio being added to — the trust boundary that lets the new
+     * teacher attach directly, the same way a verified same-school teacher
+     * already inherits a replaced teacher's students (see
+     * ReplacedTeacherStudentTransfer). A match at a *different* school/studio
+     * isn't attachable yet — that needs the cross-org claim workflow.
+     */
+    public function studentMatchIsSameSchool(Student $student): bool
+    {
+        if ($this->add_school_id === '') {
+            return false;
+        }
+
+        return SchoolStudent::where('student_id', $student->id)
+            ->where('school_id', (int) $this->add_school_id)
+            ->where('is_active', true)
+            ->exists();
+    }
+
+    public function studentMatchCurrentSchoolName(Student $student): string
+    {
+        $school = $student->schools()->wherePivot('is_active', true)->first();
+
+        return $school !== null ? $school->name : 'no current school on file';
+    }
+
+    public function studentMatchGrade(Student $student): ?int
+    {
+        $school = $student->schools()->wherePivot('is_active', true)->first();
+
+        if ($school === null) {
+            return null;
+        }
+
+        $schoolStudent = SchoolStudent::where('student_id', $student->id)->where('school_id', $school->id)->first();
+
+        if ($schoolStudent === null) {
+            return null;
+        }
+
+        return ClassOfCalculator::gradeFromClassOf((int) $schoolStudent->class_of, $school->senior_year);
+    }
+
+    public function dismissStudentMatch(int $studentId): void
+    {
+        if (! in_array($studentId, $this->dismissedStudentMatchIds, true)) {
+            $this->dismissedStudentMatchIds[] = $studentId;
+        }
+    }
+
+    /**
+     * Enters attach mode for a matched student already enrolled at the school
+     * being added to — switches the modal from "create a new student" to
+     * "claim this existing one under a subject," since the profile, address,
+     * and contact fields below all belong to a record that already exists.
+     */
+    public function selectStudentMatch(int $studentId): void
+    {
+        $student = Student::with('user')->findOrFail($studentId);
+
+        $this->attachingStudentId = $student->id;
+        $this->attachingStudentName = $student->user->name;
+        $this->attachingStudentSchoolName = $this->studentMatchCurrentSchoolName($student);
+        $this->attachingStudentGrade = $this->studentMatchGrade($student);
+    }
+
+    public function cancelAttachExistingStudent(): void
+    {
+        $this->resetAttachingStudent();
+    }
+
+    /**
+     * Claims an already-existing student for this teacher under the selected
+     * subject(s), instead of creating a new Student record. Only reachable
+     * for a same-school match (see studentMatchIsSameSchool()) — the existing
+     * record's own profile, contacts, and address are left untouched.
+     */
+    public function attachExistingStudent(): void
+    {
+        $student = Student::with('user')->findOrFail($this->attachingStudentId);
+
+        $this->validate([
+            'edit_subject' => ['required', 'array', 'min:1'],
+            'edit_subject.*' => [Rule::in(array_map(fn (Subject $subject) => $subject->value, Subject::cases()))],
+            'edit_role' => ['required', Rule::in([TeacherRole::Primary->value, TeacherRole::Coteacher->value])],
+        ]);
+
+        foreach ($this->edit_subject as $subject) {
+            StudentTeacher::create([
+                'student_id' => $student->id,
+                'teacher_id' => $this->teacher()->id,
+                'school_id' => (int) $this->add_school_id,
+                'subject' => $subject,
+                'role' => $this->edit_role,
+                'is_active' => true,
+            ]);
+        }
+
+        $this->isAdding = false;
+        $this->resetAttachingStudent();
+        $this->editingRowId = StudentTeacher::where('student_id', $student->id)
+            ->where('teacher_id', $this->teacher()->id)
+            ->where('school_id', (int) $this->add_school_id)
+            ->value('id');
+
+        $this->modal('edit-student')->close();
+
+        Flux::toast(text: "{$student->user->name} added to your roster.", variant: 'success');
     }
 
     /**
@@ -262,13 +489,17 @@ class Index extends Component
 
     public function edit(int $rowId): void
     {
-        $row = $this->teacherRow($rowId)->with(['student.user', 'student.emergencyContacts', 'school'])->firstOrFail();
+        $row = $this->teacherRow($rowId)->with(['student.user', 'student.emergencyContacts', 'student.homeSchool', 'school'])->firstOrFail();
         $student = $row->student;
         $user = $student->user;
         $homeAddress = HomeAddress::where('student_id', $student->id)->first();
         $schoolStudent = SchoolStudent::where('student_id', $row->student_id)->where('school_id', $row->school_id)->first();
 
         $this->editingRowId = $row->id;
+        $this->editingSchoolName = $row->school->name;
+        $this->editingSchoolIsStudio = $row->school->getRawOriginal('type') === SchoolType::Studio->value;
+        $this->dismissedStudentMatchIds = [];
+        $this->resetAttachingStudent();
         $this->edit_grade = $schoolStudent !== null
             ? (string) ClassOfCalculator::gradeFromClassOf((int) $schoolStudent->class_of, $row->school->senior_year)
             : '';
@@ -300,6 +531,11 @@ class Index extends Component
         $this->edit_home_geo_state = $homeAddress !== null ? $homeAddress->geo_state : '';
         $this->edit_home_zip_code = $homeAddress !== null ? $homeAddress->zip_code : '';
 
+        $this->resetHomeSchoolFields();
+        $homeSchool = $student->homeSchool;
+        $this->edit_home_school_name = $homeSchool !== null ? $homeSchool->name : '';
+        $this->edit_home_school_id = $student->home_school_id !== null ? (string) $student->home_school_id : '';
+
         $this->edit_emergency_contacts = $student->emergencyContacts
             ->map(fn (EmergencyContact $contact) => [
                 'id' => $contact->id,
@@ -330,6 +566,68 @@ class Index extends Component
         if (! in_array('chorus', $this->edit_subject, true)) {
             $this->edit_voice_part_id = '';
         }
+    }
+
+    /**
+     * Existing schools/studios that look like what's being typed into the
+     * Student's School field, scoped to type=school (a studio doesn't track
+     * a "home school" of its own) and only while the search is still unresolved.
+     *
+     * @return Collection<int, array{school: School, percent: float}>
+     */
+    public function homeSchoolSuggestions(): Collection
+    {
+        if ($this->edit_home_school_id !== '' || trim($this->edit_home_school_name) === '') {
+            return collect();
+        }
+
+        return SchoolMatcher::suggestions(
+            $this->edit_home_school_name,
+            $this->edit_home_school_geostate_id !== '' ? (int) $this->edit_home_school_geostate_id : null,
+            $this->edit_home_school_zip_code !== '' ? $this->edit_home_school_zip_code : null,
+            $this->edit_home_school_county_id !== '' ? (int) $this->edit_home_school_county_id : null,
+            SchoolType::School,
+        );
+    }
+
+    public function selectHomeSchool(int $schoolId): void
+    {
+        $school = School::findOrFail($schoolId);
+
+        $this->edit_home_school_id = (string) $school->id;
+        $this->edit_home_school_name = $school->name;
+        $this->edit_home_school_confirmed_new = false;
+    }
+
+    public function confirmNewHomeSchool(): void
+    {
+        $this->edit_home_school_confirmed_new = true;
+    }
+
+    public function cancelNewHomeSchool(): void
+    {
+        $this->edit_home_school_confirmed_new = false;
+        $this->edit_home_school_city = '';
+        $this->edit_home_school_zip_code = '';
+        $this->edit_home_school_geostate_id = '';
+        $this->edit_home_school_county_id = '';
+    }
+
+    /**
+     * Clears the resolved/matched home school so the search field reopens —
+     * the only way to change it once matched, since retyping over a matched
+     * name wouldn't otherwise un-resolve the selection.
+     */
+    public function changeHomeSchool(): void
+    {
+        $this->edit_home_school_id = '';
+        $this->edit_home_school_name = '';
+        $this->edit_home_school_confirmed_new = false;
+    }
+
+    public function updatedEditHomeSchoolGeostateId(): void
+    {
+        $this->edit_home_school_county_id = '';
     }
 
     public function addEmergencyContactRow(): void
@@ -378,6 +676,12 @@ class Index extends Component
             ...$this->profileValidationRules($user->id, $homeAddressProvided),
         ], $this->profileValidationMessages());
 
+        $homeSchoolId = $this->resolveHomeSchoolId();
+
+        if ($this->isStudioContext() && $homeSchoolId === null) {
+            return;
+        }
+
         // Students aren't required to verify email, and a default address is used
         // whenever none is given or the requested one is already taken (e.g. a
         // shared family address) — see requirements/general/Student Overview.md.
@@ -407,6 +711,7 @@ class Index extends Component
             'shirt_size' => $this->edit_shirt_size,
             'instrument_id' => $this->edit_instrument_id !== '' ? (int) $this->edit_instrument_id : null,
             'voice_part_id' => $this->edit_voice_part_id !== '' ? (int) $this->edit_voice_part_id : null,
+            'home_school_id' => $homeSchoolId,
         ]);
 
         SchoolStudent::where('student_id', $row->student_id)
@@ -452,6 +757,12 @@ class Index extends Component
 
     public function saveAdd(): void
     {
+        if ($this->blockingStudentMatches()->isNotEmpty()) {
+            $this->addError('edit_first_name', 'Resolve the possible matching student(s) above before adding a new one.');
+
+            return;
+        }
+
         $this->stripPhoneFormatting();
 
         $homeAddressProvided = $this->edit_home_address1 !== ''
@@ -481,6 +792,12 @@ class Index extends Component
         ], $this->profileValidationMessages());
 
         $school = School::findOrFail((int) $this->add_school_id);
+
+        $homeSchoolId = $this->resolveHomeSchoolId();
+
+        if ($this->isStudioContext() && $homeSchoolId === null) {
+            return;
+        }
 
         // Students aren't required to verify email, and a default address is used
         // whenever none is given or the requested one is already taken (e.g. a
@@ -513,6 +830,7 @@ class Index extends Component
             'shirt_size' => $this->edit_shirt_size,
             'instrument_id' => $this->edit_instrument_id !== '' ? (int) $this->edit_instrument_id : null,
             'voice_part_id' => $this->edit_voice_part_id !== '' ? (int) $this->edit_voice_part_id : null,
+            'home_school_id' => $homeSchoolId,
         ]);
 
         if ($homeAddressProvided) {
@@ -581,6 +899,10 @@ class Index extends Component
             'voiceParts' => VoicePart::ordered()->get(),
             'addSchoolOptions' => $activeSchools,
             'filterSchools' => $activeSchools,
+            'geostates' => Geostate::orderBy('name')->get(),
+            'homeSchoolCounties' => $this->edit_home_school_geostate_id !== ''
+                ? County::where('geostate_id', $this->edit_home_school_geostate_id)->orderBy('name')->get()
+                : collect(),
         ]);
     }
 
@@ -608,6 +930,89 @@ class Index extends Component
             $this->edit_emergency_contacts[$index]['home_phone'] = preg_replace('/\D/', '', $contact['home_phone']);
             $this->edit_emergency_contacts[$index]['work_phone'] = preg_replace('/\D/', '', $contact['work_phone']);
         }
+    }
+
+    private function resetHomeSchoolFields(): void
+    {
+        $this->edit_home_school_name = '';
+        $this->edit_home_school_id = '';
+        $this->edit_home_school_confirmed_new = false;
+        $this->edit_home_school_city = '';
+        $this->edit_home_school_zip_code = '';
+        $this->edit_home_school_geostate_id = '';
+        $this->edit_home_school_county_id = '';
+    }
+
+    private function resetAttachingStudent(): void
+    {
+        $this->attachingStudentId = null;
+        $this->attachingStudentName = '';
+        $this->attachingStudentSchoolName = '';
+        $this->attachingStudentGrade = null;
+    }
+
+    /**
+     * Unresolved matches that must be addressed before saveAdd() can proceed.
+     * A strong match (effectively certain — same birthday and name) blocks
+     * regardless of context. A weak match (name similarity alone) only blocks
+     * in a studio, which is far more likely to be re-adding a student who
+     * already has a school record elsewhere than a school is.
+     *
+     * @return Collection<int, array{student: Student, tier: string}>
+     */
+    private function blockingStudentMatches(): Collection
+    {
+        $unresolved = $this->unresolvedStudentMatches();
+
+        return $this->isStudioContext()
+            ? $unresolved
+            : $unresolved->filter(fn (array $match) => $match['tier'] === 'strong');
+    }
+
+    /**
+     * Resolves the student's home school id for saveAdd()/saveEdit() — null when
+     * the row's school isn't a studio (nothing to record), the previously matched
+     * school's id when one was picked from the suggestions, or a newly created
+     * School (type=school) when the teacher confirmed a new one. Required when
+     * isStudioContext(): adds a field error and returns null if neither a match
+     * nor a confirmed new school has been provided yet.
+     */
+    private function resolveHomeSchoolId(): ?int
+    {
+        if (! $this->isStudioContext()) {
+            return null;
+        }
+
+        if ($this->edit_home_school_id !== '') {
+            return (int) $this->edit_home_school_id;
+        }
+
+        if (! $this->edit_home_school_confirmed_new) {
+            $this->addError('edit_home_school_name', "Select the student's school, or add it as a new school, before saving.");
+
+            return null;
+        }
+
+        $this->validate([
+            'edit_home_school_name' => ['required', 'string', 'max:255'],
+            'edit_home_school_city' => ['required', 'string', 'max:255'],
+            'edit_home_school_zip_code' => ['required', 'string', 'max:5'],
+            'edit_home_school_geostate_id' => ['nullable', 'integer', Rule::exists(Geostate::class, 'id')],
+            'edit_home_school_county_id' => ['required', 'integer', Rule::exists(County::class, 'id')],
+        ]);
+
+        $school = School::firstOrCreate(
+            ['name' => $this->edit_home_school_name, 'zip_code' => $this->edit_home_school_zip_code],
+            [
+                'type' => SchoolType::School->value,
+                'city' => $this->edit_home_school_city,
+                'geostate_id' => $this->edit_home_school_geostate_id !== '' ? (int) $this->edit_home_school_geostate_id : null,
+                'county_id' => (int) $this->edit_home_school_county_id,
+                'school_year' => 'US',
+            ]
+        );
+
+        return $school->id;
     }
 
     /**

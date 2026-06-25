@@ -37,6 +37,38 @@
                 Dashboard
             </flux:sidebar.item>
 
+            @php
+                $fastPassRecent = \App\Support\FastPass::recentFor(auth()->user());
+                $fastPassTop = \App\Support\FastPass::topFor(auth()->user());
+            @endphp
+            <div class="px-2">
+                <flux:dropdown position="bottom" align="start">
+                    <flux:button variant="ghost" icon="bolt" class="w-full justify-start in-data-flux-sidebar-collapsed-desktop:justify-center">
+                        <span class="in-data-flux-sidebar-collapsed-desktop:hidden">Fast Pass</span>
+                    </flux:button>
+
+                    <flux:menu>
+                        <flux:menu.group heading="Recently Visited">
+                            @forelse ($fastPassRecent as $visit)
+                                <flux:menu.item :href="$visit->url" wire:navigate>{{ $visit->label }}</flux:menu.item>
+                            @empty
+                                <flux:menu.item disabled>No visits yet</flux:menu.item>
+                            @endforelse
+                        </flux:menu.group>
+
+                        <flux:menu.group heading="Most Visited">
+                            @forelse ($fastPassTop as $visit)
+                                <flux:menu.item :href="$visit->url" wire:navigate>{{ $visit->label }}</flux:menu.item>
+                            @empty
+                                <flux:menu.item disabled>No visits yet</flux:menu.item>
+                            @endforelse
+                        </flux:menu.group>
+                    </flux:menu>
+                </flux:dropdown>
+            </div>
+
+            <flux:separator />
+
             @php $teacher = auth()->user()->teacher; @endphp
             @if ($teacher?->onboarding_completed_at !== null)
                 <flux:sidebar.item icon="building-library" :href="route('schools.index')" :current="request()->routeIs('schools.*')">

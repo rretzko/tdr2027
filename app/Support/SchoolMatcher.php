@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use App\Enums\SchoolType;
 use App\Models\School;
 use Illuminate\Support\Collection;
 
@@ -35,7 +36,7 @@ final class SchoolMatcher
      *
      * @return Collection<int, array{school: School, percent: float}>
      */
-    public static function suggestions(string $name, ?int $geostateId, ?string $zipCode, ?int $countyId): Collection
+    public static function suggestions(string $name, ?int $geostateId, ?string $zipCode, ?int $countyId, ?SchoolType $type = null): Collection
     {
         $name = trim($name);
         $zipCode = trim((string) $zipCode);
@@ -44,7 +45,7 @@ final class SchoolMatcher
             return collect();
         }
 
-        $candidates = self::candidates($geostateId, $zipCode, $countyId);
+        $candidates = self::candidates($geostateId, $zipCode, $countyId, $type);
 
         if ($name === '') {
             return $candidates
@@ -77,7 +78,7 @@ final class SchoolMatcher
     /**
      * @return Collection<int, School>
      */
-    private static function candidates(?int $geostateId, ?string $zipCode, ?int $countyId): Collection
+    private static function candidates(?int $geostateId, ?string $zipCode, ?int $countyId, ?SchoolType $type = null): Collection
     {
         $zipCode = trim((string) $zipCode);
 
@@ -85,6 +86,7 @@ final class SchoolMatcher
             $byZip = School::query()
                 ->where('geostate_id', $geostateId)
                 ->where('zip_code', $zipCode)
+                ->when($type !== null, fn ($query) => $query->where('type', $type->value))
                 ->get();
 
             if ($byZip->isNotEmpty()) {
@@ -100,6 +102,10 @@ final class SchoolMatcher
 
         if ($countyId !== null) {
             $query->where('county_id', $countyId);
+        }
+
+        if ($type !== null) {
+            $query->where('type', $type->value);
         }
 
         return $query->limit(500)->get();
