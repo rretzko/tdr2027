@@ -17,7 +17,7 @@ test('a teacher who completed onboarding sees the Schools/Students/Organizations
     $user->markEmailAsVerified();
     $teacher = Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
     $school = School::factory()->create();
-    $teacher->schools()->attach($school, ['is_active' => true]);
+    $teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
 
     actingAs($user)->get(route('dashboard'))
         ->assertOk()
@@ -44,7 +44,7 @@ test('the new nav routes render for a teacher who completed onboarding', functio
     $user->markEmailAsVerified();
     $teacher = Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
     $school = School::factory()->create();
-    $teacher->schools()->attach($school, ['is_active' => true]);
+    $teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
 
     actingAs($user)->get(route('schools.index'))->assertOk()->assertSeeText('Schools');
     actingAs($user)->get(route('students.index'))->assertOk()->assertSeeText('Students');
@@ -83,7 +83,7 @@ test('a teacher with an active school sees the Students/Events nav links', funct
     $user->markEmailAsVerified();
     $teacher = Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
     $school = School::factory()->create();
-    $teacher->schools()->attach($school, ['is_active' => true]);
+    $teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
 
     actingAs($user)->get(route('schools.index'))
         ->assertOk()
@@ -119,7 +119,7 @@ test('a teacher with an active school can visit Students and Events', function (
     $user->markEmailAsVerified();
     $teacher = Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
     $school = School::factory()->create();
-    $teacher->schools()->attach($school, ['is_active' => true]);
+    $teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
 
     actingAs($user)->get(route('students.index'))->assertOk();
     actingAs($user)->get(route('events.index'))->assertOk();

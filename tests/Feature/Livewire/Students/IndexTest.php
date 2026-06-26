@@ -53,7 +53,7 @@ function claimStudentForTeacher(Teacher $teacher, School $school, string $firstN
     $school->students()->attach($student->id, ['is_active' => true, 'class_of' => $classOf]);
 
     if (! $teacher->schools()->where('schools.id', $school->id)->exists()) {
-        $teacher->schools()->attach($school->id, ['is_active' => true]);
+        $teacher->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
     }
 
     return StudentTeacher::create([
@@ -846,8 +846,8 @@ test('add resets the form to a blank state and defaults role and shirt size', fu
     $user = makeStudentsIndexTeacherUser();
     $schoolOne = School::factory()->create();
     $schoolTwo = School::factory()->create();
-    $user->teacher->schools()->attach($schoolOne, ['role' => 'primary', 'is_active' => true]);
-    $user->teacher->schools()->attach($schoolTwo, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($schoolOne, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
+    $user->teacher->schools()->attach($schoolTwo, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
     $row = claimStudentForTeacher($user->teacher, $schoolOne, 'Existing', 'Student');
 
     Livewire::actingAs($user)
@@ -868,7 +868,7 @@ test('add resets the form to a blank state and defaults role and shirt size', fu
 test('add defaults the school field when the teacher has only one active school', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -880,8 +880,8 @@ test('add does not default the school field when the teacher has multiple active
     $user = makeStudentsIndexTeacherUser();
     $schoolOne = School::factory()->create();
     $schoolTwo = School::factory()->create();
-    $user->teacher->schools()->attach($schoolOne, ['role' => 'primary', 'is_active' => true]);
-    $user->teacher->schools()->attach($schoolTwo, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($schoolOne, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
+    $user->teacher->schools()->attach($schoolTwo, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -893,7 +893,7 @@ test('add ignores an inactive school when defaulting the school field', function
     $user = makeStudentsIndexTeacherUser();
     $activeSchool = School::factory()->create();
     $inactiveSchool = School::factory()->create();
-    $user->teacher->schools()->attach($activeSchool, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($activeSchool, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
     $user->teacher->schools()->attach($inactiveSchool, ['role' => 'primary', 'is_active' => false]);
 
     Livewire::actingAs($user)
@@ -905,7 +905,7 @@ test('add ignores an inactive school when defaulting the school field', function
 test('add defaults the subject field when the teacher only teaches one subject', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
     addTeacherSubject($user->teacher, $school, 'band');
 
     Livewire::actingAs($user)
@@ -917,7 +917,7 @@ test('add defaults the subject field when the teacher only teaches one subject',
 test('add does not default the subject field when the teacher teaches multiple subjects', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
     addTeacherSubject($user->teacher, $school, 'band');
     addTeacherSubject($user->teacher, $school, 'chorus');
 
@@ -930,7 +930,7 @@ test('add does not default the subject field when the teacher teaches multiple s
 test('saveAdd does not require an emergency contact', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -951,7 +951,7 @@ test('saveAdd does not require an emergency contact', function () {
 test('saveAdd still validates an emergency contact once the teacher starts filling one in', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -974,7 +974,7 @@ test('saveAdd still validates an emergency contact once the teacher starts filli
 test('saveAdd creates a new student with the chosen school, grade, and subject', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -1032,7 +1032,7 @@ test('saveAdd requires a school the teacher is actively attached to', function (
 test('saveAdd requires a grade', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -1051,7 +1051,7 @@ test('saveAdd requires a grade', function () {
 test('saveAdd assigns a default email when left blank', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -1075,8 +1075,8 @@ test('the Add-student School label becomes Studio once a studio is selected', fu
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
     $studio = School::factory()->studio()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
-    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -1104,7 +1104,7 @@ test('the Edit-student modal flags a studio row as a studio context', function (
 test('saveAdd requires a home school when adding a student to a studio', function () {
     $user = makeStudentsIndexTeacherUser();
     $studio = School::factory()->studio()->create();
-    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -1125,7 +1125,7 @@ test('saveAdd records the matched home school for a studio student', function ()
     $user = makeStudentsIndexTeacherUser();
     $studio = School::factory()->studio()->create();
     $homeSchool = School::factory()->create();
-    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -1151,7 +1151,7 @@ test('saveAdd creates a new home school when the teacher confirms one', function
     $user = makeStudentsIndexTeacherUser();
     $studio = School::factory()->studio()->create();
     $county = County::factory()->create();
-    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -1182,7 +1182,7 @@ test('saveAdd creates a new home school when the teacher confirms one', function
 test('saveAdd does not require a home school when the school is not a studio', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -1226,7 +1226,7 @@ test('saveEdit updates the home school for an existing studio student', function
 test('saveAdd shows a weak name match but does not block submission in a school context', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
     $existing = Student::factory()->create();
     $existing->user->update(['first_name' => 'Wendel', 'last_name' => 'Quoxbury']);
 
@@ -1250,7 +1250,7 @@ test('saveAdd shows a weak name match but does not block submission in a school 
 test('saveAdd blocks on a weak name match until resolved in a studio context', function () {
     $user = makeStudentsIndexTeacherUser();
     $studio = School::factory()->studio()->create();
-    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
     $existing = Student::factory()->create();
     $existing->user->update(['first_name' => 'Wendel', 'last_name' => 'Quoxbury']);
 
@@ -1281,7 +1281,7 @@ test('saveAdd blocks on a weak name match until resolved in a studio context', f
 test('saveAdd blocks on a strong match (same name and birthday) even in a school context', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
     $existing = Student::factory()->create(['birthday' => '2012-04-01']);
     $existing->user->update(['first_name' => 'Wendel', 'last_name' => 'Quoxbury']);
 
@@ -1306,7 +1306,7 @@ test('a matched student already at the school being added to offers to attach in
     $school = School::factory()->create();
     $otherTeacherUser = makeStudentsIndexTeacherUser();
     $row = claimStudentForTeacher($otherTeacherUser->teacher, $school, 'Wendel', 'Quoxbury');
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -1324,7 +1324,7 @@ test('a matched student enrolled at a different school offers a claim request in
     $otherSchool = School::factory()->create();
     $otherTeacherUser = makeStudentsIndexTeacherUser();
     claimStudentForTeacher($otherTeacherUser->teacher, $otherSchool, 'Wendel', 'Quoxbury');
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -1341,7 +1341,7 @@ test('attaching to an existing same-school student claims them without creating 
     $school = School::factory()->create();
     $otherTeacherUser = makeStudentsIndexTeacherUser();
     $existingRow = claimStudentForTeacher($otherTeacherUser->teacher, $school, 'Wendel', 'Quoxbury', subject: 'band');
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     $userCountBefore = User::count();
 
@@ -1374,7 +1374,7 @@ test('attachExistingStudent requires a subject', function () {
     $school = School::factory()->create();
     $otherTeacherUser = makeStudentsIndexTeacherUser();
     $existingRow = claimStudentForTeacher($otherTeacherUser->teacher, $school, 'Wendel', 'Quoxbury');
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     Livewire::actingAs($user)
         ->test(Index::class)
@@ -1482,7 +1482,7 @@ test('submitStudentClaim auto-approves when the matched student has no active te
 
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
-    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
     // Student exists in the system but has no active student_teacher rows (orphaned).
     $orphan = Student::factory()->create();
     SchoolStudent::create(['student_id' => $orphan->id, 'school_id' => $school->id, 'is_active' => true, 'class_of' => 2026]);
@@ -1515,7 +1515,7 @@ test('submitStudentClaim creates pending rows and emails the existing teacher', 
 
     $user = makeStudentsIndexTeacherUser();
     $studio = School::factory()->studio()->create();
-    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
     $existingTeacherUser = makeStudentsIndexTeacherUser();
     $existingTeacherUser->update(['email' => 'existing.teacher@school.edu']);
     $existingRow = claimStudentForTeacher($existingTeacherUser->teacher, School::factory()->create(), 'Wendel', 'Quoxbury', subject: 'chorus');
@@ -1559,7 +1559,7 @@ test('a pending row shows a Pending badge in the students index', function () {
     $existingTeacherUser = makeStudentsIndexTeacherUser();
     $existingRow = claimStudentForTeacher($existingTeacherUser->teacher, School::factory()->create(), 'Wendel', 'Quoxbury');
     SchoolStudent::create(['student_id' => $existingRow->student_id, 'school_id' => $studio->id, 'is_active' => true, 'class_of' => 2026]);
-    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     StudentTeacher::create([
         'student_id' => $existingRow->student_id,
@@ -1581,7 +1581,7 @@ test('edit() refuses to open a pending row and shows a warning toast', function 
     $studio = School::factory()->create();
     $existingTeacherUser = makeStudentsIndexTeacherUser();
     $existingRow = claimStudentForTeacher($existingTeacherUser->teacher, School::factory()->create(), 'Wendel', 'Quoxbury');
-    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true]);
+    $user->teacher->schools()->attach($studio, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
 
     $pendingRow = StudentTeacher::create([
         'student_id' => $existingRow->student_id,
