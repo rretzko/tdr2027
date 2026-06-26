@@ -43,10 +43,40 @@ class Organization extends Model
     }
 
     /**
+     * @return HasMany<Membership, $this>
+     */
+    public function memberships(): HasMany
+    {
+        return $this->hasMany(Membership::class);
+    }
+
+    /**
      * @return HasMany<Event, $this>
      */
     public function events(): HasMany
     {
         return $this->hasMany(Event::class);
+    }
+
+    /**
+     * Returns the organization whose membership record applies to this org.
+     * Child orgs (e.g. CJMEA) inherit from their root ancestor (e.g. NJMEA),
+     * so membership is always stored and looked up against the root.
+     */
+    public function membershipOrganization(): self
+    {
+        $org = $this;
+
+        while ($org->parent_id !== null) {
+            $parent = $org->parent;
+
+            if ($parent === null) {
+                break;
+            }
+
+            $org = $parent;
+        }
+
+        return $org;
     }
 }

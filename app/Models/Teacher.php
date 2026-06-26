@@ -75,6 +75,14 @@ class Teacher extends Model
     }
 
     /**
+     * @return HasMany<Membership, $this>
+     */
+    public function memberships(): HasMany
+    {
+        return $this->hasMany(Membership::class);
+    }
+
+    /**
      * @return HasMany<EventInvitationRequest, $this>
      */
     public function eventInvitationRequests(): HasMany

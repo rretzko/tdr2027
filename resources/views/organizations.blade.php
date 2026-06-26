@@ -1,3 +1,3 @@
 <x-layouts.app>
-    <flux:heading size="xl">Organizations</flux:heading>
+    @livewire('organizations.index')
 </x-layouts.app>

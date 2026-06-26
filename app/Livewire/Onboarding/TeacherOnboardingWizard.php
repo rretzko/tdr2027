@@ -317,30 +317,14 @@ class TeacherOnboardingWizard extends Component
 
     public function saveOrganizations(): void
     {
-        $rules = [];
-
-        // Supervisor contact info is optional for now — whether it's required will
-        // eventually be configured per Version (not yet built).
         foreach ($this->selectedOrganizationIds as $orgId) {
-            $rules["supervisorName.{$orgId}"] = ['nullable', 'string', 'max:255'];
-            $rules["supervisorEmail.{$orgId}"] = ['nullable', 'email', 'max:255'];
-            $rules["supervisorCellPhone.{$orgId}"] = ['nullable', 'string', 'min:10', 'max:20'];
-        }
-
-        if ($rules !== []) {
-            $this->validate($rules);
-        }
-
-        foreach ($this->selectedOrganizationIds as $orgId) {
-            $cellPhone = $this->supervisorCellPhone[$orgId] ?? '';
-
             TeacherSupervisor::firstOrCreate(
                 ['organization_id' => $orgId, 'teacher_id' => $this->teacher()->id],
                 [
-                    'supervisor_name' => ($this->supervisorName[$orgId] ?? '') ?: null,
-                    'supervisor_email' => ($this->supervisorEmail[$orgId] ?? '') ?: null,
-                    'supervisory_cell_phone' => $cellPhone !== '' ? preg_replace('/\D/', '', $cellPhone) : null,
-                ]
+                    'supervisor_name' => $this->supervisorName[$orgId] ?? null,
+                    'supervisor_email' => $this->supervisorEmail[$orgId] ?? null,
+                    'supervisory_cell_phone' => $this->supervisorCellPhone[$orgId] ?? null,
+                ],
             );
         }
 
