@@ -123,8 +123,8 @@ loser. Phase 3 — useful insurance, doesn't block shipping the rest.
    state). **Done — see "Phase 1: what shipped" below.**
 2. **Phase 2** — cross-org pending claim + approval email. This is the one
    that actually addresses the studio scenario that started this
-   conversation.
-3. **Phase 3** — admin merge tool, as a backstop.
+   conversation. **Done — see "Phase 2: what shipped" below.**
+3. **Phase 3** — admin merge tool, as a backstop. **Done — see "Phase 3: what shipped" below.**
 
 ## Phase 1: what shipped (2026-06-25)
 
@@ -176,6 +176,73 @@ loser. Phase 3 — useful insurance, doesn't block shipping the rest.
   creating genuinely new subject rows — so the same situation can never crash
   even if reached another way. Regression tests added.
 
+## Phase 2: what shipped (2026-06-25)
+
+- `App\Enums\ClaimStatus` — new enum (`approved` / `pending`).
+- Migration `add_claim_status_to_student_teacher_table` — adds `claim_status`
+  string (default `'approved'`) and `pending_class_of` nullable
+  `unsignedSmallInteger` to `student_teacher`.
+- `App\Models\Pivots\StudentTeacher` — `isPending()` method, `ClaimStatus`
+  cast, `claim_status` / `pending_class_of` added to `$fillable`.
+- `App\Mail\StudentClaimMail` + `resources/views/mail/student-claim.blade.php`
+  — approval-request email sent to each current active teacher; includes
+  Approve / Deny buttons (7-day signed URLs), expiry date formatted as
+  "Day of week, Month Date, Year H:MM AM/PM", and — in `local` env only — raw
+  unencoded URLs for reading directly from `laravel.log` (HTML encoding in
+  `href` attributes makes `&amp;` appear in the log, breaking copy-paste
+  testing).
+- `App\Http\Controllers\StudentClaimController` — `approve()` activates pending
+  rows and upserts a `school_student` enrollment; `deny()` deletes pending
+  rows. Both return 404 on second hit (idempotent). Routes:
+  `student-claim.approve` / `student-claim.deny` (signed middleware, 7-day
+  expiry).
+- `App\Livewire\Students\Index`:
+  - `submitStudentClaim()` — creates pending `student_teacher` rows + sends
+    emails; auto-approves (attaches immediately) when `activeTeachersFor()`
+    returns empty, i.e. no currently active teacher anywhere holds this
+    student.
+  - `selectStudentClaim()` — enters claim mode; pre-fills `claim_grade` from
+    the grade already typed in the add form; pre-selects the subject if the
+    teacher teaches only one at that school (`subjectsForAddSchool()`).
+  - `claimWillAutoApprove` (bool) — computed in `selectStudentClaim()` so the
+    modal can show either an amber warning ("email will be sent, pending until
+    approved") or a blue info callout ("no active teacher — will attach
+    directly"). Button label changes to match ("Send request" vs "Add to my
+    roster").
+  - `activeTeachersFor()` — uses a direct `whereIn` subquery on
+    `student_teacher` rather than `whereHas`/`wherePivot`, which silently
+    returned empty results when the pivot model used `::using()`.
+  - `subjectsForAddSchool()` — returns subjects the teacher is registered to
+    teach at the specific add-school, used to default the Subject field in the
+    claim modal.
+  - `edit()` — privacy guard: loading a pending row's full profile
+    (emergency contacts, address, birthday) before approval is blocked with a
+    warning toast; the Edit button is also disabled in the blade (PHP guard is
+    the backstop).
+- Blade: amber "Pending" badge in table/card Status column; Edit disabled for
+  pending rows; "Cancel request" label + confirm text for pending rows'
+  Remove action.
+- `Database\Seeders\SchoolTeacherSeeder` — now also seeds
+  `school_teacher_subject` with `subject = 'chorus'` for each seeded
+  `school_teacher` row (needed so `subjectsForAddSchool()` has data to
+  pre-select).
+- Tests: `tests/Feature/StudentClaimControllerTest.php` (class-based, covers
+  approve/deny/idempotency/tampered-signature); Phase 2 cases added to
+  `tests/Feature/Livewire/Students/IndexTest.php` (auto-approve, pending
+  creation, email assertion, Pending badge, `edit()` guard).
+
+**Bugs found and fixed during Phase 2:**
+
+- `whereHas`/`wherePivot` with `::using()` custom pivot returned empty even
+  with valid data → switched `activeTeachersFor()` to a direct subquery.
+- `trackable_pages` migration had never been run in dev → `TrackVisitedPage`
+  middleware threw on every Livewire update request, silently preventing form
+  submission (no pending row, no email, no visible error). Fixed by running
+  `php artisan migrate`.
+- Claim modal always showed "email will be sent" warning even when
+  `activeTeachersFor()` would return empty at submit time → added
+  `claimWillAutoApprove` flag computed eagerly in `selectStudentClaim()`.
+
 ## Forward compatibility: StudentFolder.info self-registration
 
 Once StudentFolder.info ships, students/parents will self-register rather
@@ -199,8 +266,34 @@ studio-teacher-created. Two things to revisit when that work starts:
    current auto-attach behavior only for records with no self-service login
    and no active teacher at all.
 
+## Phase 3: what shipped (2026-06-26)
+
+- `App\Console\Commands\MergeStudents` — Artisan command
+  `students:merge {winner} {loser} [--force]`.
+- Displays a confirmation table (both students' name, email, birthday) before
+  acting; `--force` skips the prompt for scripted use.
+- All mutations wrapped in a single `DB::transaction` so any FK violation rolls
+  back cleanly.
+- **school_student**: loser's rows are transferred to the winner unless the
+  winner already has a row for the same school, in which case the loser's row
+  is deleted (winner's enrollment preserved verbatim).
+- **student_teacher**: same collision logic keyed on
+  `(teacher_id, school_id, subject)`.
+- **emergency_contacts**: all rows (including soft-deleted) bulk-updated to the
+  winner's `student_id` via a raw `DB::table()` query that bypasses the
+  soft-delete global scope.
+- **home_address**: transferred if the winner has none; discarded if the winner
+  already has one.
+- Loser `Student` record deleted unconditionally. Loser `User` also deleted
+  (along with their `page_visits`, `phones`, and `social_accounts`) unless
+  they also hold a `Teacher` record, in which case the User is left in place
+  with a warning line in the output.
+- Tests: `tests/Feature/Console/MergeStudentsTest.php` — 14 cases covering
+  guards (bad IDs, same ID, declined confirmation), school_student and
+  student_teacher transfer/skip logic, emergency_contact reassignment,
+  home_address transfer/discard, loser deletion, loser-User retention when a
+  Teacher record exists, and winner record integrity.
+
 ## Status
 
-Plan approved 2026-06-24. Phase 1 implemented, tested, and merged 2026-06-25.
-Next up: Phase 2 (cross-org pending claim + approval email), incorporating
-the self-registration note above once StudentFolder.info work begins.
+Plan approved 2026-06-24. All three phases implemented, tested, and complete.

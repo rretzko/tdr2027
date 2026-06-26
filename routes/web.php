@@ -9,6 +9,7 @@ use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
 use App\Livewire\Auth\TeacherRegister;
 use App\Livewire\Founder\Impersonate as FounderImpersonate;
+use App\Livewire\Founder\MergeStudents as FounderMergeStudents;
 use App\Livewire\Founder\TrackablePages as FounderTrackablePages;
 use App\Livewire\Onboarding\TeacherOnboardingWizard;
 use App\Livewire\Schools\Index as SchoolsIndex;
@@ -68,6 +69,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 Route::middleware(['auth', 'verified', 'founder'])->group(function () {
     Route::get('/founder/impersonate', FounderImpersonate::class)->name('founder.impersonate');
     Route::get('/founder/trackable-pages', FounderTrackablePages::class)->name('founder.trackable-pages');
+    Route::get('/founder/merge-students', FounderMergeStudents::class)->name('founder.merge-students');
 });
 
 // Not behind the 'founder' middleware: once impersonating, the active user is

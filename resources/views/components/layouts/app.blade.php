@@ -104,6 +104,9 @@
                     <flux:sidebar.item icon="bolt" :href="route('founder.trackable-pages')" :current="request()->routeIs('founder.trackable-pages')">
                         Trackable Pages
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="arrow-path" :href="route('founder.merge-students')" :current="request()->routeIs('founder.merge-students')">
+                        Merge Students
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             @endif
 
