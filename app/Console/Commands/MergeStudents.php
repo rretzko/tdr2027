@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Models\Student;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -21,7 +22,7 @@ class MergeStudents extends Command
     public function handle(): int
     {
         $winner = Student::with('user')->find($this->argument('winner'));
-        $loser  = Student::with('user')->find($this->argument('loser'));
+        $loser = Student::with('user')->find($this->argument('loser'));
 
         if ($winner === null || $loser === null) {
             $this->error('One or both Student IDs not found.');
@@ -61,14 +62,14 @@ class MergeStudents extends Command
                     $winner->id,
                     $winner->user->first_name.' '.$winner->user->last_name,
                     $winner->user->email,
-                    $winner->birthday?->format('Y-m-d') ?? '—',
+                    $winner->birthday !== null ? Carbon::parse($winner->birthday)->format('Y-m-d') : '—',
                 ],
                 [
                     'DELETE (loser)',
                     $loser->id,
                     $loser->user->first_name.' '.$loser->user->last_name,
                     $loser->user->email,
-                    $loser->birthday?->format('Y-m-d') ?? '—',
+                    $loser->birthday !== null ? Carbon::parse($loser->birthday)->format('Y-m-d') : '—',
                 ],
             ]
         );

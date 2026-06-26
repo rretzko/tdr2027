@@ -15,12 +15,20 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
+/**
+ * @property-read ?Student $winner
+ * @property-read ?Student $loser
+ * @property-read array<int, array{first_name: string, last_name: string, strength: string, winner_id: int, loser_id: int, winner_email: string, loser_email: string, winner_birthday: string|null, loser_birthday: string|null, winner_schools: string, loser_schools: string}> $potentialDuplicates
+ */
 #[Layout('components.layouts.app')]
 class MergeStudents extends Component
 {
     public string $winnerSearch = '';
+
     public string $loserSearch = '';
+
     public ?int $winnerId = null;
+
     public ?int $loserId = null;
 
     // -----------------------------------------------------------------------
@@ -141,7 +149,7 @@ class MergeStudents extends Component
     public function merge(): void
     {
         $winner = $this->winner;
-        $loser  = $this->loser;
+        $loser = $this->loser;
 
         if ($winner === null || $loser === null || $winner->id === $loser->id) {
             return;
@@ -156,9 +164,9 @@ class MergeStudents extends Component
         $this->modal('merge-confirm')->close();
 
         $this->winnerId = null;
-        $this->loserId  = null;
+        $this->loserId = null;
         $this->winnerSearch = '';
-        $this->loserSearch  = '';
+        $this->loserSearch = '';
         unset($this->winner, $this->loser);
 
         Flux::toast(variant: 'success', text: "{$loserName} merged and deleted successfully.");
@@ -278,16 +286,16 @@ class MergeStudents extends Component
         $pairs = [];
 
         foreach ($groups as $group) {
-            $ids      = array_map('intval', explode(',', $group->ids));
+            $ids = array_map('intval', explode(',', $group->ids));
             $winnerId = $ids[0];
-            $loserId  = $ids[1] ?? null;
+            $loserId = $ids[1] ?? null;
 
             if ($loserId === null) {
                 continue;
             }
 
             $winner = $studentData->get($winnerId);
-            $loser  = $studentData->get($loserId);
+            $loser = $studentData->get($loserId);
 
             if ($winner === null || $loser === null) {
                 continue;
@@ -298,17 +306,17 @@ class MergeStudents extends Component
                 && $winner->birthday === $loser->birthday;
 
             $pairs[] = [
-                'first_name'      => $group->first_name,
-                'last_name'       => $group->last_name,
-                'strength'        => $sameBirthday ? 'strong' : 'weak',
-                'winner_id'       => $winnerId,
-                'loser_id'        => $loserId,
-                'winner_email'    => $winner->email,
-                'loser_email'     => $loser->email,
+                'first_name' => $group->first_name,
+                'last_name' => $group->last_name,
+                'strength' => $sameBirthday ? 'strong' : 'weak',
+                'winner_id' => $winnerId,
+                'loser_id' => $loserId,
+                'winner_email' => $winner->email,
+                'loser_email' => $loser->email,
                 'winner_birthday' => $winner->birthday ? Carbon::parse($winner->birthday)->format('M j, Y') : null,
-                'loser_birthday'  => $loser->birthday ? Carbon::parse($loser->birthday)->format('M j, Y') : null,
-                'winner_schools'  => $schoolData->get((string) $winnerId) ?? '—',
-                'loser_schools'   => $schoolData->get((string) $loserId) ?? '—',
+                'loser_birthday' => $loser->birthday ? Carbon::parse($loser->birthday)->format('M j, Y') : null,
+                'winner_schools' => $schoolData->get((string) $winnerId) ?? '—',
+                'loser_schools' => $schoolData->get((string) $loserId) ?? '—',
             ];
         }
 
@@ -324,10 +332,10 @@ class MergeStudents extends Component
 
     public function preselectPair(int $winnerId, int $loserId): void
     {
-        $this->winnerId     = $winnerId;
-        $this->loserId      = $loserId;
+        $this->winnerId = $winnerId;
+        $this->loserId = $loserId;
         $this->winnerSearch = '';
-        $this->loserSearch  = '';
+        $this->loserSearch = '';
         unset($this->winner, $this->loser);
         $this->dispatch('pair-preselected');
     }
@@ -340,7 +348,7 @@ class MergeStudents extends Component
     {
         return view('livewire.founder.merge-students', [
             'winnerResults' => $this->winnerResults(),
-            'loserResults'  => $this->loserResults(),
+            'loserResults' => $this->loserResults(),
         ]);
     }
 }
