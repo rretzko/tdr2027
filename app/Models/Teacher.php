@@ -63,7 +63,10 @@ class Teacher extends Model
 
     public function hasActiveSchool(): bool
     {
-        return $this->schools()->wherePivot('is_active', true)->exists();
+        return $this->schools()
+            ->wherePivot('is_active', true)
+            ->wherePivot('verified_at', '!=', null)
+            ->exists();
     }
 
     /**

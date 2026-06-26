@@ -1489,6 +1489,7 @@ class Index extends Component
                     ->on('school_teacher.teacher_id', '=', 'student_teacher.teacher_id');
             })
             ->where('school_teacher.is_active', true)
+            ->whereNotNull('school_teacher.verified_at')
             ->leftJoin('voice_parts', 'voice_parts.id', '=', 'students.voice_part_id')
             ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'student.voicePart', 'school']);
 
