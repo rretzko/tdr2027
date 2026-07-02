@@ -22,6 +22,7 @@ use Livewire\Component;
 class VersionDashboard extends Component
 {
     use HasCandidateChecklist;
+
     public Version $version;
 
     public string $enroll_student_id = '';

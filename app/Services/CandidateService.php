@@ -58,13 +58,13 @@ class CandidateService
      *
      * Candidates already withdrawn or beyond registration are left unchanged.
      *
-     * @param list<array{label: string, check: \Closure(Candidate): bool}> $checklistDefs
+     * @param  list<array{label: string, check: \Closure(Candidate): bool}>  $checklistDefs
      */
     public function recalculateStatus(Candidate $candidate, array $checklistDefs): void
     {
         $currentRaw = $candidate->getRawOriginal('status');
 
-        if (!in_array($currentRaw, [
+        if (! in_array($currentRaw, [
             CandidateStatus::Eligible->value,
             CandidateStatus::Pending->value,
             CandidateStatus::Registered->value,
