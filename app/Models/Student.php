@@ -111,6 +111,14 @@ class Student extends Model
     }
 
     /**
+     * @return HasMany<Candidate, $this>
+     */
+    public function candidates(): HasMany
+    {
+        return $this->hasMany(Candidate::class);
+    }
+
+    /**
      * @return (School&object{pivot: SchoolStudent})|null
      */
     public function getCurrentSchoolAttribute(): ?School

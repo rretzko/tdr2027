@@ -10,7 +10,7 @@
     @else
         <flux:checkbox.group wire:model="selectedEventIds" label="Request an invitation to:">
             @foreach ($openEvents as $event)
-                <flux:checkbox value="{{ $event->id }}" label="{{ $event->name }} &mdash; {{ $event->starts_at->format('M j, Y') }}" />
+                <flux:checkbox value="{{ $event->id }}" label="{{ $event->name }}" />
             @endforeach
         </flux:checkbox.group>
     @endif

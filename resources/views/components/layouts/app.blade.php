@@ -91,6 +91,9 @@
                     <flux:sidebar.item icon="calendar" :href="route('events.index')" :current="request()->routeIs('events.*')">
                         Events
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="clipboard-document-list" :href="route('registrations.index')" :current="request()->routeIs('registrations.*')">
+                        Registrations
+                    </flux:sidebar.item>
                 @endif
             @endif
 

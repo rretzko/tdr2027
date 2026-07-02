@@ -479,7 +479,7 @@ class TeacherOnboardingWizard extends Component
             return collect();
         }
 
-        return Event::where('is_open', true)->whereIn('organization_id', $organizationIds)->get();
+        return Event::where('status', 'active')->whereIn('organization_id', $organizationIds)->get();
     }
 
     private function advanceTo(int $step): void

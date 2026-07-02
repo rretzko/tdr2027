@@ -100,7 +100,7 @@
 
                     @php
                         $organizationIds = $teacher->teacherSupervisors()->pluck('organization_id');
-                        $openEvents = \App\Models\Event::where('is_open', true)->whereIn('organization_id', $organizationIds)->get();
+                        $openEvents = \App\Models\Event::where('status', 'active')->whereIn('organization_id', $organizationIds)->get();
                     @endphp
 
                     @if ($openEvents->isNotEmpty())
@@ -108,7 +108,7 @@
                             @foreach ($openEvents as $event)
                                 <div class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
                                     <flux:text class="font-medium">{{ $event->name }}</flux:text>
-                                    <flux:text size="sm" class="text-zinc-500">{{ $event->starts_at->format('M j, Y') }}</flux:text>
+                                    <flux:text size="sm" class="text-zinc-500 capitalize">{{ $event->getRawOriginal('frequency') }}</flux:text>
                                 </div>
                             @endforeach
                         </div>

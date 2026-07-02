@@ -1,0 +1,131 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use App\Enums\ApplicationType;
+use App\Enums\AuditionType;
+use App\Enums\EventStatus;
+use App\Enums\PitchFileVisibility;
+use App\Enums\ScoreOrder;
+use App\Enums\UploadType;
+use Database\Factories\VersionFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+#[Fillable([
+    'event_id', 'name', 'short_name', 'senior_class_of', 'status',
+    'application_type', 'audition_timeslot', 'audition_type',
+    'birthday', 'emergency_contact_name', 'emergency_contact_cell', 'emergency_contact_email',
+    'height', 'home_address', 'judge_count',
+    'max_registrants', 'max_upper_voice_registrants',
+    'pitch_file_visibility', 'release_confidential_results',
+    'score_order', 'shirt_size', 'teacher_cell', 'upload_type',
+])]
+class Version extends Model
+{
+    /** @use HasFactory<VersionFactory> */
+    use HasFactory, SoftDeletes;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'status' => EventStatus::class,
+            'application_type' => ApplicationType::class,
+            'audition_type' => AuditionType::class,
+            'pitch_file_visibility' => PitchFileVisibility::class,
+            'score_order' => ScoreOrder::class,
+            'upload_type' => UploadType::class,
+            'birthday' => 'boolean',
+            'emergency_contact_name' => 'boolean',
+            'emergency_contact_cell' => 'boolean',
+            'emergency_contact_email' => 'boolean',
+            'height' => 'boolean',
+            'home_address' => 'boolean',
+            'release_confidential_results' => 'boolean',
+            'shirt_size' => 'boolean',
+            'teacher_cell' => 'boolean',
+        ];
+    }
+
+    /**
+     * @return BelongsTo<Event, $this>
+     */
+    public function event(): BelongsTo
+    {
+        return $this->belongsTo(Event::class);
+    }
+
+    /**
+     * @return HasMany<Candidate, $this>
+     */
+    public function candidates(): HasMany
+    {
+        return $this->hasMany(Candidate::class);
+    }
+
+    /**
+     * @return HasMany<VersionDate, $this>
+     */
+    public function dates(): HasMany
+    {
+        return $this->hasMany(VersionDate::class);
+    }
+
+    /**
+     * @return HasOne<VersionFee, $this>
+     */
+    public function fees(): HasOne
+    {
+        return $this->hasOne(VersionFee::class);
+    }
+
+    /**
+     * @return HasOne<EpaymentCredential, $this>
+     */
+    public function epaymentCredential(): HasOne
+    {
+        return $this->hasOne(EpaymentCredential::class);
+    }
+
+    /**
+     * @return HasOne<VersionMembershipRequirement, $this>
+     */
+    public function membershipRequirement(): HasOne
+    {
+        return $this->hasOne(VersionMembershipRequirement::class);
+    }
+
+    /**
+     * @return HasMany<VersionCounty, $this>
+     */
+    public function counties(): HasMany
+    {
+        return $this->hasMany(VersionCounty::class);
+    }
+
+    /**
+     * @return HasMany<VersionEnsembleOrder, $this>
+     */
+    public function ensembleOrder(): HasMany
+    {
+        return $this->hasMany(VersionEnsembleOrder::class)->orderBy('order_by');
+    }
+
+    /**
+     * @return HasMany<VersionTimeslot, $this>
+     */
+    public function timeslots(): HasMany
+    {
+        return $this->hasMany(VersionTimeslot::class)->orderBy('timeslot');
+    }
+}

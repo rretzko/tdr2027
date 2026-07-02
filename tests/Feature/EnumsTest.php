@@ -57,6 +57,10 @@ test('EmergencyContactRelationship has the expected cases and non-empty labels',
             'sibling',
             'aunt',
             'uncle',
+            'guardian_mother',
+            'guardian_father',
+            'foster_mother',
+            'foster_father',
             'other',
         ]);
 

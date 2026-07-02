@@ -31,8 +31,8 @@ test('the dashboard lists open events from linked organizations', function () {
 
     $organization = Organization::factory()->create();
     TeacherSupervisor::create(['organization_id' => $organization->id, 'teacher_id' => $teacher->id]);
-    Event::factory()->create(['organization_id' => $organization->id, 'name' => 'Spring Showcase', 'is_open' => true]);
-    Event::factory()->create(['organization_id' => $organization->id, 'name' => 'Closed Event', 'is_open' => false]);
+    Event::factory()->active()->create(['organization_id' => $organization->id, 'name' => 'Spring Showcase']);
+    Event::factory()->create(['organization_id' => $organization->id, 'name' => 'Closed Event']);
 
     actingAs($user)->get(route('dashboard'))
         ->assertOk()
@@ -46,7 +46,7 @@ test('the dashboard does not show events from organizations the teacher is not l
     Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
 
     $organization = Organization::factory()->create();
-    Event::factory()->create(['organization_id' => $organization->id, 'name' => 'Unrelated Event', 'is_open' => true]);
+    Event::factory()->active()->create(['organization_id' => $organization->id, 'name' => 'Unrelated Event']);
 
     actingAs($user)->get(route('dashboard'))
         ->assertOk()

@@ -358,7 +358,7 @@ test('step 5 requests an invitation to an open event from a linked organization'
         'supervisor_email' => 'jamie@example.com',
         'supervisory_cell_phone' => '5559876543',
     ]);
-    $event = Event::factory()->create(['organization_id' => $organization->id, 'is_open' => true]);
+    $event = Event::factory()->active()->create(['organization_id' => $organization->id]);
     $user->teacher->update(['onboarding_step' => 5]);
 
     Livewire::actingAs($user)

@@ -8,11 +8,16 @@ use App\Livewire\Auth\SocialPhoneCheck;
 use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
 use App\Livewire\Auth\TeacherRegister;
+use App\Livewire\Events\Index as EventsIndex;
+use App\Livewire\Events\Show as EventsShow;
+use App\Livewire\Events\VersionEdit;
 use App\Livewire\Founder\Impersonate as FounderImpersonate;
 use App\Livewire\Founder\MergeStudents as FounderMergeStudents;
 use App\Livewire\Founder\TeacherVerification as FounderTeacherVerification;
 use App\Livewire\Founder\TrackablePages as FounderTrackablePages;
 use App\Livewire\Onboarding\TeacherOnboardingWizard;
+use App\Livewire\Registrations\Index as RegistrationsIndex;
+use App\Livewire\Registrations\VersionDashboard;
 use App\Livewire\Schools\Index as SchoolsIndex;
 use App\Livewire\Settings\Password;
 use App\Livewire\Settings\Profile;
@@ -90,7 +95,11 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
     // records to, so both are gated behind the teacher having at least one.
     Route::middleware('has.active.school')->group(function () {
         Route::get('/students', StudentsIndex::class)->name('students.index');
-        Route::view('/events', 'events')->name('events.index');
+        Route::get('/events', EventsIndex::class)->name('events.index');
+        Route::get('/events/{event}', EventsShow::class)->name('events.show');
+        Route::get('/events/versions/{version}/edit', VersionEdit::class)->name('events.versions.edit');
+        Route::get('/registrations', RegistrationsIndex::class)->name('registrations.index');
+        Route::get('/registrations/{version}', VersionDashboard::class)->name('registrations.version');
     });
 
     Route::get('/settings/profile', Profile::class)->name('settings.profile');

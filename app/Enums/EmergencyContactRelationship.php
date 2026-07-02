@@ -16,6 +16,10 @@ enum EmergencyContactRelationship: string
     case Sibling = 'sibling';
     case Aunt = 'aunt';
     case Uncle = 'uncle';
+    case GuardianMother = 'guardian_mother';
+    case GuardianFather = 'guardian_father';
+    case FosterMother = 'foster_mother';
+    case FosterFather = 'foster_father';
     case Other = 'other';
 
     public function label(): string
@@ -31,6 +35,10 @@ enum EmergencyContactRelationship: string
             self::Sibling => 'Sibling',
             self::Aunt => 'Aunt',
             self::Uncle => 'Uncle',
+            self::GuardianMother => 'Guardian (Mother)',
+            self::GuardianFather => 'Guardian (Father)',
+            self::FosterMother => 'Foster Mother',
+            self::FosterFather => 'Foster Father',
             self::Other => 'Other',
         };
     }

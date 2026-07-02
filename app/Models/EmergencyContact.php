@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\BestPhone;
 use App\Enums\EmergencyContactRelationship;
 use App\Support\PhoneNormalizer;
 use Database\Factories\EmergencyContactFactory;
@@ -27,6 +28,7 @@ class EmergencyContact extends Model
     {
         return [
             'relationship' => EmergencyContactRelationship::class,
+            'best_phone' => BestPhone::class,
         ];
     }
 
