@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $order_by
+ */
 #[Fillable(['version_id', 'ensemble_id', 'order_by'])]
 class VersionEnsembleOrder extends Model
 {

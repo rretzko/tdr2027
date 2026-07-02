@@ -270,6 +270,35 @@
                     <flux:error name="selected_county_ids" />
                 </div>
 
+                @if ($eventEnsembles->isNotEmpty())
+                    <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 space-y-4">
+                        <div>
+                            <flux:heading size="sm">Ensemble Fill Order</flux:heading>
+                            <flux:description>Set the priority order for ensemble assignment when multiple ensembles share a candidate pool. Lower numbers fill first.</flux:description>
+                        </div>
+
+                        <div class="space-y-2">
+                            @foreach ($eventEnsembles as $ensemble)
+                                <div class="flex items-center gap-3">
+                                    <flux:input
+                                        wire:model="ensemble_order.{{ $ensemble->id }}"
+                                        type="number" min="1" max="99"
+                                        class="w-20"
+                                    />
+                                    <span class="text-sm text-zinc-700 dark:text-zinc-300">{{ $ensemble->name }}</span>
+                                    @if ($ensemble->abbreviation)
+                                        <flux:badge color="zinc" size="sm">{{ $ensemble->abbreviation }}</flux:badge>
+                                    @endif
+                                </div>
+                            @endforeach
+                        </div>
+
+                        <flux:button size="sm" wire:click="saveEnsembleOrder">
+                            Save Ensemble Order
+                        </flux:button>
+                    </div>
+                @endif
+
                 @if ($errors->any())
                     <flux:callout variant="danger" icon="exclamation-triangle">
                         <flux:callout.text>Please correct the errors above.</flux:callout.text>

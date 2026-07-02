@@ -102,6 +102,17 @@
 
                         <div class="flex gap-2">
                             <flux:button size="sm" variant="ghost"
+                                :href="route('registrations.candidate', [$version, $candidate])"
+                                wire:navigate>
+                                Manage
+                            </flux:button>
+                            @if (in_array($rawStatus, ['eligible', 'pending', 'registered']))
+                                <flux:button size="sm" variant="ghost" icon="arrow-path"
+                                    wire:click="refreshStatus({{ $candidate->id }})">
+                                    Refresh
+                                </flux:button>
+                            @endif
+                            <flux:button size="sm" variant="ghost"
                                 wire:click="withdraw({{ $candidate->id }})"
                                 wire:confirm="Withdraw {{ $candidate->program_name }}? Their status will be set to Teacher Withdrawn.">
                                 Withdraw
@@ -161,11 +172,24 @@
                                 @endif
                             </flux:table.cell>
                             <flux:table.cell>
-                                <flux:button size="sm" variant="ghost"
-                                    wire:click="withdraw({{ $candidate->id }})"
-                                    wire:confirm="Withdraw {{ $candidate->program_name }}? Their status will be set to Teacher Withdrawn.">
-                                    Withdraw
-                                </flux:button>
+                                <div class="flex justify-end gap-2">
+                                    <flux:button size="sm" variant="ghost"
+                                        :href="route('registrations.candidate', [$version, $candidate])"
+                                        wire:navigate>
+                                        Manage
+                                    </flux:button>
+                                    @if (in_array($rawStatus, ['eligible', 'pending', 'registered']))
+                                        <flux:button size="sm" variant="ghost" icon="arrow-path"
+                                            wire:click="refreshStatus({{ $candidate->id }})">
+                                            Refresh
+                                        </flux:button>
+                                    @endif
+                                    <flux:button size="sm" variant="ghost"
+                                        wire:click="withdraw({{ $candidate->id }})"
+                                        wire:confirm="Withdraw {{ $candidate->program_name }}? Their status will be set to Teacher Withdrawn.">
+                                        Withdraw
+                                    </flux:button>
+                                </div>
                             </flux:table.cell>
                         </flux:table.row>
                     @endforeach

@@ -6,17 +6,11 @@
         <span>{{ $event->name }}</span>
     </div>
 
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
             <flux:heading size="xl">{{ $event->name }}</flux:heading>
             <flux:text size="sm" class="text-zinc-500">{{ $event->organization->name }}</flux:text>
         </div>
-
-        <flux:modal.trigger name="add-version">
-            <flux:button variant="primary" icon="plus" wire:click="openAddVersion">
-                Add version
-            </flux:button>
-        </flux:modal.trigger>
     </div>
 
     {{-- Event summary badges --}}
@@ -37,86 +31,179 @@
         <flux:badge color="zinc">{{ $event->ensemble_count }} {{ Str::plural('ensemble', $event->ensemble_count) }}</flux:badge>
     </div>
 
-    {{-- Versions — cards below md:, table at md:+ --}}
-    <div class="md:hidden space-y-3">
-        @forelse ($versions as $version)
-            <flux:card size="sm">
-                <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0">
-                        <flux:heading size="base" class="truncate">{{ $version->name }}</flux:heading>
-                        <flux:text size="sm" class="text-zinc-500">Class of {{ $version->senior_class_of }}</flux:text>
+    <flux:tabs wire:model="activeTab">
+        <flux:tab name="versions">Versions</flux:tab>
+        <flux:tab name="ensembles">Ensembles</flux:tab>
+
+        <flux:tab.panel name="versions">
+            <div class="flex justify-end mb-4">
+                <flux:modal.trigger name="add-version">
+                    <flux:button variant="primary" icon="plus" wire:click="openAddVersion">
+                        Add Version
+                    </flux:button>
+                </flux:modal.trigger>
+            </div>
+
+            {{-- Versions — cards below md:, table at md:+ --}}
+            <div class="md:hidden space-y-3">
+                @forelse ($versions as $version)
+                    <flux:card size="sm">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <flux:heading size="base" class="truncate">{{ $version->name }}</flux:heading>
+                                <flux:text size="sm" class="text-zinc-500">Class of {{ $version->senior_class_of }}</flux:text>
+                            </div>
+
+                            <div class="flex flex-col items-end gap-2 shrink-0">
+                                @php $vs = $version->getRawOriginal('status'); @endphp
+                                @if ($vs === 'active')
+                                    <flux:badge color="green" size="sm">Active</flux:badge>
+                                @elseif ($vs === 'sandbox')
+                                    <flux:badge color="amber" size="sm">Sandbox</flux:badge>
+                                @elseif ($vs === 'inactive')
+                                    <flux:badge color="zinc" size="sm">Inactive</flux:badge>
+                                @else
+                                    <flux:badge color="red" size="sm">Closed</flux:badge>
+                                @endif
+
+                                <flux:button size="sm" :href="route('events.versions.edit', $version)" wire:navigate>
+                                    Configure
+                                </flux:button>
+                            </div>
+                        </div>
+                    </flux:card>
+                @empty
+                    <flux:text class="text-zinc-500 py-4 text-center">No versions yet. Add one above.</flux:text>
+                @endforelse
+            </div>
+
+            <flux:table class="hidden md:table">
+                <flux:table.columns>
+                    <flux:table.column>Version</flux:table.column>
+                    <flux:table.column>Class Of</flux:table.column>
+                    <flux:table.column>Type</flux:table.column>
+                    <flux:table.column>Upload</flux:table.column>
+                    <flux:table.column>Status</flux:table.column>
+                    <flux:table.column></flux:table.column>
+                </flux:table.columns>
+
+                <flux:table.rows>
+                    @forelse ($versions as $version)
+                        <flux:table.row>
+                            <flux:table.cell class="font-medium">{{ $version->name }}</flux:table.cell>
+                            <flux:table.cell>{{ $version->senior_class_of }}</flux:table.cell>
+                            <flux:table.cell class="capitalize">{{ $version->getRawOriginal('audition_type') }}</flux:table.cell>
+                            <flux:table.cell class="capitalize">{{ $version->getRawOriginal('upload_type') }}</flux:table.cell>
+                            <flux:table.cell>
+                                @php $vs = $version->getRawOriginal('status'); @endphp
+                                @if ($vs === 'active')
+                                    <flux:badge color="green" size="sm">Active</flux:badge>
+                                @elseif ($vs === 'sandbox')
+                                    <flux:badge color="amber" size="sm">Sandbox</flux:badge>
+                                @elseif ($vs === 'inactive')
+                                    <flux:badge color="zinc" size="sm">Inactive</flux:badge>
+                                @else
+                                    <flux:badge color="red" size="sm">Closed</flux:badge>
+                                @endif
+                            </flux:table.cell>
+                            <flux:table.cell>
+                                <div class="flex justify-end">
+                                    <flux:button size="sm" :href="route('events.versions.edit', $version)" wire:navigate>
+                                        Configure
+                                    </flux:button>
+                                </div>
+                            </flux:table.cell>
+                        </flux:table.row>
+                    @empty
+                        <flux:table.row>
+                            <flux:table.cell colspan="6" class="text-center text-zinc-500 py-6">
+                                No versions yet. Add one above.
+                            </flux:table.cell>
+                        </flux:table.row>
+                    @endforelse
+                </flux:table.rows>
+            </flux:table>
+        </flux:tab.panel>
+
+        <flux:tab.panel name="ensembles">
+            <div class="flex justify-end mb-4">
+                <flux:modal.trigger name="edit-ensemble">
+                    <flux:button variant="primary" icon="plus" wire:click="openAddEnsemble">
+                        Add Ensemble
+                    </flux:button>
+                </flux:modal.trigger>
+            </div>
+
+            @forelse ($ensembles as $ensemble)
+                <flux:card class="mb-4">
+                    <div class="flex items-start justify-between gap-3 mb-4">
+                        <div>
+                            <flux:heading size="base">{{ $ensemble->name }}</flux:heading>
+                            @if ($ensemble->abbreviation)
+                                <flux:text size="sm" class="text-zinc-500">
+                                    Abbr: {{ $ensemble->abbreviation }}
+                                    @if ($ensemble->short_name)
+                                        &bull; {{ $ensemble->short_name }}
+                                    @endif
+                                </flux:text>
+                            @elseif ($ensemble->short_name)
+                                <flux:text size="sm" class="text-zinc-500">{{ $ensemble->short_name }}</flux:text>
+                            @endif
+                        </div>
+                        <flux:modal.trigger name="edit-ensemble">
+                            <flux:button size="sm" variant="ghost" icon="pencil" wire:click="openEditEnsemble({{ $ensemble->id }})">
+                                Edit
+                            </flux:button>
+                        </flux:modal.trigger>
                     </div>
 
-                    <div class="flex flex-col items-end gap-2 shrink-0">
-                        @php $vs = $version->getRawOriginal('status'); @endphp
-                        @if ($vs === 'active')
-                            <flux:badge color="green" size="sm">Active</flux:badge>
-                        @elseif ($vs === 'sandbox')
-                            <flux:badge color="amber" size="sm">Sandbox</flux:badge>
-                        @elseif ($vs === 'inactive')
-                            <flux:badge color="zinc" size="sm">Inactive</flux:badge>
-                        @else
-                            <flux:badge color="red" size="sm">Closed</flux:badge>
-                        @endif
-
-                        <flux:button size="sm" :href="route('events.versions.edit', $version)" wire:navigate>
-                            Configure
-                        </flux:button>
-                    </div>
-                </div>
-            </flux:card>
-        @empty
-            <flux:text class="text-zinc-500 py-4 text-center">No versions yet. Add one above.</flux:text>
-        @endforelse
-    </div>
-
-    <flux:table class="hidden md:table">
-        <flux:table.columns>
-            <flux:table.column>Version</flux:table.column>
-            <flux:table.column>Class Of</flux:table.column>
-            <flux:table.column>Type</flux:table.column>
-            <flux:table.column>Upload</flux:table.column>
-            <flux:table.column>Status</flux:table.column>
-            <flux:table.column></flux:table.column>
-        </flux:table.columns>
-
-        <flux:table.rows>
-            @forelse ($versions as $version)
-                <flux:table.row>
-                    <flux:table.cell class="font-medium">{{ $version->name }}</flux:table.cell>
-                    <flux:table.cell>{{ $version->senior_class_of }}</flux:table.cell>
-                    <flux:table.cell class="capitalize">{{ $version->getRawOriginal('audition_type') }}</flux:table.cell>
-                    <flux:table.cell class="capitalize">{{ $version->getRawOriginal('upload_type') }}</flux:table.cell>
-                    <flux:table.cell>
-                        @php $vs = $version->getRawOriginal('status'); @endphp
-                        @if ($vs === 'active')
-                            <flux:badge color="green" size="sm">Active</flux:badge>
-                        @elseif ($vs === 'sandbox')
-                            <flux:badge color="amber" size="sm">Sandbox</flux:badge>
-                        @elseif ($vs === 'inactive')
-                            <flux:badge color="zinc" size="sm">Inactive</flux:badge>
-                        @else
-                            <flux:badge color="red" size="sm">Closed</flux:badge>
-                        @endif
-                    </flux:table.cell>
-                    <flux:table.cell>
-                        <div class="flex justify-end">
-                            <flux:button size="sm" :href="route('events.versions.edit', $version)" wire:navigate>
-                                Configure
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {{-- Grades --}}
+                        <div>
+                            <flux:subheading class="mb-2">Eligible Grades</flux:subheading>
+                            <div class="flex flex-wrap gap-3 mb-3">
+                                @foreach ($gradeOptions as $grade)
+                                    <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+                                        <flux:checkbox
+                                            wire:model="ens_grades.{{ $ensemble->id }}"
+                                            value="{{ $grade }}"
+                                        />
+                                        Grade {{ $grade }}
+                                    </label>
+                                @endforeach
+                            </div>
+                            <flux:button size="sm" wire:click="saveEnsembleGrades({{ $ensemble->id }})">
+                                Save Grades
                             </flux:button>
                         </div>
-                    </flux:table.cell>
-                </flux:table.row>
-            @empty
-                <flux:table.row>
-                    <flux:table.cell colspan="6" class="text-center text-zinc-500 py-6">
-                        No versions yet. Add one above.
-                    </flux:table.cell>
-                </flux:table.row>
-            @endforelse
-        </flux:table.rows>
-    </flux:table>
 
+                        {{-- Voice Parts --}}
+                        <div>
+                            <flux:subheading class="mb-2">Voice Parts</flux:subheading>
+                            <div class="flex flex-wrap gap-3 mb-3">
+                                @foreach ($allVoiceParts as $vp)
+                                    <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+                                        <flux:checkbox
+                                            wire:model="ens_voice_parts.{{ $ensemble->id }}"
+                                            value="{{ $vp->id }}"
+                                        />
+                                        {{ $vp->name }}
+                                    </label>
+                                @endforeach
+                            </div>
+                            <flux:button size="sm" wire:click="saveEnsembleVoiceParts({{ $ensemble->id }})">
+                                Save Voice Parts
+                            </flux:button>
+                        </div>
+                    </div>
+                </flux:card>
+            @empty
+                <flux:text class="text-zinc-500 py-4 text-center">No ensembles yet. Add one above.</flux:text>
+            @endforelse
+        </flux:tab.panel>
+    </flux:tabs>
+
+    {{-- Add Version modal --}}
     <flux:modal name="add-version" class="w-full max-w-md">
         <flux:heading size="lg" class="mb-4">Add Version</flux:heading>
 
@@ -153,6 +240,49 @@
             </flux:modal.close>
             <flux:button variant="primary" wire:click="createVersion">
                 Create Version
+            </flux:button>
+        </div>
+    </flux:modal>
+
+    {{-- Add/Edit Ensemble modal --}}
+    <flux:modal name="edit-ensemble" class="w-full max-w-md">
+        <flux:heading size="lg" class="mb-4">
+            {{ $editingEnsembleId ? 'Edit Ensemble' : 'Add Ensemble' }}
+        </flux:heading>
+
+        <div class="space-y-4">
+            <flux:field>
+                <flux:label>Name</flux:label>
+                <flux:input wire:model="ens_name" placeholder="e.g. All-State Mixed Chorus" />
+                <flux:error name="ens_name" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Short Name</flux:label>
+                <flux:input wire:model="ens_short_name" placeholder="e.g. Mixed Chorus" />
+                <flux:error name="ens_short_name" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Abbreviation</flux:label>
+                <flux:input wire:model="ens_abbreviation" placeholder="e.g. MC" maxlength="20" />
+                <flux:description>Short code used in reports and labels.</flux:description>
+                <flux:error name="ens_abbreviation" />
+            </flux:field>
+        </div>
+
+        @if ($errors->hasAny(['ens_name', 'ens_short_name', 'ens_abbreviation']))
+            <flux:callout variant="danger" icon="exclamation-triangle" class="mt-4">
+                <flux:callout.text>Please correct the errors above.</flux:callout.text>
+            </flux:callout>
+        @endif
+
+        <div class="flex justify-end gap-3 mt-6">
+            <flux:modal.close>
+                <flux:button variant="ghost">Cancel</flux:button>
+            </flux:modal.close>
+            <flux:button variant="primary" wire:click="saveEnsemble">
+                {{ $editingEnsembleId ? 'Save Changes' : 'Create Ensemble' }}
             </flux:button>
         </div>
     </flux:modal>

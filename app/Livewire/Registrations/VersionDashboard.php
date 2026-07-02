@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Registrations;
 
+use App\Concerns\HasCandidateChecklist;
 use App\Models\Candidate;
 use App\Models\Student;
 use App\Models\Teacher;
@@ -20,6 +21,7 @@ use Livewire\Component;
 #[Layout('components.layouts.app')]
 class VersionDashboard extends Component
 {
+    use HasCandidateChecklist;
     public Version $version;
 
     public string $enroll_student_id = '';
@@ -76,6 +78,19 @@ class VersionDashboard extends Component
         Flux::toast("{$name} has been withdrawn.");
     }
 
+    public function refreshStatus(CandidateService $candidates, int $candidateId): void
+    {
+        $candidate = Candidate::where('id', $candidateId)
+            ->where('teacher_id', $this->teacher()->id)
+            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts'])
+            ->firstOrFail();
+
+        $checklistDefs = $this->checklistDefs($this->version);
+        $candidates->recalculateStatus($candidate, $checklistDefs);
+
+        Flux::toast("{$candidate->program_name} status updated.");
+    }
+
     public function render(): View
     {
         $teacher = $this->teacher();
@@ -101,60 +116,6 @@ class VersionDashboard extends Component
         return view('livewire.registrations.version-dashboard', compact(
             'myCandidates', 'eligibleStudents', 'upcomingDates', 'voiceParts', 'checklistDefs',
         ));
-    }
-
-    /**
-     * Returns the list of checklist item definitions for this version — each is
-     * a label + a closure that takes a Candidate and returns bool (done or not).
-     *
-     * @return list<array{label: string, check: \Closure(Candidate): bool}>
-     */
-    public function checklistDefs(Version $version): array
-    {
-        $items = [
-            [
-                'label' => 'Program name',
-                'check' => fn (Candidate $c): bool => $c->program_name !== '',
-            ],
-        ];
-
-        if ((bool) $version->emergency_contact_name) {
-            $items[] = [
-                'label' => 'Emergency contact',
-                'check' => fn (Candidate $c): bool => $c->emergency_contact_id !== null
-                    || $c->student->emergencyContacts->isNotEmpty(),
-            ];
-        }
-
-        if ((bool) $version->birthday) {
-            $items[] = [
-                'label' => 'Birthday',
-                'check' => fn (Candidate $c): bool => $c->student->birthday !== null,
-            ];
-        }
-
-        if ((bool) $version->height) {
-            $items[] = [
-                'label' => 'Height',
-                'check' => fn (Candidate $c): bool => $c->student->height !== null,
-            ];
-        }
-
-        if ((bool) $version->home_address) {
-            $items[] = [
-                'label' => 'Home address',
-                'check' => fn (Candidate $c): bool => $c->student->homeAddress !== null,
-            ];
-        }
-
-        if ((bool) $version->shirt_size) {
-            $items[] = [
-                'label' => 'Shirt size',
-                'check' => fn (Candidate $c): bool => $c->student->getRawOriginal('shirt_size') !== null,
-            ];
-        }
-
-        return $items;
     }
 
     private function teacher(): Teacher

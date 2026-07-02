@@ -10,8 +10,11 @@ use App\Enums\EventStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
+use App\Models\Ensemble;
+use App\Models\EnsembleGrade;
 use App\Models\Event;
 use App\Models\Version;
+use App\Models\VoicePart;
 use Flux\Flux;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -22,27 +25,45 @@ class Show extends Component
 {
     public Event $event;
 
-    public bool $addingVersion = false;
+    public string $activeTab = 'versions';
 
+    // Version creation
     public string $new_name = '';
 
     public string $new_short_name = '';
 
     public string $new_senior_class_of = '';
 
+    // Ensemble creation/editing
+    public ?int $editingEnsembleId = null;
+
+    public string $ens_name = '';
+
+    public string $ens_short_name = '';
+
+    public string $ens_abbreviation = '';
+
+    /** @var array<int, list<int>> grades per ensemble id */
+    public array $ens_grades = [];
+
+    /** @var array<int, list<int>> voice_part ids per ensemble id */
+    public array $ens_voice_parts = [];
+
     public function mount(Event $event): void
     {
         $this->event = $event;
         $this->new_senior_class_of = (string) ((int) date('Y') + 1);
+        $this->loadEnsembleData();
     }
+
+    // --- Versions ---
 
     public function openAddVersion(): void
     {
-        $this->addingVersion = true;
         $this->new_name = '';
         $this->new_short_name = '';
         $this->new_senior_class_of = (string) ((int) date('Y') + 1);
-        $this->resetValidation();
+        $this->resetValidation(['new_name', 'new_short_name', 'new_senior_class_of']);
     }
 
     public function createVersion(): void
@@ -79,14 +100,107 @@ class Show extends Component
 
         Flux::toast("{$version->name} has been created.");
         $this->dispatch('close-modal', name: 'add-version');
-        $this->addingVersion = false;
-        $this->event->refresh();
+    }
+
+    // --- Ensembles ---
+
+    public function openAddEnsemble(): void
+    {
+        $this->editingEnsembleId = null;
+        $this->ens_name = '';
+        $this->ens_short_name = '';
+        $this->ens_abbreviation = '';
+        $this->resetValidation(['ens_name', 'ens_short_name', 'ens_abbreviation']);
+    }
+
+    public function openEditEnsemble(int $id): void
+    {
+        $ensemble = Ensemble::findOrFail($id);
+        $this->editingEnsembleId = $id;
+        $this->ens_name = $ensemble->name;
+        $this->ens_short_name = $ensemble->short_name ?? '';
+        $this->ens_abbreviation = $ensemble->abbreviation ?? '';
+        $this->resetValidation(['ens_name', 'ens_short_name', 'ens_abbreviation']);
+    }
+
+    public function saveEnsemble(): void
+    {
+        $validated = $this->validate([
+            'ens_name' => ['required', 'string', 'max:255'],
+            'ens_short_name' => ['nullable', 'string', 'max:100'],
+            'ens_abbreviation' => ['nullable', 'string', 'max:20'],
+        ]);
+
+        $data = [
+            'event_id' => $this->event->id,
+            'name' => $validated['ens_name'],
+            'short_name' => $validated['ens_short_name'] ?: null,
+            'abbreviation' => $validated['ens_abbreviation'] ?: null,
+        ];
+
+        if ($this->editingEnsembleId === null) {
+            $ensemble = Ensemble::create($data);
+            $this->ens_grades[$ensemble->id] = [];
+            $this->ens_voice_parts[$ensemble->id] = [];
+            Flux::toast("{$ensemble->name} has been created.");
+        } else {
+            $ensemble = Ensemble::findOrFail($this->editingEnsembleId);
+            $ensemble->update($data);
+            Flux::toast("{$ensemble->name} has been updated.");
+        }
+
+        $this->dispatch('close-modal', name: 'edit-ensemble');
+        $this->editingEnsembleId = null;
+    }
+
+    public function saveEnsembleGrades(int $ensembleId): void
+    {
+        $this->validate([
+            "ens_grades.{$ensembleId}" => ['array'],
+            "ens_grades.{$ensembleId}.*" => ['integer', 'min:1', 'max:12'],
+        ]);
+
+        EnsembleGrade::where('ensemble_id', $ensembleId)->delete();
+
+        foreach ($this->ens_grades[$ensembleId] ?? [] as $grade) {
+            EnsembleGrade::create(['ensemble_id' => $ensembleId, 'grade' => (int) $grade]);
+        }
+
+        Flux::toast('Grades saved.');
+    }
+
+    public function saveEnsembleVoiceParts(int $ensembleId): void
+    {
+        $this->validate([
+            "ens_voice_parts.{$ensembleId}" => ['array'],
+            "ens_voice_parts.{$ensembleId}.*" => ['integer', 'exists:voice_parts,id'],
+        ]);
+
+        $ensemble = Ensemble::findOrFail($ensembleId);
+        $ensemble->voiceParts()->sync($this->ens_voice_parts[$ensembleId] ?? []);
+
+        Flux::toast('Voice parts saved.');
     }
 
     public function render(): View
     {
+        $ensembles = $this->event->ensembles()->with(['grades', 'voiceParts'])->get();
+
         return view('livewire.events.show', [
             'versions' => $this->event->versions()->orderByDesc('senior_class_of')->get(),
+            'ensembles' => $ensembles,
+            'allVoiceParts' => VoicePart::ordered()->get(),
+            'gradeOptions' => range(6, 12),
         ]);
+    }
+
+    private function loadEnsembleData(): void
+    {
+        $ensembles = $this->event->ensembles()->with(['grades', 'voiceParts'])->get();
+
+        foreach ($ensembles as $ensemble) {
+            $this->ens_grades[$ensemble->id] = $ensemble->grades->pluck('grade')->map(fn ($g) => (int) $g)->all();
+            $this->ens_voice_parts[$ensemble->id] = $ensemble->voiceParts->pluck('id')->map(fn ($id) => (int) $id)->all();
+        }
     }
 }

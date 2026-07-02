@@ -16,6 +16,7 @@ use App\Livewire\Founder\MergeStudents as FounderMergeStudents;
 use App\Livewire\Founder\TeacherVerification as FounderTeacherVerification;
 use App\Livewire\Founder\TrackablePages as FounderTrackablePages;
 use App\Livewire\Onboarding\TeacherOnboardingWizard;
+use App\Livewire\Registrations\CandidateDetail;
 use App\Livewire\Registrations\Index as RegistrationsIndex;
 use App\Livewire\Registrations\VersionDashboard;
 use App\Livewire\Schools\Index as SchoolsIndex;
@@ -100,6 +101,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/edit', VersionEdit::class)->name('events.versions.edit');
         Route::get('/registrations', RegistrationsIndex::class)->name('registrations.index');
         Route::get('/registrations/{version}', VersionDashboard::class)->name('registrations.version');
+        Route::get('/registrations/{version}/{candidate}', CandidateDetail::class)->name('registrations.candidate');
     });
 
     Route::get('/settings/profile', Profile::class)->name('settings.profile');

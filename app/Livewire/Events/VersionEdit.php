@@ -14,6 +14,7 @@ use App\Enums\VersionDateType;
 use App\Models\County;
 use App\Models\Version;
 use App\Models\VersionDate;
+use App\Models\VersionEnsembleOrder;
 use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
 use Flux\Flux;
@@ -99,6 +100,9 @@ class VersionEdit extends Component
     /** @var list<int> */
     public array $selected_county_ids = [];
 
+    /** @var array<int, int> ensemble_id → order_by */
+    public array $ensemble_order = [];
+
     public function mount(Version $version): void
     {
         $this->version = $version->load(['dates', 'fees', 'membershipRequirement', 'counties']);
@@ -147,6 +151,12 @@ class VersionEdit extends Component
         $this->membership_valid_thru = $rawValidThru !== null ? (string) $rawValidThru : '';
 
         $this->selected_county_ids = $version->counties->pluck('county_id')->map(fn ($id) => (int) $id)->all();
+
+        $existingOrder = $version->ensembleOrder->keyBy('ensemble_id');
+        foreach ($version->event->ensembles as $ensemble) {
+            $row = $existingOrder->get($ensemble->id);
+            $this->ensemble_order[$ensemble->id] = $row !== null ? (int) $row->order_by : 1;
+        }
     }
 
     public function saveGeneral(): void
@@ -294,6 +304,23 @@ class VersionEdit extends Component
         Flux::toast('Version requirements saved.');
     }
 
+    public function saveEnsembleOrder(): void
+    {
+        $this->validate([
+            'ensemble_order' => ['array'],
+            'ensemble_order.*' => ['required', 'integer', 'min:1', 'max:99'],
+        ]);
+
+        foreach ($this->ensemble_order as $ensembleId => $orderBy) {
+            VersionEnsembleOrder::updateOrCreate(
+                ['version_id' => $this->version->id, 'ensemble_id' => $ensembleId],
+                ['order_by' => (int) $orderBy],
+            );
+        }
+
+        Flux::toast('Ensemble order saved.');
+    }
+
     public function render(): View
     {
         return view('livewire.events.version-edit', [
@@ -305,6 +332,7 @@ class VersionEdit extends Component
             'pitchVisibilities' => PitchFileVisibility::cases(),
             'dateTypes' => VersionDateType::cases(),
             'counties' => County::orderBy('name')->get(),
+            'eventEnsembles' => $this->version->event->ensembles()->orderBy('name')->get(),
         ]);
     }
 }
