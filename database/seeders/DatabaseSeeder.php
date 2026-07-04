@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
             OrganizationSeeder::class,
             EventSeeder::class,
             VersionSeeder::class,
+            VersionDateSeeder::class,
             UserSeeder::class,
             TeacherSeeder::class,
             SchoolTeacherSeeder::class,
