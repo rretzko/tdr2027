@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\User;
+use App\Models\Version;
+use App\Services\VersionRoleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -48,9 +51,9 @@ expect()->extend('toBeOne', function () {
  * Grants $user the given version-scoped role for $version, restoring
  * whatever permissions team context was active beforehand.
  */
-function grantVersionRole(\App\Models\User $user, \App\Models\Version $version, string $role): void
+function grantVersionRole(User $user, Version $version, string $role): void
 {
-    app(\App\Services\VersionRoleService::class)->withVersion($version, fn () => $user->assignRole($role));
+    app(VersionRoleService::class)->withVersion($version, fn () => $user->assignRole($role));
 }
 
 /**
@@ -60,8 +63,8 @@ function grantVersionRole(\App\Models\User $user, \App\Models\Version $version, 
  * full DatabaseSeeder before every test — reuse it rather than colliding
  * with it under the email column's unique constraint.
  */
-function makeFounder(): \App\Models\User
+function makeFounder(): User
 {
-    return \App\Models\User::where('email', 'rick@mfrholdings.com')->first()
-        ?? \App\Models\User::factory()->create(['email' => 'rick@mfrholdings.com']);
+    return User::where('email', 'rick@mfrholdings.com')->first()
+        ?? User::factory()->create(['email' => 'rick@mfrholdings.com']);
 }
