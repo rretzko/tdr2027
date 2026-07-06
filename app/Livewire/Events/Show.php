@@ -15,7 +15,9 @@ use App\Models\EnsembleGrade;
 use App\Models\Event;
 use App\Models\Version;
 use App\Models\VoicePart;
+use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -49,8 +51,10 @@ class Show extends Component
     /** @var array<int, list<int>> voice_part ids per ensemble id */
     public array $ens_voice_parts = [];
 
-    public function mount(Event $event): void
+    public function mount(Event $event, VersionRoleAssignmentService $service): void
     {
+        abort_unless($service->canViewEvent(Auth::user(), $event), 403);
+
         $this->event = $event;
         $this->new_senior_class_of = (string) ((int) date('Y') + 1);
         $this->loadEnsembleData();
@@ -66,8 +70,10 @@ class Show extends Component
         $this->resetValidation(['new_name', 'new_short_name', 'new_senior_class_of']);
     }
 
-    public function createVersion(): void
+    public function createVersion(VersionRoleAssignmentService $service): void
     {
+        abort_unless($service->canManageEvent(Auth::user(), $this->event), 403);
+
         $validated = $this->validate([
             'new_name' => ['required', 'string', 'max:255'],
             'new_short_name' => ['nullable', 'string', 'max:100'],
@@ -123,8 +129,10 @@ class Show extends Component
         $this->resetValidation(['ens_name', 'ens_short_name', 'ens_abbreviation']);
     }
 
-    public function saveEnsemble(): void
+    public function saveEnsemble(VersionRoleAssignmentService $service): void
     {
+        abort_unless($service->canManageEvent(Auth::user(), $this->event), 403);
+
         $validated = $this->validate([
             'ens_name' => ['required', 'string', 'max:255'],
             'ens_short_name' => ['nullable', 'string', 'max:100'],
@@ -153,8 +161,10 @@ class Show extends Component
         $this->editingEnsembleId = null;
     }
 
-    public function saveEnsembleGrades(int $ensembleId): void
+    public function saveEnsembleGrades(int $ensembleId, VersionRoleAssignmentService $service): void
     {
+        abort_unless($service->canManageEvent(Auth::user(), $this->event), 403);
+
         $this->validate([
             "ens_grades.{$ensembleId}" => ['array'],
             "ens_grades.{$ensembleId}.*" => ['integer', 'min:1', 'max:12'],
@@ -169,8 +179,10 @@ class Show extends Component
         Flux::toast('Grades saved.');
     }
 
-    public function saveEnsembleVoiceParts(int $ensembleId): void
+    public function saveEnsembleVoiceParts(int $ensembleId, VersionRoleAssignmentService $service): void
     {
+        abort_unless($service->canManageEvent(Auth::user(), $this->event), 403);
+
         $this->validate([
             "ens_voice_parts.{$ensembleId}" => ['array'],
             "ens_voice_parts.{$ensembleId}.*" => ['integer', 'exists:voice_parts,id'],
@@ -182,7 +194,7 @@ class Show extends Component
         Flux::toast('Voice parts saved.');
     }
 
-    public function render(): View
+    public function render(VersionRoleAssignmentService $service): View
     {
         $ensembles = $this->event->ensembles()->with(['grades', 'voiceParts'])->get();
 
@@ -191,6 +203,7 @@ class Show extends Component
             'ensembles' => $ensembles,
             'allVoiceParts' => VoicePart::ordered()->get(),
             'gradeOptions' => range(6, 12),
+            'canManageEvent' => $service->canManageEvent(Auth::user(), $this->event),
         ]);
     }
 

@@ -16,6 +16,7 @@
         <flux:tab name="dates">Dates</flux:tab>
         <flux:tab name="fees">Fees</flux:tab>
         <flux:tab name="requirements">Requirements</flux:tab>
+        <flux:tab name="roles">Roles</flux:tab>
 
         {{-- General --}}
         <flux:tab.panel name="general">
@@ -308,6 +309,66 @@
                 <flux:button variant="primary" wire:click="saveRequirements">
                     Save Requirements
                 </flux:button>
+            </div>
+        </flux:tab.panel>
+
+        {{-- Roles --}}
+        <flux:tab.panel name="roles">
+            <div class="mt-6 space-y-6 max-w-2xl">
+                @foreach ($assignableRoles as $role)
+                    <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4">
+                        <flux:heading size="sm" class="mb-3">{{ $role }}</flux:heading>
+
+                        @php $users = $roleAssignments->get($role); @endphp
+                        @if ($users->isEmpty())
+                            <flux:text size="sm" class="text-zinc-400">No one assigned.</flux:text>
+                        @else
+                            <div class="space-y-2">
+                                @foreach ($users as $user)
+                                    <div class="flex items-center justify-between gap-3">
+                                        <span class="text-sm">{{ $user->name }} <span class="text-zinc-400">({{ $user->email }})</span></span>
+                                        @if ($canManageRoles)
+                                            <flux:button
+                                                size="sm" variant="ghost" icon="x-mark"
+                                                wire:click="revokeRole({{ $user->id }}, '{{ $role }}')"
+                                                wire:confirm="Remove {{ $user->name }} as {{ $role }}?"
+                                            >
+                                                Remove
+                                            </flux:button>
+                                        @endif
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+                @endforeach
+
+                @if ($canManageRoles)
+                    <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 space-y-4">
+                        <flux:heading size="sm">Assign a Role</flux:heading>
+
+                        <flux:field>
+                            <flux:label>Email</flux:label>
+                            <flux:input wire:model="assign_email" placeholder="person@example.com" />
+                            <flux:error name="assign_email" />
+                        </flux:field>
+
+                        <flux:field>
+                            <flux:label>Role</flux:label>
+                            <flux:select wire:model="assign_role">
+                                <flux:select.option value="">— select role —</flux:select.option>
+                                @foreach ($assignableRoles as $role)
+                                    <flux:select.option value="{{ $role }}">{{ $role }}</flux:select.option>
+                                @endforeach
+                            </flux:select>
+                            <flux:error name="assign_role" />
+                        </flux:field>
+
+                        <flux:button variant="primary" wire:click="assignRole">
+                            Assign Role
+                        </flux:button>
+                    </div>
+                @endif
             </div>
         </flux:tab.panel>
     </flux:tabs>

@@ -2,11 +2,13 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <flux:heading size="xl">Events</flux:heading>
 
-        <flux:modal.trigger name="edit-event">
-            <flux:button variant="primary" icon="plus" wire:click="add">
-                Add event
-            </flux:button>
-        </flux:modal.trigger>
+        @if ($isFounder)
+            <flux:modal.trigger name="edit-event">
+                <flux:button variant="primary" icon="plus" wire:click="add">
+                    Add event
+                </flux:button>
+            </flux:modal.trigger>
+        @endif
     </div>
 
     {{-- Cards below md:, full table at md:+ --}}
@@ -36,9 +38,11 @@
                             <flux:button size="sm" :href="route('events.show', $event)" wire:navigate>
                                 Versions
                             </flux:button>
-                            <flux:modal.trigger name="edit-event">
-                                <flux:button size="sm" variant="ghost" icon="pencil" wire:click="edit({{ $event->id }})" />
-                            </flux:modal.trigger>
+                            @if ($isFounder)
+                                <flux:modal.trigger name="edit-event">
+                                    <flux:button size="sm" variant="ghost" icon="pencil" wire:click="edit({{ $event->id }})" />
+                                </flux:modal.trigger>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -89,9 +93,11 @@
                             <flux:button size="sm" :href="route('events.show', $event)" wire:navigate>
                                 Versions
                             </flux:button>
-                            <flux:modal.trigger name="edit-event">
-                                <flux:button size="sm" variant="ghost" icon="pencil" wire:click="edit({{ $event->id }})" />
-                            </flux:modal.trigger>
+                            @if ($isFounder)
+                                <flux:modal.trigger name="edit-event">
+                                    <flux:button size="sm" variant="ghost" icon="pencil" wire:click="edit({{ $event->id }})" />
+                                </flux:modal.trigger>
+                            @endif
                         </div>
                     </flux:table.cell>
                 </flux:table.row>

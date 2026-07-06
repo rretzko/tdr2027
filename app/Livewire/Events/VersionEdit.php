@@ -12,12 +12,15 @@ use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
 use App\Enums\VersionDateType;
 use App\Models\County;
+use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
+use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -103,8 +106,15 @@ class VersionEdit extends Component
     /** @var array<int, int> ensemble_id → order_by */
     public array $ensemble_order = [];
 
-    public function mount(Version $version): void
+    // Roles tab
+    public string $assign_email = '';
+
+    public string $assign_role = '';
+
+    public function mount(Version $version, VersionRoleAssignmentService $service): void
     {
+        abort_unless($service->canAccessVersion(Auth::user(), $version), 403);
+
         $this->version = $version->load(['dates', 'fees', 'membershipRequirement', 'counties']);
 
         $this->name = $version->name;
@@ -321,7 +331,40 @@ class VersionEdit extends Component
         Flux::toast('Ensemble order saved.');
     }
 
-    public function render(): View
+    public function assignRole(VersionRoleAssignmentService $service): void
+    {
+        $validated = $this->validate([
+            'assign_email' => ['required', 'email'],
+            'assign_role' => ['required', 'string', 'in:'.implode(',', $service->assignableRoleNames())],
+        ]);
+
+        $targetUser = User::where('email', $validated['assign_email'])->first();
+
+        if ($targetUser === null) {
+            $this->addError('assign_email', 'No user found with that email address.');
+
+            return;
+        }
+
+        $service->assignRole(Auth::user(), $this->version, $targetUser, $validated['assign_role']);
+
+        $this->assign_email = '';
+        $this->assign_role = '';
+        $this->resetValidation();
+
+        Flux::toast("{$targetUser->name} assigned as {$validated['assign_role']}.");
+    }
+
+    public function revokeRole(VersionRoleAssignmentService $service, int $userId, string $role): void
+    {
+        $targetUser = User::findOrFail($userId);
+
+        $service->revokeRole(Auth::user(), $this->version, $targetUser, $role);
+
+        Flux::toast("{$targetUser->name} removed as {$role}.");
+    }
+
+    public function render(VersionRoleAssignmentService $service): View
     {
         return view('livewire.events.version-edit', [
             'statuses' => EventStatus::cases(),
@@ -333,6 +376,9 @@ class VersionEdit extends Component
             'dateTypes' => VersionDateType::cases(),
             'counties' => County::orderBy('name')->get(),
             'eventEnsembles' => $this->version->event->ensembles()->orderBy('name')->get(),
+            'roleAssignments' => $service->assignmentsForVersion($this->version),
+            'canManageRoles' => $service->canManageVersionRoles(Auth::user(), $this->version),
+            'assignableRoles' => $service->assignableRoleNames(),
         ]);
     }
 }

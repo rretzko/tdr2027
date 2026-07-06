@@ -8,7 +8,9 @@ use App\Enums\EventStatus;
 use App\Enums\Frequency;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -34,6 +36,8 @@ class Index extends Component
 
     public function add(): void
     {
+        abort_unless(Auth::user()->isFounder(), 403);
+
         $this->editingEventId = null;
         $this->edit_name = '';
         $this->edit_short_name = '';
@@ -47,6 +51,8 @@ class Index extends Component
 
     public function edit(int $id): void
     {
+        abort_unless(Auth::user()->isFounder(), 403);
+
         $event = Event::findOrFail($id);
         $this->editingEventId = $id;
         $this->edit_name = $event->name;
@@ -61,6 +67,8 @@ class Index extends Component
 
     public function save(): void
     {
+        abort_unless(Auth::user()->isFounder(), 403);
+
         $validated = $this->validate([
             'edit_name' => ['required', 'string', 'max:255'],
             'edit_short_name' => ['nullable', 'string', 'max:100'],
@@ -95,15 +103,24 @@ class Index extends Component
         $this->dispatch('close-modal', name: 'edit-event');
     }
 
-    public function render(): View
+    public function render(VersionRoleAssignmentService $service): View
     {
+        $user = Auth::user();
+
+        $events = Event::with('organization')
+            ->when(
+                ! $user->isFounder(),
+                fn ($query) => $query->whereIn('id', $service->eventIdsVisibleTo($user)),
+            )
+            ->orderBy('name')
+            ->get();
+
         return view('livewire.events.index', [
-            'events' => Event::with('organization')
-                ->orderBy('name')
-                ->get(),
+            'events' => $events,
             'organizations' => Organization::orderBy('name')->get(),
             'statuses' => EventStatus::cases(),
             'frequencies' => Frequency::cases(),
+            'isFounder' => $user->isFounder(),
         ]);
     }
 }

@@ -20,8 +20,10 @@ use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
+use App\Services\VersionRoleAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 uses(RefreshDatabase::class);
 
@@ -36,6 +38,7 @@ function makeVersionEditUser(): User
 test('mount populates the general tab fields from the Version', function () {
     $user = makeVersionEditUser();
     $version = Version::factory()->create(['name' => 'Spring 2027 Chorus', 'judge_count' => 3]);
+    grantVersionRole($user, $version, 'Event Manager');
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
@@ -46,6 +49,7 @@ test('mount populates the general tab fields from the Version', function () {
 test('saveGeneral updates the Version record', function () {
     $user = makeVersionEditUser();
     $version = Version::factory()->create(['name' => 'Old Name']);
+    grantVersionRole($user, $version, 'Event Manager');
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
@@ -66,6 +70,7 @@ test('saveGeneral updates the Version record', function () {
 test('saveGeneral requires a name', function () {
     $user = makeVersionEditUser();
     $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
@@ -77,6 +82,7 @@ test('saveGeneral requires a name', function () {
 test('saveDates creates rows for each populated VersionDateType', function () {
     $user = makeVersionEditUser();
     $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
@@ -98,6 +104,7 @@ test('saveDates creates rows for each populated VersionDateType', function () {
 test('saveDates rejects an end_at before start_at for date types with a window', function () {
     $user = makeVersionEditUser();
     $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
@@ -117,6 +124,7 @@ test('saveDates removes a date row when its start is cleared', function () {
         'start_at' => now(),
         'end_at' => null,
     ]);
+    grantVersionRole($user, $version, 'Event Manager');
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
@@ -130,6 +138,7 @@ test('saveDates removes a date row when its start is cleared', function () {
 test('saveFees converts dollar input to cents on the VersionFee row', function () {
     $user = makeVersionEditUser();
     $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
@@ -153,6 +162,7 @@ test('saveRequirements saves membership requirement and syncs selected counties'
     $version = Version::factory()->create();
     $countyA = County::factory()->create();
     $countyB = County::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
@@ -174,6 +184,7 @@ test('saveEnsembleOrder persists the order_by value for each ensemble', function
     $version = Version::factory()->create(['event_id' => $event->id]);
     $first = Ensemble::factory()->create(['event_id' => $event->id]);
     $second = Ensemble::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $version, 'Event Manager');
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
@@ -184,4 +195,106 @@ test('saveEnsembleOrder persists the order_by value for each ensemble', function
 
     expect(VersionEnsembleOrder::where('version_id', $version->id)->where('ensemble_id', $first->id)->value('order_by'))->toBe(2);
     expect(VersionEnsembleOrder::where('version_id', $version->id)->where('ensemble_id', $second->id)->value('order_by'))->toBe(1);
+});
+
+test('mount aborts with 403 for a user holding no version-scoped role on the Version', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertStatus(403);
+});
+
+test('mount allows a user holding any of the 6 version-scoped roles, not just Event Manager', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Tab Room Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertOk();
+});
+
+test('mount allows Founder regardless of any role assignment', function () {
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+
+    Livewire::actingAs($founder)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertOk();
+});
+
+test('the Roles tab shows current assignments and lets an Event Manager assign a new role', function () {
+    $eventManager = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    $newHire = User::factory()->create(['email' => 'newhire@example.com']);
+
+    Livewire::actingAs($eventManager)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('assign_email', 'newhire@example.com')
+        ->set('assign_role', 'Registration Manager')
+        ->call('assignRole')
+        ->assertHasNoErrors()
+        ->assertSet('assign_email', '')
+        ->assertSet('assign_role', '');
+
+    expect(
+        app(VersionRoleAssignmentService::class)
+            ->assignmentsForVersion($version)
+            ->get('Registration Manager')
+            ->pluck('id'),
+    )->toContain($newHire->id);
+});
+
+test('assignRole shows a field error when no user exists with that email', function () {
+    $eventManager = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    Livewire::actingAs($eventManager)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('assign_email', 'nobody@example.com')
+        ->set('assign_role', 'Registration Manager')
+        ->call('assignRole')
+        ->assertHasErrors('assign_email');
+});
+
+test('a Registration Manager can see the Roles tab but cannot assign or revoke roles', function () {
+    $registrationManager = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($registrationManager, $version, 'Registration Manager');
+
+    $someoneElse = User::factory()->create();
+
+    Livewire::actingAs($registrationManager)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertOk()
+        ->assertViewHas('canManageRoles', false);
+
+    expect(fn () => app(VersionRoleAssignmentService::class)
+        ->assignRole($registrationManager, $version, $someoneElse, 'Tab Room Manager'))
+        ->toThrow(HttpException::class);
+});
+
+test('revokeRole removes an assignment when called by an Event Manager', function () {
+    $eventManager = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    $rehearsalManager = User::factory()->create();
+    grantVersionRole($rehearsalManager, $version, 'Rehearsal Manager');
+
+    Livewire::actingAs($eventManager)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->call('revokeRole', $rehearsalManager->id, 'Rehearsal Manager');
+
+    expect(
+        app(VersionRoleAssignmentService::class)
+            ->assignmentsForVersion($version)
+            ->get('Rehearsal Manager')
+            ->pluck('id'),
+    )->not->toContain($rehearsalManager->id);
 });

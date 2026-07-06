@@ -44,7 +44,24 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * Grants $user the given version-scoped role for $version, restoring
+ * whatever permissions team context was active beforehand.
+ */
+function grantVersionRole(\App\Models\User $user, \App\Models\Version $version, string $role): void
 {
-    // ..
+    app(\App\Services\VersionRoleService::class)->withVersion($version, fn () => $user->assignRole($role));
+}
+
+/**
+ * Returns a User whose email satisfies App\Models\User::isFounder(). The
+ * gitignored local seed data (database/seeders/data/users.csv) may already
+ * contain a row for the real Founder email, since $seed = true runs the
+ * full DatabaseSeeder before every test — reuse it rather than colliding
+ * with it under the email column's unique constraint.
+ */
+function makeFounder(): \App\Models\User
+{
+    return \App\Models\User::where('email', 'rick@mfrholdings.com')->first()
+        ?? \App\Models\User::factory()->create(['email' => 'rick@mfrholdings.com']);
 }

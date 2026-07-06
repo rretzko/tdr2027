@@ -36,13 +36,15 @@
         <flux:tab name="ensembles">Ensembles</flux:tab>
 
         <flux:tab.panel name="versions">
-            <div class="flex justify-end mb-4">
-                <flux:modal.trigger name="add-version">
-                    <flux:button variant="primary" icon="plus" wire:click="openAddVersion">
-                        Add Version
-                    </flux:button>
-                </flux:modal.trigger>
-            </div>
+            @if ($canManageEvent)
+                <div class="flex justify-end mb-4">
+                    <flux:modal.trigger name="add-version">
+                        <flux:button variant="primary" icon="plus" wire:click="openAddVersion">
+                            Add Version
+                        </flux:button>
+                    </flux:modal.trigger>
+                </div>
+            @endif
 
             {{-- Versions — cards below md:, table at md:+ --}}
             <div class="md:hidden space-y-3">
@@ -126,13 +128,15 @@
         </flux:tab.panel>
 
         <flux:tab.panel name="ensembles">
-            <div class="flex justify-end mb-4">
-                <flux:modal.trigger name="edit-ensemble">
-                    <flux:button variant="primary" icon="plus" wire:click="openAddEnsemble">
-                        Add Ensemble
-                    </flux:button>
-                </flux:modal.trigger>
-            </div>
+            @if ($canManageEvent)
+                <div class="flex justify-end mb-4">
+                    <flux:modal.trigger name="edit-ensemble">
+                        <flux:button variant="primary" icon="plus" wire:click="openAddEnsemble">
+                            Add Ensemble
+                        </flux:button>
+                    </flux:modal.trigger>
+                </div>
+            @endif
 
             @forelse ($ensembles as $ensemble)
                 <flux:card class="mb-4">
@@ -150,11 +154,13 @@
                                 <flux:text size="sm" class="text-zinc-500">{{ $ensemble->short_name }}</flux:text>
                             @endif
                         </div>
-                        <flux:modal.trigger name="edit-ensemble">
-                            <flux:button size="sm" variant="ghost" icon="pencil" wire:click="openEditEnsemble({{ $ensemble->id }})">
-                                Edit
-                            </flux:button>
-                        </flux:modal.trigger>
+                        @if ($canManageEvent)
+                            <flux:modal.trigger name="edit-ensemble">
+                                <flux:button size="sm" variant="ghost" icon="pencil" wire:click="openEditEnsemble({{ $ensemble->id }})">
+                                    Edit
+                                </flux:button>
+                            </flux:modal.trigger>
+                        @endif
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -172,9 +178,11 @@
                                     </label>
                                 @endforeach
                             </div>
-                            <flux:button size="sm" wire:click="saveEnsembleGrades({{ $ensemble->id }})">
-                                Save Grades
-                            </flux:button>
+                            @if ($canManageEvent)
+                                <flux:button size="sm" wire:click="saveEnsembleGrades({{ $ensemble->id }})">
+                                    Save Grades
+                                </flux:button>
+                            @endif
                         </div>
 
                         {{-- Voice Parts --}}
@@ -191,9 +199,11 @@
                                     </label>
                                 @endforeach
                             </div>
-                            <flux:button size="sm" wire:click="saveEnsembleVoiceParts({{ $ensemble->id }})">
-                                Save Voice Parts
-                            </flux:button>
+                            @if ($canManageEvent)
+                                <flux:button size="sm" wire:click="saveEnsembleVoiceParts({{ $ensemble->id }})">
+                                    Save Voice Parts
+                                </flux:button>
+                            @endif
                         </div>
                     </div>
                 </flux:card>
