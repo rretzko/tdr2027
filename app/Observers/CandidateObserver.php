@@ -19,10 +19,13 @@ class CandidateObserver
 
     public function created(Candidate $candidate): void
     {
+        // getRawOriginal() is unreliable here: $original isn't synced until
+        // after the "created" event fires, so it reads back null for a
+        // brand-new model. Read the just-set attribute directly instead.
         CandidateStatusHistory::create([
             'candidate_id' => $candidate->id,
             'from_status' => null,
-            'to_status' => $candidate->getRawOriginal('status'),
+            'to_status' => $candidate->getAttributes()['status'],
             'user_id' => Auth::id(),
             'notes' => null,
         ]);
@@ -34,12 +37,12 @@ class CandidateObserver
             return;
         }
 
-        $fromRaw = $candidate->getOriginal('status');
-
+        // getOriginal() applies the enum cast, so it can't be compared as a
+        // string — getRawOriginal() reads the pre-change value un-cast.
         CandidateStatusHistory::create([
             'candidate_id' => $candidate->id,
-            'from_status' => is_string($fromRaw) ? $fromRaw : null,
-            'to_status' => $candidate->getRawOriginal('status'),
+            'from_status' => $candidate->getRawOriginal('status'),
+            'to_status' => $candidate->getAttributes()['status'],
             'user_id' => Auth::id(),
             'notes' => null,
         ]);

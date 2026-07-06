@@ -37,13 +37,14 @@ test('InstrumentSeeder seeds 28 instruments ordered by sort_order', function () 
     expect(Instrument::ordered()->first()->name)->toBe('Flute');
 });
 
-test('RolesSeeder creates all 10 roles on the web guard', function () {
-    expect(Role::where('guard_name', 'web')->count())->toBe(10);
+test('RolesSeeder creates all 11 roles on the web guard', function () {
+    expect(Role::where('guard_name', 'web')->count())->toBe(11);
     expect(Role::where('name', 'Founder/Admin')->where('guard_name', 'web')->exists())->toBeTrue();
+    expect(Role::where('name', 'Co-Registration Manager')->where('guard_name', 'web')->exists())->toBeTrue();
 });
 
 test('RolesSeeder is idempotent', function () {
     (new RolesSeeder)->run();
 
-    expect(Role::where('guard_name', 'web')->count())->toBe(10);
+    expect(Role::where('guard_name', 'web')->count())->toBe(11);
 });

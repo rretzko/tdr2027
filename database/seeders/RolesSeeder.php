@@ -7,6 +7,15 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
 
+/**
+ * Seeds shared role *definitions* only. Version-scoping happens at
+ * *assignment* time — see App\Services\VersionRoleService — so every role
+ * here is created once as a version_id = null row, shared across all
+ * Versions, whether it's actually assigned globally (Teacher, Student,
+ * Judge, Teacher_Supervisor, Founder/Admin) or per-Version (Event Manager,
+ * Registration Manager, Co-Registration Manager, Web Registration Manager,
+ * Tab Room Manager, Rehearsal Manager).
+ */
 class RolesSeeder extends Seeder
 {
     /**
@@ -16,6 +25,7 @@ class RolesSeeder extends Seeder
         'Founder/Admin',
         'Event Manager',
         'Registration Manager',
+        'Co-Registration Manager',
         'Web Registration Manager',
         'Tab Room Manager',
         'Rehearsal Manager',

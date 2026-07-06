@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['version_id', 'ensemble_id', 'order_by'])]
 class VersionEnsembleOrder extends Model
 {
+    protected $table = 'version_ensemble_order';
+
     /**
      * @return BelongsTo<Version, $this>
      */

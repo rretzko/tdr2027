@@ -3,6 +3,7 @@
 use App\Http\Middleware\EnsureTeacherHasActiveSchool;
 use App\Http\Middleware\EnsureTeacherOnboardingComplete;
 use App\Http\Middleware\EnsureUserIsFounder;
+use App\Http\Middleware\ResetVersionRoleContext;
 use App\Http\Middleware\TrackVisitedPage;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -21,6 +22,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'has.active.school' => EnsureTeacherHasActiveSchool::class,
             'founder' => EnsureUserIsFounder::class,
         ]);
+
+        $middleware->prepend(ResetVersionRoleContext::class);
 
         $middleware->web(append: [TrackVisitedPage::class]);
     })

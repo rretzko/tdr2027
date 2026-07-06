@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['candidate_id', 'from_status', 'to_status', 'user_id', 'notes'])]
 class CandidateStatusHistory extends Model
 {
+    protected $table = 'candidate_status_history';
+
     public $timestamps = false;
 
     /**

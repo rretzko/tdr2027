@@ -6,8 +6,10 @@ namespace App\Models;
 
 use App\Enums\CandidateStatus;
 use App\Observers\CandidateObserver;
+use Database\Factories\CandidateFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -19,6 +21,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[ObservedBy(CandidateObserver::class)]
 class Candidate extends Model
 {
+    /** @use HasFactory<CandidateFactory> */
+    use HasFactory;
+
     public $incrementing = false;
 
     protected $keyType = 'integer';

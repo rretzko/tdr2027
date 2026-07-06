@@ -63,11 +63,22 @@ return new class extends Migration
                 ->on($tableNames['permissions'])
                 ->cascadeOnDelete();
             if ($teams) {
-                $table->unsignedBigInteger($columnNames['team_foreign_key']);
+                // Diverges from the vendor stub here: the stock migration makes
+                // the team column part of a composite primary key, which forces
+                // it NOT NULL on MySQL/InnoDB even though the Blueprint doesn't
+                // say so — that breaks "global" (version_id = null) assignments
+                // entirely. A surrogate id() + a plain unique index keeps the
+                // column nullable while still preventing duplicate assignments
+                // in practice (assignRole() already dedupes before attaching).
+                // See database/migrations/*_add_version_id_to_permission_tables.php
+                // for the matching retrofit of the already-migrated dev DB.
+                $table->unsignedBigInteger($columnNames['team_foreign_key'])->nullable();
                 $table->index($columnNames['team_foreign_key'], 'model_has_permissions_team_foreign_key_index');
+                $table->foreign($columnNames['team_foreign_key'])->references('id')->on('versions')->cascadeOnDelete();
 
-                $table->primary([$columnNames['team_foreign_key'], $pivotPermission, $columnNames['model_morph_key'], 'model_type'],
-                    'model_has_permissions_permission_model_type_primary');
+                $table->id();
+                $table->unique([$columnNames['team_foreign_key'], $pivotPermission, $columnNames['model_morph_key'], 'model_type'],
+                    'model_has_permissions_permission_model_type_unique');
             } else {
                 $table->primary([$pivotPermission, $columnNames['model_morph_key'], 'model_type'],
                     'model_has_permissions_permission_model_type_primary');
@@ -86,11 +97,15 @@ return new class extends Migration
                 ->on($tableNames['roles'])
                 ->cascadeOnDelete();
             if ($teams) {
-                $table->unsignedBigInteger($columnNames['team_foreign_key']);
+                // See the matching comment in the model_has_permissions block
+                // above — same composite-PK-forces-NOT-NULL issue and fix.
+                $table->unsignedBigInteger($columnNames['team_foreign_key'])->nullable();
                 $table->index($columnNames['team_foreign_key'], 'model_has_roles_team_foreign_key_index');
+                $table->foreign($columnNames['team_foreign_key'])->references('id')->on('versions')->cascadeOnDelete();
 
-                $table->primary([$columnNames['team_foreign_key'], $pivotRole, $columnNames['model_morph_key'], 'model_type'],
-                    'model_has_roles_role_model_type_primary');
+                $table->id();
+                $table->unique([$columnNames['team_foreign_key'], $pivotRole, $columnNames['model_morph_key'], 'model_type'],
+                    'model_has_roles_role_model_type_unique');
             } else {
                 $table->primary([$pivotRole, $columnNames['model_morph_key'], 'model_type'],
                     'model_has_roles_role_model_type_primary');
