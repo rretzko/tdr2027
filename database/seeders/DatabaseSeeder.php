@@ -30,6 +30,7 @@ class DatabaseSeeder extends Seeder
             VersionCountySeeder::class,
             VersionEnsembleOrderSeeder::class,
             VersionFeeSeeder::class,
+            VersionMembershipRequirementSeeder::class,
             UserSeeder::class,
             TeacherSeeder::class,
             SchoolTeacherSeeder::class,
