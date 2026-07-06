@@ -25,6 +25,8 @@ class DatabaseSeeder extends Seeder
             OrganizationSeeder::class,
             EventSeeder::class,
             EnsembleSeeder::class,
+            EnsembleGradeSeeder::class,
+            EnsembleVoicePartSeeder::class,
             VersionSeeder::class,
             VersionDateSeeder::class,
             VersionCountySeeder::class,
@@ -37,6 +39,7 @@ class DatabaseSeeder extends Seeder
             StudentSeeder::class,
             SchoolStudentSeeder::class,
             StudentTeacherSeeder::class,
+            VersionRoleSeeder::class,
         ]);
 
         User::factory()->create([
