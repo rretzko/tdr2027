@@ -70,11 +70,12 @@ return new class extends Migration
                 // entirely. A surrogate id() + a plain unique index keeps the
                 // column nullable while still preventing duplicate assignments
                 // in practice (assignRole() already dedupes before attaching).
-                // See database/migrations/*_add_version_id_to_permission_tables.php
-                // for the matching retrofit of the already-migrated dev DB.
+                // No FK here: this migration runs before the versions table
+                // exists. See *_add_version_id_to_permission_tables.php, which
+                // adds the FK once versions exists (and retrofits an
+                // already-migrated dev DB that predates this column).
                 $table->unsignedBigInteger($columnNames['team_foreign_key'])->nullable();
                 $table->index($columnNames['team_foreign_key'], 'model_has_permissions_team_foreign_key_index');
-                $table->foreign($columnNames['team_foreign_key'])->references('id')->on('versions')->cascadeOnDelete();
 
                 $table->id();
                 $table->unique([$columnNames['team_foreign_key'], $pivotPermission, $columnNames['model_morph_key'], 'model_type'],
@@ -98,10 +99,10 @@ return new class extends Migration
                 ->cascadeOnDelete();
             if ($teams) {
                 // See the matching comment in the model_has_permissions block
-                // above — same composite-PK-forces-NOT-NULL issue and fix.
+                // above — same composite-PK-forces-NOT-NULL issue and fix, and
+                // same reason there's no FK here (versions doesn't exist yet).
                 $table->unsignedBigInteger($columnNames['team_foreign_key'])->nullable();
                 $table->index($columnNames['team_foreign_key'], 'model_has_roles_team_foreign_key_index');
-                $table->foreign($columnNames['team_foreign_key'])->references('id')->on('versions')->cascadeOnDelete();
 
                 $table->id();
                 $table->unique([$columnNames['team_foreign_key'], $pivotRole, $columnNames['model_morph_key'], 'model_type'],
