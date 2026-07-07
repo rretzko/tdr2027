@@ -92,4 +92,12 @@ class Teacher extends Model
     {
         return $this->hasMany(EventInvitationRequest::class);
     }
+
+    /**
+     * @return HasMany<VersionInvitation, $this>
+     */
+    public function versionInvitations(): HasMany
+    {
+        return $this->hasMany(VersionInvitation::class);
+    }
 }

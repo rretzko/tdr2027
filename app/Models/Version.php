@@ -139,6 +139,14 @@ class Version extends Model
     }
 
     /**
+     * @return HasMany<VersionInvitation, $this>
+     */
+    public function invitations(): HasMany
+    {
+        return $this->hasMany(VersionInvitation::class);
+    }
+
+    /**
      * @return Attribute<int, never>
      */
     protected function uploadFileCount(): Attribute

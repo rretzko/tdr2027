@@ -11,6 +11,7 @@ use App\Livewire\Auth\TeacherRegister;
 use App\Livewire\Events\Index as EventsIndex;
 use App\Livewire\Events\Show as EventsShow;
 use App\Livewire\Events\VersionEdit;
+use App\Livewire\Events\VersionInvitations;
 use App\Livewire\Founder\Impersonate as FounderImpersonate;
 use App\Livewire\Founder\MergeStudents as FounderMergeStudents;
 use App\Livewire\Founder\TeacherVerification as FounderTeacherVerification;
@@ -99,6 +100,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events', EventsIndex::class)->name('events.index');
         Route::get('/events/{event}', EventsShow::class)->name('events.show');
         Route::get('/events/versions/{version}/edit', VersionEdit::class)->name('events.versions.edit');
+        Route::get('/events/versions/{version}/invitations', VersionInvitations::class)->name('events.versions.invitations');
         Route::get('/registrations', RegistrationsIndex::class)->name('registrations.index');
         Route::get('/registrations/{version}', VersionDashboard::class)->name('registrations.version');
         Route::get('/registrations/{version}/{candidate}', CandidateDetail::class)->name('registrations.candidate');

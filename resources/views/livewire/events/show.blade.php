@@ -73,6 +73,11 @@
                                 <flux:button size="sm" :href="route('events.versions.edit', $version)" wire:navigate>
                                     Configure
                                 </flux:button>
+                                @if ($canManageEvent)
+                                    <flux:button size="sm" variant="ghost" :href="route('events.versions.invitations', $version)" wire:navigate>
+                                        Invitations
+                                    </flux:button>
+                                @endif
                             </div>
                         </div>
                     </flux:card>
@@ -111,10 +116,15 @@
                                 @endif
                             </flux:table.cell>
                             <flux:table.cell>
-                                <div class="flex justify-end">
+                                <div class="flex justify-end gap-2">
                                     <flux:button size="sm" :href="route('events.versions.edit', $version)" wire:navigate>
                                         Configure
                                     </flux:button>
+                                    @if ($canManageEvent)
+                                        <flux:button size="sm" variant="ghost" :href="route('events.versions.invitations', $version)" wire:navigate>
+                                            Invitations
+                                        </flux:button>
+                                    @endif
                                 </div>
                             </flux:table.cell>
                         </flux:table.row>

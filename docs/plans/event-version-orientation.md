@@ -429,6 +429,51 @@ Roles are granted relative to the Version via Spatie. The defined roles are:
 - Tab Room Manager
 - Rehearsal Manager
 
+### 5.4 Version Invitations (Event Manager controls who may participate)
+
+The Event Manager builds and maintains the invitation list for a Version: the set of teachers permitted to enroll Candidates. Confirmed 2026-07-07.
+
+**Eligibility pool (computed, not stored).** A teacher is eligible for a Version if they have at least one active + verified school (`Teacher::hasActiveSchool()`) **and** satisfy at least one of:
+
+- **County leg:** any of the teacher's active + verified schools has a `county_id` present in that Version's `version_counties`. If the Version has **zero** `version_counties` rows, the county leg is unrestricted — it passes for every active+verified teacher (the Version isn't geographically scoped).
+- **Membership leg:** the teacher has **any** `Membership` row (regardless of `membership_expires_at`) for the Version's Event's root organization (`Organization::membershipOrganization()`). Expired memberships still satisfy this leg; `membership_expires_at` is displayed for the Event Manager's own judgment, not enforced as a hard gate here.
+
+This mirrors the existing `EligibilityService` pattern (computed pool, not a persisted table) — implement as a new `VersionInvitationEligibilityService`, not by pre-seeding rows.
+
+**`version_invitations` table** — new, this phase:
+
+| Column                | Type          | Null | Default | Notes                                                                                     |
+|------------------------|---------------|------|---------|---------------------------------------------------------------------------------------------|
+| `id`                   | bigIncrements | no   | —       | PK                                                                                           |
+| `version_id`           | foreignId     | no   | —       | FK → versions; cascade on delete                                                             |
+| `teacher_id`           | foreignId     | no   | —       | FK → teachers; cascade on delete                                                             |
+| `status`               | enum          | no   | invited | `VersionInvitationStatus` (§8.8) — `invited \| obligated \| participating`. No `eligible` case: absence of a row **is** "eligible" (see below). |
+| `invited_at`           | timestamp     | no   | —       | Set when the row is created                                                                  |
+| `invited_by_user_id`   | foreignId     | no   | —       | FK → users; who performed the invite                                                         |
+| `created_at`/`updated_at` | timestamp  | yes  | null    | Laravel timestamps                                                                            |
+
+Unique on (`version_id`, `teacher_id`).
+
+**Status derivation for display.** A teacher's displayed status is: no `version_invitations` row → `eligible`; row exists → the row's `status` column (`invited` by default at creation). `obligated` and `participating` are reserved enum cases — this phase does not set them. They will be written by the not-yet-built registration workflow (a teacher reaches `obligated` by agreeing to Version obligations during registration; `participating` follows from there). Do not scaffold that trigger now.
+
+**Invite / uninvite mechanics.**
+
+- Checking a teacher's checkbox and saving creates a `version_invitations` row (`status = invited`, `invited_at = now()`, `invited_by_user_id = auth()->id()`).
+- Unchecking an already-invited teacher deletes their row, reverting them to computed `eligible`.
+- **Invite All** creates rows for every currently-listed teacher with no existing row.
+- **Remove All** deletes rows for every currently-listed teacher whose status is `invited`.
+- **Guard:** attempting to uninvite (individually or via Remove All) a teacher whose row status is `obligated` or `participating` must be blocked with an explanation, not silently skipped or hidden — consistent with this project's guarded-action-visibility convention. This guard has no live trigger yet (those statuses aren't reachable this phase) but must be implemented now so the future registration workflow doesn't have to retrofit it.
+- No email/notification is sent on invite in this phase — status is recorded only.
+
+**Roster display.** One row per teacher (not per school). Columns: teacher name, email, school name (county), `membership_expires_at`, status.
+
+- School/county shown: among the teacher's active + verified schools, prefer the first (alphabetical by school name) whose county is in the Version's `version_counties` list; if the teacher qualifies only via the membership leg (no county match), fall back to their first active+verified school alphabetically.
+- `membership_expires_at` shown: the latest (`max`) value across the teacher's `Membership` rows for the Version's root organization; blank if the teacher has no membership record (i.e., they qualified via the county leg only).
+
+**Authorization.** Gate the invitation-management screen the same way as `VersionEdit`: `VersionRoleAssignmentService::canManageEvent($user, $version->event)` (Founder or Event Manager on any Version of the Event).
+
+**Not built this phase (flag, don't scaffold):** search/filter/pagination on the roster (revisit if a real organization's teacher roster proves too large for a single page), email notification on invite, and any UI for the `obligated`/`participating` transitions themselves.
+
 ---
 
 ## 6. Lifecycle — In Scope
@@ -437,7 +482,7 @@ The Version moves through the following workflow. Phases 6.1–6.2 are the build
 
 ### 6.1 Configuration
 
-The Event Manager sets up the Version's rules and configurations (adjudication rules, milestone dates, fees, audition type, membership requirements, application type, timeslots, county data, ensemble order, default invitations, pitch-file visibility, and role assignments — all per §5).
+The Event Manager sets up the Version's rules and configurations (adjudication rules, milestone dates, fees, audition type, membership requirements, application type, timeslots, county data, ensemble order, default invitations, pitch-file visibility, and role assignments — all per §5), and builds the Version's invitation list, controlling which eligible teachers may enroll Candidates (§5.4).
 
 ### 6.2 Registration
 
@@ -569,6 +614,10 @@ Full set (12): `eligible`, `pending`, `registered`, `withdrew`, `teacher_withdra
 
 `eapplication | pdf`.
 
+### 8.8 VersionInvitationStatus
+
+`invited | obligated | participating` — no `eligible` case; absence of a `version_invitations` row is the eligible state. See §5.4. Default on row creation: `invited`. `obligated` and `participating` are reserved — set only by the not-yet-built registration workflow, not by this phase.
+
 ---
 
 ## 9. Open Decisions (consolidated)
@@ -582,3 +631,4 @@ Confirmed as of the 2026-07-07 implementation audit:
 5. ~~**`version_timeslots` has no seeder or UI yet.**~~ Resolved — no seeder is planned; past timeslots are irrelevant, so this row is dropped from the open list.
 6. **`epayment_credentials` is schema-only.** No seeder or UI, as the spec anticipates ("next-phase implementation"). No action needed this phase.
 7. **Reference-only items remain unbuilt by design**, confirming the §0.2 scope fence held during implementation: `version_adjudication` (rooms, scoring categories/factors, judge types), `audition_results`, `AdjudicationStatus` enum, `CutoffStrategy` enum. Do not scaffold until the Adjudication Wizard phase begins.
+8. **Version Invitations (§5.4) — new capability, decisions confirmed 2026-07-07, not yet built.** Membership eligibility leg accepts any `Membership` row regardless of expiration (not "currently active" only). County leg is unrestricted when a Version has no `version_counties` rows. `obligated`/`participating` are reserved enum cases with no trigger in this phase — they belong to the not-yet-designed registration workflow (teacher agreement to Version obligations); do not scaffold that trigger now. Multi-school teachers get one roster row (first qualifying school shown), not one row per school. No email is sent on invite this phase. Modeled as a new `VersionInvitation`/`version_invitations` table, intentionally separate from the existing `EventInvitationRequest` (teacher-initiated, Event-scoped, pending/approved/denied) — the two are different concepts and must not be merged.
