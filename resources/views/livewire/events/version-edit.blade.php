@@ -11,12 +11,14 @@
     <flux:heading size="xl" class="mb-1">{{ $version->name }}</flux:heading>
     <flux:text size="sm" class="text-zinc-500 mb-6">Version configuration</flux:text>
 
-    <flux:tabs wire:model="activeTab">
-        <flux:tab name="general">General</flux:tab>
-        <flux:tab name="dates">Dates</flux:tab>
-        <flux:tab name="fees">Fees</flux:tab>
-        <flux:tab name="requirements">Requirements</flux:tab>
-        <flux:tab name="roles">Roles</flux:tab>
+    <flux:tab.group>
+        <flux:tabs wire:model="activeTab">
+            <flux:tab name="general">General</flux:tab>
+            <flux:tab name="dates">Dates</flux:tab>
+            <flux:tab name="fees">Fees</flux:tab>
+            <flux:tab name="requirements">Requirements</flux:tab>
+            <flux:tab name="roles">Roles</flux:tab>
+        </flux:tabs>
 
         {{-- General --}}
         <flux:tab.panel name="general">
@@ -371,5 +373,5 @@
                 @endif
             </div>
         </flux:tab.panel>
-    </flux:tabs>
+    </flux:tab.group>
 </div>

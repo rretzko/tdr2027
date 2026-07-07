@@ -31,9 +31,11 @@
         <flux:badge color="zinc">{{ $event->ensemble_count }} {{ Str::plural('ensemble', $event->ensemble_count) }}</flux:badge>
     </div>
 
-    <flux:tabs wire:model="activeTab">
-        <flux:tab name="versions">Versions</flux:tab>
-        <flux:tab name="ensembles">Ensembles</flux:tab>
+    <flux:tab.group>
+        <flux:tabs wire:model="activeTab">
+            <flux:tab name="versions">Versions</flux:tab>
+            <flux:tab name="ensembles">Ensembles</flux:tab>
+        </flux:tabs>
 
         <flux:tab.panel name="versions">
             @if ($canManageEvent)
@@ -211,7 +213,7 @@
                 <flux:text class="text-zinc-500 py-4 text-center">No ensembles yet. Add one above.</flux:text>
             @endforelse
         </flux:tab.panel>
-    </flux:tabs>
+    </flux:tab.group>
 
     {{-- Add Version modal --}}
     <flux:modal name="add-version" class="w-full max-w-md">
