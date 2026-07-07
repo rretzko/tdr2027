@@ -10,11 +10,11 @@ enum VersionDateType: string
     case Teacher = 'teacher';
     case Candidate = 'candidate';
     case FinalTeacherChanges = 'final_teacher_changes';
+    case PostmarkDeadline = 'postmark_deadline';
     case Adjudication = 'adjudication';
     case TabRoom = 'tab_room';
     case ParticipationFee = 'participation_fee';
     case Rehearsal = 'rehearsal';
-    case PostmarkDeadline = 'postmark_deadline';
 
     public function label(): string
     {

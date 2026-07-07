@@ -20,6 +20,7 @@ use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -185,15 +186,6 @@ class VersionEdit extends Component
             'pitch_file_visibility' => ['required', 'string', 'in:'.implode(',', array_column(PitchFileVisibility::cases(), 'value'))],
             'max_registrants' => ['nullable', 'integer', 'min:1'],
             'max_upper_voice_registrants' => ['nullable', 'integer', 'min:1'],
-            'birthday' => ['boolean'],
-            'emergency_contact_name' => ['boolean'],
-            'emergency_contact_cell' => ['boolean'],
-            'emergency_contact_email' => ['boolean'],
-            'height' => ['boolean'],
-            'home_address' => ['boolean'],
-            'release_confidential_results' => ['boolean'],
-            'shirt_size' => ['boolean'],
-            'teacher_cell' => ['boolean'],
         ]);
 
         $this->version->update([
@@ -210,15 +202,6 @@ class VersionEdit extends Component
             'pitch_file_visibility' => $validated['pitch_file_visibility'],
             'max_registrants' => ($validated['max_registrants'] ?? '') !== '' ? (int) $validated['max_registrants'] : null,
             'max_upper_voice_registrants' => ($validated['max_upper_voice_registrants'] ?? '') !== '' ? (int) $validated['max_upper_voice_registrants'] : null,
-            'birthday' => $validated['birthday'],
-            'emergency_contact_name' => $validated['emergency_contact_name'],
-            'emergency_contact_cell' => $validated['emergency_contact_cell'],
-            'emergency_contact_email' => $validated['emergency_contact_email'],
-            'height' => $validated['height'],
-            'home_address' => $validated['home_address'],
-            'release_confidential_results' => $validated['release_confidential_results'],
-            'shirt_size' => $validated['shirt_size'],
-            'teacher_cell' => $validated['teacher_cell'],
         ]);
 
         Flux::toast("{$this->version->name} general settings saved.");
@@ -290,11 +273,20 @@ class VersionEdit extends Component
 
     public function saveRequirements(): void
     {
-        $this->validate([
+        $validated = $this->validate([
             'membership_card' => ['boolean'],
             'membership_valid_thru' => ['nullable', 'date'],
             'selected_county_ids' => ['array'],
             'selected_county_ids.*' => ['integer', 'exists:counties,id'],
+            'birthday' => ['boolean'],
+            'emergency_contact_name' => ['boolean'],
+            'emergency_contact_cell' => ['boolean'],
+            'emergency_contact_email' => ['boolean'],
+            'height' => ['boolean'],
+            'home_address' => ['boolean'],
+            'release_confidential_results' => ['boolean'],
+            'shirt_size' => ['boolean'],
+            'teacher_cell' => ['boolean'],
         ]);
 
         VersionMembershipRequirement::updateOrCreate(
@@ -304,6 +296,18 @@ class VersionEdit extends Component
                 'valid_thru' => $this->membership_valid_thru ?: null,
             ],
         );
+
+        $this->version->update([
+            'birthday' => $validated['birthday'],
+            'emergency_contact_name' => $validated['emergency_contact_name'],
+            'emergency_contact_cell' => $validated['emergency_contact_cell'],
+            'emergency_contact_email' => $validated['emergency_contact_email'],
+            'height' => $validated['height'],
+            'home_address' => $validated['home_address'],
+            'release_confidential_results' => $validated['release_confidential_results'],
+            'shirt_size' => $validated['shirt_size'],
+            'teacher_cell' => $validated['teacher_cell'],
+        ]);
 
         $this->version->counties()->delete();
 
@@ -355,6 +359,33 @@ class VersionEdit extends Component
         Flux::toast("{$targetUser->name} assigned as {$validated['assign_role']}.");
     }
 
+    public function selectAssignEmail(int $userId): void
+    {
+        $this->assign_email = User::findOrFail($userId)->email;
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    private function assignEmailSuggestions(): Collection
+    {
+        $term = trim($this->assign_email);
+
+        if (mb_strlen($term) < 4) {
+            return collect();
+        }
+
+        return User::query()
+            ->where('email', '!=', $term)
+            ->where(function ($query) use ($term) {
+                $query->where('email', 'like', "%{$term}%")
+                    ->orWhere('name', 'like', "%{$term}%");
+            })
+            ->orderBy('name')
+            ->limit(5)
+            ->get();
+    }
+
     public function revokeRole(VersionRoleAssignmentService $service, int $userId, string $role): void
     {
         $targetUser = User::findOrFail($userId);
@@ -375,10 +406,13 @@ class VersionEdit extends Component
             'pitchVisibilities' => PitchFileVisibility::cases(),
             'dateTypes' => VersionDateType::cases(),
             'counties' => County::orderBy('name')->get(),
-            'eventEnsembles' => $this->version->event->ensembles()->orderBy('name')->get(),
+            'eventEnsembles' => $this->version->event->ensembles()->orderBy('name')->get()
+                ->sortBy(fn ($ensemble) => $this->ensemble_order[$ensemble->id] ?? PHP_INT_MAX)
+                ->values(),
             'roleAssignments' => $service->assignmentsForVersion($this->version),
             'canManageRoles' => $service->canManageVersionRoles(Auth::user(), $this->version),
             'assignableRoles' => $service->assignableRoleNames(),
+            'assignEmailSuggestions' => $this->assignEmailSuggestions(),
         ]);
     }
 }

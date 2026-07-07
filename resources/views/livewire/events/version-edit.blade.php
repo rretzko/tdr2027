@@ -23,8 +23,8 @@
         {{-- General --}}
         <flux:tab.panel name="general">
             <div class="mt-6 space-y-6 max-w-2xl">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <flux:field class="sm:col-span-2">
+                <div class="grid grid-cols-1 gap-4">
+                    <flux:field>
                         <flux:label>Version Name</flux:label>
                         <flux:input wire:model="name" />
                         <flux:error name="name" />
@@ -59,6 +59,7 @@
                                 <flux:select.option value="{{ $at->value }}">{{ $at->label() }}</flux:select.option>
                             @endforeach
                         </flux:select>
+                        <flux:description>Type of application that the student will use.</flux:description>
                         <flux:error name="application_type" />
                     </flux:field>
 
@@ -92,6 +93,7 @@
                     <flux:field>
                         <flux:label>Judge Count</flux:label>
                         <flux:input wire:model="judge_count" type="number" min="1" max="20" />
+                        <flux:description>Number of actual judges in each audition room.</flux:description>
                         <flux:error name="judge_count" />
                     </flux:field>
 
@@ -128,21 +130,6 @@
                     </flux:field>
                 </div>
 
-                <div>
-                    <flux:heading size="base" class="mb-3">Optional Fields Collected at Registration</flux:heading>
-                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        <flux:checkbox wire:model="birthday" label="Birthday" />
-                        <flux:checkbox wire:model="emergency_contact_name" label="Emergency Contact Name" />
-                        <flux:checkbox wire:model="emergency_contact_cell" label="Emergency Contact Cell" />
-                        <flux:checkbox wire:model="emergency_contact_email" label="Emergency Contact Email" />
-                        <flux:checkbox wire:model="height" label="Height" />
-                        <flux:checkbox wire:model="home_address" label="Home Address" />
-                        <flux:checkbox wire:model="shirt_size" label="Shirt Size" />
-                        <flux:checkbox wire:model="teacher_cell" label="Teacher Cell" />
-                        <flux:checkbox wire:model="release_confidential_results" label="Release Confidential Results" />
-                    </div>
-                </div>
-
                 @if ($errors->any())
                     <flux:callout variant="danger" icon="exclamation-triangle">
                         <flux:callout.text>Please correct the errors above.</flux:callout.text>
@@ -162,9 +149,9 @@
                     @php $key = $dateType->value; @endphp
                     <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4">
                         <flux:heading size="sm" class="mb-3">{{ $dateType->label() }}</flux:heading>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 gap-4">
                             <flux:field>
-                                <flux:label>{{ $dateType->hasEndAt() ? 'Start' : 'Date' }}</flux:label>
+                                <flux:label>Start</flux:label>
                                 <flux:input wire:model="date_start.{{ $key }}" type="datetime-local" />
                                 <flux:error name="date_start.{{ $key }}" />
                             </flux:field>
@@ -257,6 +244,38 @@
                     </flux:field>
                 </div>
 
+                <div>
+                    <flux:heading size="base" class="mb-3">Optional Fields Collected at Registration</flux:heading>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <flux:card size="sm">
+                            <flux:heading size="sm" class="mb-3">Candidate</flux:heading>
+                            <div class="space-y-3">
+                                <flux:checkbox wire:model="birthday" label="Birthday" />
+                                <flux:checkbox wire:model="shirt_size" label="Shirt Size" />
+                                <flux:checkbox wire:model="height" label="Height" />
+                                <flux:checkbox wire:model="home_address" label="Home Address" />
+                            </div>
+                        </flux:card>
+
+                        <flux:card size="sm">
+                            <flux:heading size="sm" class="mb-3">Emergency Contact</flux:heading>
+                            <div class="space-y-3">
+                                <flux:checkbox wire:model="emergency_contact_name" label="Emergency Contact Name" />
+                                <flux:checkbox wire:model="emergency_contact_cell" label="Emergency Contact Cell" />
+                                <flux:checkbox wire:model="emergency_contact_email" label="Emergency Contact Email" />
+                            </div>
+                        </flux:card>
+
+                        <flux:card size="sm">
+                            <flux:heading size="sm" class="mb-3">Other</flux:heading>
+                            <div class="space-y-3">
+                                <flux:checkbox wire:model="teacher_cell" label="Teacher Cell" />
+                                <flux:checkbox wire:model="release_confidential_results" label="Release Confidential Results" />
+                            </div>
+                        </flux:card>
+                    </div>
+                </div>
+
                 <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 space-y-4">
                     <flux:heading size="sm">Eligible Counties</flux:heading>
                     <flux:description>Leave all unchecked to allow any county.</flux:description>
@@ -282,13 +301,13 @@
 
                         <div class="space-y-2">
                             @foreach ($eventEnsembles as $ensemble)
-                                <div class="flex items-center gap-3">
+                                <div class="flex items-center gap-3" wire:key="ensemble-order-{{ $ensemble->id }}">
+                                    <span class="text-sm text-zinc-700 dark:text-zinc-300">{{ $ensemble->name }}</span>
                                     <flux:input
                                         wire:model="ensemble_order.{{ $ensemble->id }}"
                                         type="number" min="1" max="99"
                                         class="w-20"
                                     />
-                                    <span class="text-sm text-zinc-700 dark:text-zinc-300">{{ $ensemble->name }}</span>
                                     @if ($ensemble->abbreviation)
                                         <flux:badge color="zinc" size="sm">{{ $ensemble->abbreviation }}</flux:badge>
                                     @endif
@@ -351,9 +370,23 @@
 
                         <flux:field>
                             <flux:label>Email</flux:label>
-                            <flux:input wire:model="assign_email" placeholder="person@example.com" />
+                            <flux:input wire:model.live.debounce.300ms="assign_email" placeholder="person@example.com" />
                             <flux:error name="assign_email" />
                         </flux:field>
+
+                        @if ($assignEmailSuggestions->isNotEmpty())
+                            <div class="flex flex-col gap-2">
+                                @foreach ($assignEmailSuggestions as $user)
+                                    <div class="flex items-center justify-between gap-4 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                                        <div>
+                                            <flux:text class="font-medium">{{ $user->name }}</flux:text>
+                                            <flux:text size="sm" class="text-zinc-500">{{ $user->email }}</flux:text>
+                                        </div>
+                                        <flux:button size="sm" wire:click="selectAssignEmail({{ $user->id }})">Select</flux:button>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
 
                         <flux:field>
                             <flux:label>Role</flux:label>
