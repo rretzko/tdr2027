@@ -12,6 +12,7 @@ use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
 use Database\Factories\VersionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -127,5 +128,23 @@ class Version extends Model
     public function timeslots(): HasMany
     {
         return $this->hasMany(VersionTimeslot::class)->orderBy('timeslot');
+    }
+
+    /**
+     * @return HasMany<VersionUploadFile, $this>
+     */
+    public function uploadFiles(): HasMany
+    {
+        return $this->hasMany(VersionUploadFile::class)->orderBy('order_by');
+    }
+
+    /**
+     * @return Attribute<int, never>
+     */
+    protected function uploadFileCount(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): int => $this->uploadFiles->count(),
+        );
     }
 }

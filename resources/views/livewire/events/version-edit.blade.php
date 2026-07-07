@@ -65,7 +65,7 @@
 
                     <flux:field>
                         <flux:label>Audition Type</flux:label>
-                        <flux:select wire:model="audition_type">
+                        <flux:select wire:model.live="audition_type">
                             @foreach ($auditionTypes as $at)
                                 <flux:select.option value="{{ $at->value }}">{{ $at->label() }}</flux:select.option>
                             @endforeach
@@ -73,22 +73,73 @@
                         <flux:error name="audition_type" />
                     </flux:field>
 
-                    <flux:field>
-                        <flux:label>Audition Slot (minutes)</flux:label>
-                        <flux:input wire:model="audition_timeslot" type="number" min="5" max="120" />
-                        <flux:description>Duration per candidate for in-person scheduling.</flux:description>
-                        <flux:error name="audition_timeslot" />
-                    </flux:field>
+                    @if ($audition_type === 'in_person')
+                        <flux:field>
+                            <flux:label>Audition Slot (minutes)</flux:label>
+                            <flux:input wire:model="audition_timeslot" type="number" min="5" max="120" />
+                            <flux:description>Duration per candidate for in-person scheduling.</flux:description>
+                            <flux:error name="audition_timeslot" />
+                        </flux:field>
+                    @endif
 
                     <flux:field>
                         <flux:label>Upload Type</flux:label>
-                        <flux:select wire:model="upload_type">
+                        <flux:select wire:model.live="upload_type">
                             @foreach ($uploadTypes as $ut)
                                 <flux:select.option value="{{ $ut->value }}">{{ $ut->label() }}</flux:select.option>
                             @endforeach
                         </flux:select>
                         <flux:error name="upload_type" />
                     </flux:field>
+
+                    @if (in_array($upload_type, ['audio', 'video'], true))
+                        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 space-y-4">
+                            <div>
+                                <flux:heading size="sm">Expected Upload Files</flux:heading>
+                                <flux:description>Generic file labels a Candidate is expected to upload (e.g. scales, solo, quintet). Order controls display order.</flux:description>
+                            </div>
+
+                            @if (count($upload_files) > 0)
+                                <div class="space-y-2">
+                                    @foreach ($upload_files as $id => $file)
+                                        <div class="flex items-center gap-3" wire:key="upload-file-{{ $id }}">
+                                            <span
+                                                class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold text-white shrink-0"
+                                                style="background-color: {{ $this->uploadFileOrderColor((int) $file['order_by']) }}"
+                                            >{{ $file['order_by'] }}</span>
+                                            <div class="w-16 shrink-0">
+                                                <flux:input wire:model="upload_files.{{ $id }}.order_by" type="number" min="1" max="99" />
+                                            </div>
+                                            <div class="flex-1">
+                                                <flux:input wire:model="upload_files.{{ $id }}.name" />
+                                            </div>
+                                            <flux:button
+                                                size="sm" variant="ghost" icon="x-mark"
+                                                wire:click="removeUploadFile({{ $id }})"
+                                                wire:confirm="Remove &quot;{{ $file['name'] }}&quot; from expected uploads?"
+                                            >
+                                                Remove
+                                            </flux:button>
+                                        </div>
+                                    @endforeach
+                                </div>
+
+                                <flux:error name="upload_files" />
+                                <flux:button size="sm" wire:click="saveUploadFiles">Save Upload Files</flux:button>
+                            @else
+                                <flux:text size="sm" class="text-zinc-400">No upload files defined yet.</flux:text>
+                            @endif
+
+                            <div class="flex items-end gap-3 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                <flux:field class="flex-1">
+                                    <flux:label>New File Label</flux:label>
+                                    <flux:input wire:model="new_upload_file_name" placeholder="e.g. scales" />
+                                    <flux:error name="new_upload_file_name" />
+                                </flux:field>
+                                <flux:button wire:click="addUploadFile">Add</flux:button>
+                            </div>
+                        </div>
+                    @endif
 
                     <flux:field>
                         <flux:label>Judge Count</flux:label>
@@ -125,7 +176,7 @@
 
                     <flux:field>
                         <flux:label>Max Upper Voice Registrants</flux:label>
-                        <flux:input wire:model="max_upper_voice_registrants" type="number" min="1" placeholder="No limit" />
+                        <flux:input wire:model="max_upper_voice_registrants" type="number" min="0" placeholder="No limit" />
                         <flux:error name="max_upper_voice_registrants" />
                     </flux:field>
                 </div>
@@ -303,11 +354,12 @@
                             @foreach ($eventEnsembles as $ensemble)
                                 <div class="flex items-center gap-3" wire:key="ensemble-order-{{ $ensemble->id }}">
                                     <span class="text-sm text-zinc-700 dark:text-zinc-300">{{ $ensemble->name }}</span>
-                                    <flux:input
-                                        wire:model="ensemble_order.{{ $ensemble->id }}"
-                                        type="number" min="1" max="99"
-                                        class="w-20"
-                                    />
+                                    <div class="w-20 shrink-0">
+                                        <flux:input
+                                            wire:model="ensemble_order.{{ $ensemble->id }}"
+                                            type="number" min="1" max="99"
+                                        />
+                                    </div>
                                     @if ($ensemble->abbreviation)
                                         <flux:badge color="zinc" size="sm">{{ $ensemble->abbreviation }}</flux:badge>
                                     @endif

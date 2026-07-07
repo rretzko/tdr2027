@@ -20,6 +20,7 @@ use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
+use App\Models\VersionUploadFile;
 use App\Services\VersionRoleAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -65,6 +66,72 @@ test('saveGeneral updates the Version record', function () {
 
     expect($version->fresh()->name)->toBe('New Name');
     expect($version->fresh()->status)->toBe(EventStatus::Active);
+});
+
+test('Audition Slot shows for in_person and hides for remote, toggling live', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['audition_type' => AuditionType::InPerson->value]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertSee('Audition Slot (minutes)')
+        ->set('audition_type', AuditionType::Remote->value)
+        ->assertDontSee('Audition Slot (minutes)')
+        ->set('audition_type', AuditionType::InPerson->value)
+        ->assertSee('Audition Slot (minutes)');
+});
+
+test('saveGeneral requires at least 5 minutes for in_person but allows 0 for remote', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('status', EventStatus::Active->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->set('audition_type', AuditionType::Remote->value)
+        ->set('audition_timeslot', '0')
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    expect($version->fresh()->audition_timeslot)->toBe(0);
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('status', EventStatus::Active->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->set('audition_type', AuditionType::InPerson->value)
+        ->set('audition_timeslot', '0')
+        ->call('saveGeneral')
+        ->assertHasErrors('audition_timeslot');
+});
+
+test('saveGeneral accepts 0 for max_upper_voice_registrants', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('status', EventStatus::Active->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->set('audition_type', AuditionType::Remote->value)
+        ->set('max_upper_voice_registrants', '0')
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    expect($version->fresh()->max_upper_voice_registrants)->toBe(0);
 });
 
 test('saveGeneral requires a name', function () {
@@ -195,6 +262,105 @@ test('saveEnsembleOrder persists the order_by value for each ensemble', function
 
     expect(VersionEnsembleOrder::where('version_id', $version->id)->where('ensemble_id', $first->id)->value('order_by'))->toBe(2);
     expect(VersionEnsembleOrder::where('version_id', $version->id)->where('ensemble_id', $second->id)->value('order_by'))->toBe(1);
+});
+
+test('the Expected Upload Files section shows only when Upload Type is audio or video', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['upload_type' => UploadType::None->value]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertDontSee('Expected Upload Files')
+        ->set('upload_type', UploadType::Audio->value)
+        ->assertSee('Expected Upload Files')
+        ->set('upload_type', UploadType::Video->value)
+        ->assertSee('Expected Upload Files')
+        ->set('upload_type', UploadType::None->value)
+        ->assertDontSee('Expected Upload Files');
+});
+
+test('addUploadFile creates a row with the next order_by and appends it to the array', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['upload_type' => UploadType::Audio->value]);
+    VersionUploadFile::create(['version_id' => $version->id, 'name' => 'scales', 'order_by' => 1]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('new_upload_file_name', 'solo')
+        ->call('addUploadFile')
+        ->assertHasNoErrors()
+        ->assertSet('new_upload_file_name', '');
+
+    $solo = VersionUploadFile::where('version_id', $version->id)->where('name', 'solo')->first();
+
+    expect($solo)->not->toBeNull();
+    expect($solo->order_by)->toBe(2);
+    expect($version->fresh()->upload_file_count)->toBe(2);
+});
+
+test('addUploadFile requires a name', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['upload_type' => UploadType::Audio->value]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('new_upload_file_name', '')
+        ->call('addUploadFile')
+        ->assertHasErrors('new_upload_file_name');
+});
+
+test('saveUploadFiles persists renamed labels and reordered values', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['upload_type' => UploadType::Audio->value]);
+    $scales = VersionUploadFile::create(['version_id' => $version->id, 'name' => 'scales', 'order_by' => 1]);
+    $solo = VersionUploadFile::create(['version_id' => $version->id, 'name' => 'solo', 'order_by' => 2]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set("upload_files.{$scales->id}.name", 'scales renamed')
+        ->set("upload_files.{$scales->id}.order_by", 2)
+        ->set("upload_files.{$solo->id}.order_by", 1)
+        ->call('saveUploadFiles')
+        ->assertHasNoErrors();
+
+    expect($scales->fresh()->name)->toBe('scales renamed');
+    expect($scales->fresh()->order_by)->toBe(2);
+    expect($solo->fresh()->order_by)->toBe(1);
+});
+
+test('removeUploadFile deletes the row and decrements the derived count', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['upload_type' => UploadType::Audio->value]);
+    $scales = VersionUploadFile::create(['version_id' => $version->id, 'name' => 'scales', 'order_by' => 1]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->call('removeUploadFile', $scales->id)
+        ->assertSet('upload_files', []);
+
+    expect(VersionUploadFile::find($scales->id))->toBeNull();
+    expect($version->fresh()->upload_file_count)->toBe(0);
+});
+
+test('uploadFileOrderColor reuses the darkest ramp step for any order_by beyond the ramp', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    $component = Livewire::actingAs($user)->test(VersionEdit::class, ['version' => $version]);
+
+    /** @var VersionEdit $instance */
+    $instance = $component->instance();
+
+    expect($instance->uploadFileOrderColor(1))->toBe('#86b6ef');
+    expect($instance->uploadFileOrderColor(4))->toBe('#1c5cab');
+    expect($instance->uploadFileOrderColor(5))->toBe('#1c5cab');
+    expect($instance->uploadFileOrderColor(99))->toBe('#1c5cab');
 });
 
 test('mount aborts with 403 for a user holding no version-scoped role on the Version', function () {

@@ -2,7 +2,7 @@
 # Event & Version Domain — Orientation & Build Specification
 
 **Audience:** Claude Code (PhpStorm) and human reviewers.
-**Status:** Draft for review.
+**Status:** In-scope build (§0.2 "Build now") implemented and tested. Verified against the codebase 2026-07-07: 140/140 Feature/Unit tests passing across the Event, Ensemble, Version, and Candidate domain. Reference-only items (§7, adjudication/tab room/cut-offs) remain intentionally unbuilt. See §9 for remaining open items (naming drift, uncommitted change, minor gaps).
 
 ---
 
@@ -87,7 +87,7 @@ Relationship summary (read "1—\*" as one-to-many, "\*—\*" as many-to-many):
 - `Event` 1—\* `EventGrade`
 - `Ensemble` 1—\* `EnsembleGrade`
 - `Ensemble` \*—\* `VoicePart` (via `ensemble_voice_parts`)
-- `Version` 1—\* `version_dates`, `version_fees`, `version_timeslots`, `version_adjudication`
+- `Version` 1—\* `version_dates`, `version_fees`, `version_timeslots`, `version_upload_files`, `version_adjudication`
 - `Version` 1—\* `Candidate`
 - `Candidate` 1—\* `candidate_status_history`
 
@@ -169,9 +169,9 @@ An Ensemble is a choir produced as the output of a Version. Ensembles are owned 
 | Column                      | Notes                                               |
 |-----------------------------|-----------------------------------------------------|
 | `id`                        | PK                                                  |
-| `description`               | Text description (e.g., soprano, alto, tenor, bass) |
-| `abbreviation`              | Text abbreviation (e.g., sop, alt, ten, bas)        |
-| `order_by`                  | smallint to order the rows in score order           |
+| `name`                      | Text description (e.g., soprano, alto, tenor, bass) |
+| `abbr`                      | Text abbreviation (e.g., sop, alt, ten, bas)        |
+| `sort_order`                | smallint to order the rows in score order           |
 | `created_at` / `updated_at` | Laravel timestamps                                  |
 
 ### 4.4 Ensemble Voice Parts
@@ -181,6 +181,8 @@ An Ensemble is a choir produced as the output of a Version. Ensembles are owned 
 | `id`            | PK               |
 | `ensemble_id`   | FK → ensembles   |
 | `voice_part_id` | FK → voice_parts |
+
+The pivot carries no ordering column of its own by design. `Ensemble::voiceParts()` must always return its collection ordered by `voice_parts.sort_order` — the pivot's role is membership only, not sequencing.
 
 ---
 
@@ -329,6 +331,20 @@ Date types:
 | `timeslot`                  | timestamp     | Laravel timestamp  |
 | `created_at` / `updated_at` | timestamp     | Laravel timestamps |
 
+**Expected upload files (if `audition_type` is remote)** → `version_upload_files`
+
+**`version_upload_files` table** — current implementation, the generic, ordered list of files a Candidate is expected to upload (e.g., scales, solo, quintet) when `audition_type` is `remote`:
+
+| Column                      | Type            | Notes                                          |
+|-----------------------------|-----------------|-------------------------------------------------|
+| `id`                        | bigIncrements   | PK                                              |
+| `version_id`                | foreignId       | FK → versions; cascade on delete                |
+| `name`                      | string          | Generic file label (e.g., "scales", "solo")     |
+| `order_by`                  | unsignedTinyInt | default 1                                       |
+| `created_at` / `updated_at` | timestamp       | Laravel timestamps                              |
+
+`Version::uploadFiles()` is a `HasMany` ordered by `order_by`. There is no stored `upload_file_count` column — `Version::upload_file_count` is a derived accessor (`count($this->uploadFiles)`), so the count can never drift from the list of names.
+
 **Other Version configuration (column or small table as appropriate):**
 
 - **Audition type:** in-person \| remote.
@@ -357,20 +373,21 @@ Date types:
 | `emergency_contact_id`      | foreignId           | fk                                                                                                                                                             |
 | `created_at` / `updated_at` | timestamp           | Laravel timestamps                                                                                                                                             |
 
-**`emergency_contact` table** — next-phase implementation, to identify an emergency contact:
+**`emergency_contacts` table** — current implementation (student-level, pre-dates this spec):
 
-| Column                      | Type          | Notes                                                                                                                                           |
-|-----------------------------|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`                        | bigIncrements | PK                                                                                                                                              |
-| `student_id`                | foreignId     | fk                                                                                                                                              |
-| `emergency_contact_type`    | enum          | mother, father, grandmother, grandfather, aunt, uncle, guardian_mother, guardian_father, step_mother, step_father, foster_mother, foster_father |
-| `name`                      | string        | Emergency contact name                                                                                                                          |
-| `email`                     | string        | Emergency contact email                                                                                                                         |
-| `phone_cell`                | string        | Emergency contact fully formatted cell phone                                                                                                    |
-| `phone_home`                | string        | Emergency contact fully formatted home phone                                                                                                    |
-| `phone_work`                | string        | Emergency contact fully formatted work phone                                                                                                    |
-| `best_phone`                | enum          | cell, home, work                                                                                                                                |
-| `created_at` / `updated_at` | timestamp     | Laravel timestamps                                                                                                                              |
+| Column                      | Type          | Notes                                                                                                                                                                |
+|-----------------------------|---------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                        | bigIncrements | PK                                                                                                                                                                    |
+| `student_id`                | foreignId     | FK → students                                                                                                                                                        |
+| `name`                      | string        | Emergency contact name                                                                                                                                              |
+| `relationship`              | enum          | `EmergencyContactRelationship`: mother, father, step_mother, step_father, grandmother, grandfather, guardian, sibling, aunt, uncle, guardian_mother, guardian_father, foster_mother, foster_father, other |
+| `email`                     | string        | Emergency contact email                                                                                                                                             |
+| `cell_phone`                | string(20)    | Normalized on set via `PhoneNormalizer`                                                                                                                             |
+| `home_phone`                | string(20)    | Nullable; normalized on set via `PhoneNormalizer`                                                                                                                   |
+| `work_phone`                | string(20)    | Nullable; normalized on set via `PhoneNormalizer`                                                                                                                   |
+| `best_phone`                | enum          | `BestPhone`: cell, home, work — default `cell`                                                                                                                      |
+| `created_at` / `updated_at` | timestamp     | Laravel timestamps                                                                                                                                                  |
+| `deleted_at`                | timestamp     | Soft delete                                                                                                                                                          |
 
 
 **`candidate_status_history` table** — current implementation, immutable audit log of every candidate status transition:
@@ -556,4 +573,12 @@ Full set (12): `eligible`, `pending`, `registered`, `withdrew`, `teacher_withdra
 
 ## 9. Open Decisions (consolidated)
 
-None outstanding. (The only standing confirmation is the scope fence in §0.2.)
+Confirmed as of the 2026-07-07 implementation audit:
+
+1. **Uncommitted change.** `tests/Feature/EnumsTest.php` has a local, uncommitted edit correcting a `VersionDateType` case-order assertion to match the enum's actual declaration order. Needs to be committed (or reconciled if the enum order itself should change instead).
+2. ~~**`voice_parts` naming drift.**~~ Resolved — spec §4.3 now matches the shipped `name` / `abbr` / `sort_order` columns.
+3. ~~**`emergency_contact` naming drift.**~~ Resolved — spec §5.2 now matches the shipped `emergency_contacts` table (`cell_phone`/`home_phone`/`work_phone`/`relationship`, `EmergencyContactRelationship` enum, `BestPhone` enum).
+4. ~~**`EnsembleVoicePart` pivot ordering.**~~ Resolved — confirmed by design: the pivot intentionally carries no ordering column, and `Ensemble::voiceParts()` must always order by `voice_parts.sort_order`. Documented in §4.4.
+5. ~~**`version_timeslots` has no seeder or UI yet.**~~ Resolved — no seeder is planned; past timeslots are irrelevant, so this row is dropped from the open list.
+6. **`epayment_credentials` is schema-only.** No seeder or UI, as the spec anticipates ("next-phase implementation"). No action needed this phase.
+7. **Reference-only items remain unbuilt by design**, confirming the §0.2 scope fence held during implementation: `version_adjudication` (rooms, scoring categories/factors, judge types), `audition_results`, `AdjudicationStatus` enum, `CutoffStrategy` enum. Do not scaffold until the Adjudication Wizard phase begins.

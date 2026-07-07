@@ -78,6 +78,7 @@ test('createVersion succeeds for an Event Manager', function () {
         ->assertHasNoErrors();
 
     expect(Version::where('event_id', $event->id)->where('name', 'Second Version')->exists())->toBeTrue();
+    expect(Version::where('event_id', $event->id)->where('name', 'Second Version')->value('audition_timeslot'))->toBe(0);
 });
 
 test('createVersion aborts with 403 for a Registration-Manager-only holder', function () {

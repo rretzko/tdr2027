@@ -18,6 +18,7 @@ use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
+use App\Models\VersionUploadFile;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
 use Illuminate\Support\Collection;
@@ -29,6 +30,13 @@ use Livewire\Component;
 #[Layout('components.layouts.app')]
 class VersionEdit extends Component
 {
+    /**
+     * Ordinal color ramp for upload_files.order_by (position in a sequence, not identity):
+     * one hue, monotone lightness, validated in both light/dark via the dataviz color formula.
+     * order_by values beyond the ramp reuse the darkest step.
+     */
+    private const UPLOAD_FILE_ORDER_COLORS = ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab'];
+
     public Version $version;
 
     public string $activeTab = 'general';
@@ -44,7 +52,7 @@ class VersionEdit extends Component
 
     public string $audition_type = '';
 
-    public string $audition_timeslot = '20';
+    public string $audition_timeslot = '0';
 
     public string $application_type = '';
 
@@ -58,7 +66,12 @@ class VersionEdit extends Component
 
     public string $max_registrants = '';
 
-    public string $max_upper_voice_registrants = '';
+    public string $max_upper_voice_registrants = '0';
+
+    /** @var array<int, array{name: string, order_by: int}> keyed by version_upload_files.id */
+    public array $upload_files = [];
+
+    public string $new_upload_file_name = '';
 
     public bool $birthday = false;
 
@@ -116,7 +129,7 @@ class VersionEdit extends Component
     {
         abort_unless($service->canAccessVersion(Auth::user(), $version), 403);
 
-        $this->version = $version->load(['dates', 'fees', 'membershipRequirement', 'counties']);
+        $this->version = $version->load(['dates', 'fees', 'membershipRequirement', 'counties', 'uploadFiles']);
 
         $this->name = $version->name;
         $this->short_name = $version->short_name ?? '';
@@ -168,6 +181,13 @@ class VersionEdit extends Component
             $row = $existingOrder->get($ensemble->id);
             $this->ensemble_order[$ensemble->id] = $row !== null ? (int) $row->order_by : 1;
         }
+
+        foreach ($version->uploadFiles as $uploadFile) {
+            $this->upload_files[$uploadFile->id] = [
+                'name' => $uploadFile->name,
+                'order_by' => (int) $uploadFile->order_by,
+            ];
+        }
     }
 
     public function saveGeneral(): void
@@ -178,14 +198,18 @@ class VersionEdit extends Component
             'senior_class_of' => ['required', 'integer', 'min:2000', 'max:2100'],
             'status' => ['required', 'string', 'in:'.implode(',', array_column(EventStatus::cases(), 'value'))],
             'audition_type' => ['required', 'string', 'in:'.implode(',', array_column(AuditionType::cases(), 'value'))],
-            'audition_timeslot' => ['required', 'integer', 'min:5', 'max:120'],
+            'audition_timeslot' => [
+                'required', 'integer',
+                $this->audition_type === AuditionType::InPerson->value ? 'min:5' : 'min:0',
+                'max:120',
+            ],
             'application_type' => ['required', 'string', 'in:'.implode(',', array_column(ApplicationType::cases(), 'value'))],
             'upload_type' => ['required', 'string', 'in:'.implode(',', array_column(UploadType::cases(), 'value'))],
             'judge_count' => ['required', 'integer', 'min:1', 'max:20'],
             'score_order' => ['required', 'string', 'in:'.implode(',', array_column(ScoreOrder::cases(), 'value'))],
             'pitch_file_visibility' => ['required', 'string', 'in:'.implode(',', array_column(PitchFileVisibility::cases(), 'value'))],
             'max_registrants' => ['nullable', 'integer', 'min:1'],
-            'max_upper_voice_registrants' => ['nullable', 'integer', 'min:1'],
+            'max_upper_voice_registrants' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $this->version->update([
@@ -333,6 +357,60 @@ class VersionEdit extends Component
         }
 
         Flux::toast('Ensemble order saved.');
+    }
+
+    public function addUploadFile(): void
+    {
+        $validated = $this->validate([
+            'new_upload_file_name' => ['required', 'string', 'max:100'],
+        ]);
+
+        $nextOrder = ((int) $this->version->uploadFiles()->max('order_by')) + 1;
+
+        $uploadFile = $this->version->uploadFiles()->create([
+            'name' => $validated['new_upload_file_name'],
+            'order_by' => $nextOrder,
+        ]);
+
+        $this->upload_files[$uploadFile->id] = ['name' => $uploadFile->name, 'order_by' => $uploadFile->order_by];
+        $this->new_upload_file_name = '';
+        $this->resetValidation('new_upload_file_name');
+
+        Flux::toast("\"{$uploadFile->name}\" added to expected uploads.");
+    }
+
+    public function saveUploadFiles(): void
+    {
+        $this->validate([
+            'upload_files' => ['array'],
+            'upload_files.*.name' => ['required', 'string', 'max:100'],
+            'upload_files.*.order_by' => ['required', 'integer', 'min:1', 'max:99'],
+        ]);
+
+        foreach ($this->upload_files as $id => $row) {
+            VersionUploadFile::where('id', $id)->where('version_id', $this->version->id)->update([
+                'name' => $row['name'],
+                'order_by' => (int) $row['order_by'],
+            ]);
+        }
+
+        Flux::toast('Expected upload files saved.');
+    }
+
+    public function removeUploadFile(int $id): void
+    {
+        VersionUploadFile::where('id', $id)->where('version_id', $this->version->id)->delete();
+
+        unset($this->upload_files[$id]);
+
+        Flux::toast('Upload file removed.');
+    }
+
+    public function uploadFileOrderColor(int $orderBy): string
+    {
+        $index = min(max($orderBy, 1), count(self::UPLOAD_FILE_ORDER_COLORS)) - 1;
+
+        return self::UPLOAD_FILE_ORDER_COLORS[$index];
     }
 
     public function assignRole(VersionRoleAssignmentService $service): void

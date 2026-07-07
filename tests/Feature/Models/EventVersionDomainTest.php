@@ -30,6 +30,7 @@ use App\Models\VersionEnsembleOrder;
 use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
 use App\Models\VersionTimeslot;
+use App\Models\VersionUploadFile;
 use App\Models\VoicePart;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -185,6 +186,19 @@ test('Version timeslots are ordered chronologically', function () {
     $last = strtotime((string) $timeslots->last()->getRawOriginal('timeslot'));
 
     expect($first)->toBeLessThan($last);
+});
+
+test('Version uploadFiles are ordered by order_by and uploadFileCount is derived, not stored', function () {
+    $version = Version::factory()->create();
+
+    VersionUploadFile::create(['version_id' => $version->id, 'name' => 'solo', 'order_by' => 2]);
+    VersionUploadFile::create(['version_id' => $version->id, 'name' => 'scales', 'order_by' => 1]);
+    VersionUploadFile::create(['version_id' => $version->id, 'name' => 'quintet', 'order_by' => 3]);
+
+    $fresh = $version->fresh();
+
+    expect($fresh->uploadFiles->pluck('name')->all())->toBe(['scales', 'solo', 'quintet']);
+    expect($fresh->upload_file_count)->toBe(3);
 });
 
 test('Ensemble belongs to an Event, has many EnsembleGrades, and belongs to many VoiceParts', function () {

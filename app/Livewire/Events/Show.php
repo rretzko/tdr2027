@@ -87,7 +87,7 @@ class Show extends Component
             'senior_class_of' => (int) $validated['new_senior_class_of'],
             'status' => EventStatus::Sandbox->value,
             'application_type' => ApplicationType::Pdf->value,
-            'audition_timeslot' => 20,
+            'audition_timeslot' => 0,
             'audition_type' => AuditionType::Remote->value,
             'birthday' => false,
             'emergency_contact_name' => true,

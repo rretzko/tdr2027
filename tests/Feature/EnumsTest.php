@@ -151,7 +151,7 @@ test('VersionDateType has the expected cases and non-empty labels', function () 
     expect(array_map(fn (VersionDateType $case) => $case->value, VersionDateType::cases()))
         ->toBe([
             'admin', 'teacher', 'candidate', 'final_teacher_changes',
-            'adjudication', 'tab_room', 'participation_fee', 'rehearsal', 'postmark_deadline',
+            'postmark_deadline', 'adjudication', 'tab_room', 'participation_fee', 'rehearsal',
         ]);
 
     foreach (VersionDateType::cases() as $case) {
