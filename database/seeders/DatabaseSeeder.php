@@ -40,6 +40,7 @@ class DatabaseSeeder extends Seeder
             SchoolStudentSeeder::class,
             StudentTeacherSeeder::class,
             VersionRoleSeeder::class,
+            VersionInvitationSeeder::class,
         ]);
 
         User::factory()->create([

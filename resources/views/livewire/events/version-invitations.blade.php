@@ -78,8 +78,8 @@
             <flux:callout.text>No teachers match your search or filter.</flux:callout.text>
         </flux:callout>
     @else
-        {{-- Cards below md:, table at md:+ --}}
-        <div class="md:hidden space-y-3">
+        {{-- Cards below lg:, table at lg:+ --}}
+        <div class="lg:hidden space-y-3">
             @foreach ($roster as $row)
                 <flux:card size="sm">
                     <div class="flex items-start justify-between gap-3 mb-2">
@@ -121,56 +121,59 @@
             @endforeach
         </div>
 
-        <flux:table class="hidden md:table">
-            <flux:table.columns>
-                <flux:table.column></flux:table.column>
-                <flux:table.column sortable :sorted="$sortColumn === 'teacher'" :direction="$sortDirection" wire:click="sortBy('teacher')">
-                    Teacher
-                </flux:table.column>
-                <flux:table.column sortable :sorted="$sortColumn === 'email'" :direction="$sortDirection" wire:click="sortBy('email')">
-                    Email
-                </flux:table.column>
-                <flux:table.column sortable :sorted="$sortColumn === 'school'" :direction="$sortDirection" wire:click="sortBy('school')">
-                    School (County)
-                </flux:table.column>
-                <flux:table.column>Membership Expires</flux:table.column>
-                <flux:table.column>Status</flux:table.column>
-            </flux:table.columns>
+        <div class="hidden lg:block">
+            <flux:table>
+                <flux:table.columns>
+                    <flux:table.column></flux:table.column>
+                    <flux:table.column sortable :sorted="$sortColumn === 'teacher'" :direction="$sortDirection" wire:click="sortBy('teacher')">
+                        Teacher
+                    </flux:table.column>
+                    <flux:table.column sortable :sorted="$sortColumn === 'school'" :direction="$sortDirection" wire:click="sortBy('school')">
+                        School (County)
+                    </flux:table.column>
+                    <flux:table.column>Status</flux:table.column>
+                </flux:table.columns>
 
-            <flux:table.rows>
-                @foreach ($roster as $row)
-                    <flux:table.row>
-                        <flux:table.cell>
-                            <flux:checkbox
-                                wire:click="toggle({{ $row->teacher->id }})"
-                                :checked="$row->invitation !== null"
-                            />
-                        </flux:table.cell>
-                        <flux:table.cell class="font-medium">{{ $row->teacher->user->name }}</flux:table.cell>
-                        <flux:table.cell class="text-zinc-500">{{ $row->teacher->user->email }}</flux:table.cell>
-                        <flux:table.cell>
-                            {{ $row->school?->name ?? '—' }}
-                            @if ($row->school?->county)
-                                <span class="text-zinc-500">({{ $row->school->county->name }})</span>
-                            @endif
-                        </flux:table.cell>
-                        <flux:table.cell class="text-zinc-500">
-                            {{ $row->membershipExpiresAt?->format('M j, Y') ?? '—' }}
-                        </flux:table.cell>
-                        <flux:table.cell>
-                            @if ($row->status === 'eligible')
-                                <flux:badge color="zinc" size="sm">Eligible</flux:badge>
-                            @elseif ($row->status === 'invited')
-                                <flux:badge color="blue" size="sm">Invited</flux:badge>
-                            @elseif ($row->status === 'obligated')
-                                <flux:badge color="amber" size="sm">Obligated</flux:badge>
-                            @else
-                                <flux:badge color="green" size="sm">Participating</flux:badge>
-                            @endif
-                        </flux:table.cell>
-                    </flux:table.row>
-                @endforeach
-            </flux:table.rows>
-        </flux:table>
+                <flux:table.rows>
+                    @foreach ($roster as $row)
+                        <flux:table.row>
+                            <flux:table.cell>
+                                <flux:checkbox
+                                    wire:click="toggle({{ $row->teacher->id }})"
+                                    :checked="$row->invitation !== null"
+                                />
+                            </flux:table.cell>
+                            <flux:table.cell>
+                                <div class="font-medium">{{ $row->teacher->user->name }}</div>
+                                <div class="text-zinc-500">{{ $row->teacher->user->email }}</div>
+                            </flux:table.cell>
+                            <flux:table.cell>
+                                <div class="max-w-[220px] whitespace-normal break-words">
+                                    {{ $row->school?->name ?? '—' }}
+                                    @if ($row->school?->county)
+                                        <span class="text-zinc-500">({{ $row->school->county->name }})</span>
+                                    @endif
+                                </div>
+                            </flux:table.cell>
+                            <flux:table.cell>
+                                @if ($row->status === 'eligible')
+                                    <flux:badge color="zinc" size="sm">Eligible</flux:badge>
+                                @elseif ($row->status === 'invited')
+                                    <flux:badge color="blue" size="sm">Invited</flux:badge>
+                                @elseif ($row->status === 'obligated')
+                                    <flux:badge color="amber" size="sm">Obligated</flux:badge>
+                                @else
+                                    <flux:badge color="green" size="sm">Participating</flux:badge>
+                                @endif
+
+                                <div class="text-zinc-500 mt-0.5">
+                                    Exp. Dt: {{ $row->membershipExpiresAt?->format('M j, Y') ?? '—' }}
+                                </div>
+                            </flux:table.cell>
+                        </flux:table.row>
+                    @endforeach
+                </flux:table.rows>
+            </flux:table>
+        </div>
     @endif
 </div>

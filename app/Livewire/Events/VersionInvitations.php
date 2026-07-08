@@ -174,7 +174,6 @@ class VersionInvitations extends Component
         }
 
         $sortValue = fn (VersionInvitationRosterRow $row): string => match ($this->sortColumn) {
-            'email' => mb_strtolower($row->teacher->user->email),
             'school' => mb_strtolower($this->schoolName($row)),
             default => mb_strtolower($row->teacher->user->sort_name),
         };

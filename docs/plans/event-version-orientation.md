@@ -2,7 +2,7 @@
 # Event & Version Domain — Orientation & Build Specification
 
 **Audience:** Claude Code (PhpStorm) and human reviewers.
-**Status:** In-scope build (§0.2 "Build now") implemented and tested. Verified against the codebase 2026-07-07: 140/140 Feature/Unit tests passing across the Event, Ensemble, Version, and Candidate domain. Reference-only items (§7, adjudication/tab room/cut-offs) remain intentionally unbuilt. See §9 for remaining open items (naming drift, uncommitted change, minor gaps).
+**Status:** In-scope build (§0.2 "Build now") implemented and tested, including Version Invitations (§5.4). Verified against the codebase 2026-07-08: 157/157 Feature/Unit tests passing across the Event, Ensemble, Version, and Candidate domain. Reference-only items (§7, adjudication/tab room/cut-offs) remain intentionally unbuilt. See §9 — all tracked items are resolved except intentionally-deferred sub-features.
 
 ---
 
@@ -622,13 +622,14 @@ Full set (12): `eligible`, `pending`, `registered`, `withdrew`, `teacher_withdra
 
 ## 9. Open Decisions (consolidated)
 
-Confirmed as of the 2026-07-07 implementation audit:
+Confirmed as of the 2026-07-08 implementation audit:
 
-1. **Uncommitted change.** `tests/Feature/EnumsTest.php` has a local, uncommitted edit correcting a `VersionDateType` case-order assertion to match the enum's actual declaration order. Needs to be committed (or reconciled if the enum order itself should change instead).
+1. ~~**Uncommitted change.**~~ Resolved — the `tests/Feature/EnumsTest.php` `VersionDateType` case-order fix was committed in `6e1ab02 "Updt: Checks and missing configuration items."`
 2. ~~**`voice_parts` naming drift.**~~ Resolved — spec §4.3 now matches the shipped `name` / `abbr` / `sort_order` columns.
 3. ~~**`emergency_contact` naming drift.**~~ Resolved — spec §5.2 now matches the shipped `emergency_contacts` table (`cell_phone`/`home_phone`/`work_phone`/`relationship`, `EmergencyContactRelationship` enum, `BestPhone` enum).
 4. ~~**`EnsembleVoicePart` pivot ordering.**~~ Resolved — confirmed by design: the pivot intentionally carries no ordering column, and `Ensemble::voiceParts()` must always order by `voice_parts.sort_order`. Documented in §4.4.
 5. ~~**`version_timeslots` has no seeder or UI yet.**~~ Resolved — no seeder is planned; past timeslots are irrelevant, so this row is dropped from the open list.
 6. **`epayment_credentials` is schema-only.** No seeder or UI, as the spec anticipates ("next-phase implementation"). No action needed this phase.
 7. **Reference-only items remain unbuilt by design**, confirming the §0.2 scope fence held during implementation: `version_adjudication` (rooms, scoring categories/factors, judge types), `audition_results`, `AdjudicationStatus` enum, `CutoffStrategy` enum. Do not scaffold until the Adjudication Wizard phase begins.
-8. **Version Invitations (§5.4) — new capability, decisions confirmed 2026-07-07, not yet built.** Membership eligibility leg accepts any `Membership` row regardless of expiration (not "currently active" only). County leg is unrestricted when a Version has no `version_counties` rows. `obligated`/`participating` are reserved enum cases with no trigger in this phase — they belong to the not-yet-designed registration workflow (teacher agreement to Version obligations); do not scaffold that trigger now. Multi-school teachers get one roster row (first qualifying school shown), not one row per school. No email is sent on invite this phase. Modeled as a new `VersionInvitation`/`version_invitations` table, intentionally separate from the existing `EventInvitationRequest` (teacher-initiated, Event-scoped, pending/approved/denied) — the two are different concepts and must not be merged.
+8. ~~**Version Invitations (§5.4) — new capability, not yet built.**~~ Resolved — built and committed in `9e015fa "Add: Invitations functionality."`: `VersionInvitationStatus` enum, `VersionInvitation` model + migration, `VersionInvitationEligibilityService`, `VersionInvitationRosterRow`, the `VersionInvitations` Livewire component + view, and feature/unit test coverage. Membership eligibility leg accepts any `Membership` row regardless of expiration. County leg is unrestricted when a Version has no `version_counties` rows. Multi-school teachers get one roster row. Modeled as a new `version_invitations` table, intentionally separate from `EventInvitationRequest`.
+9. **Still intentionally deferred within §5.4** (flagged, not scaffolded): search/filter/pagination on the invitation roster, email notification on invite, and any UI for the `obligated`/`participating` transitions — these belong to the not-yet-designed registration workflow.
