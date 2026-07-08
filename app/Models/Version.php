@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
 
 #[Fillable([
     'event_id', 'name', 'short_name', 'senior_class_of', 'status',
@@ -144,6 +145,35 @@ class Version extends Model
     public function invitations(): HasMany
     {
         return $this->hasMany(VersionInvitation::class);
+    }
+
+    /**
+     * @return HasMany<VersionPitchFile, $this>
+     */
+    public function pitchFiles(): HasMany
+    {
+        return $this->hasMany(VersionPitchFile::class)->orderBy('order_by');
+    }
+
+    /**
+     * Voice parts valid for this Version — the union of voice parts across
+     * all of the parent Event's Ensembles. Versions have no direct
+     * voice-part relationship of their own; the chain is Version -> Event ->
+     * Ensembles -> VoiceParts, via ensemble_voice_parts.
+     *
+     * @return Collection<int, VoicePart>
+     */
+    public function availableVoiceParts(): Collection
+    {
+        return VoicePart::query()
+            ->whereIn('id', function ($query): void {
+                $query->select('ensemble_voice_parts.voice_part_id')
+                    ->from('ensemble_voice_parts')
+                    ->join('ensembles', 'ensembles.id', '=', 'ensemble_voice_parts.ensemble_id')
+                    ->where('ensembles.event_id', $this->event_id);
+            })
+            ->ordered()
+            ->get();
     }
 
     /**

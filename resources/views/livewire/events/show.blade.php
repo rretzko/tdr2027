@@ -77,6 +77,9 @@
                                     <flux:button size="sm" variant="ghost" :href="route('events.versions.invitations', $version)" wire:navigate>
                                         Invitations
                                     </flux:button>
+                                    <flux:button size="sm" variant="ghost" :href="route('events.versions.pitch-files', $version)" wire:navigate>
+                                        Pitch Files
+                                    </flux:button>
                                 @endif
                             </div>
                         </div>
@@ -123,6 +126,9 @@
                                     @if ($canManageEvent)
                                         <flux:button size="sm" variant="ghost" :href="route('events.versions.invitations', $version)" wire:navigate>
                                             Invitations
+                                        </flux:button>
+                                        <flux:button size="sm" variant="ghost" :href="route('events.versions.pitch-files', $version)" wire:navigate>
+                                            Pitch Files
                                         </flux:button>
                                     @endif
                                 </div>
