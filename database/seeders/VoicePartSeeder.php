@@ -32,6 +32,7 @@ class VoicePartSeeder extends Seeder
             ['Bass', 'Bass'],
             ['Bass I', 'BI'],
             ['Bass II', 'BII'],
+            ['ALL', 'ALL'],
         ];
 
         foreach ($seeds as $sortOrder => [$name, $abbr]) {

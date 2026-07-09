@@ -41,6 +41,7 @@ class DatabaseSeeder extends Seeder
             StudentTeacherSeeder::class,
             VersionRoleSeeder::class,
             VersionInvitationSeeder::class,
+            VersionPitchFileSeeder::class,
         ]);
 
         User::factory()->create([

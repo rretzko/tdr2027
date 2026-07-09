@@ -3,7 +3,7 @@
     <div class="flex items-center gap-2 mb-1 text-sm text-zinc-500">
         <a href="{{ route('events.show', $version->event) }}" wire:navigate class="hover:text-zinc-800 dark:hover:text-zinc-200">{{ $version->event->name }}</a>
         <flux:icon.chevron-right variant="micro" class="text-zinc-400" />
-        <span>{{ $version->name }}</span>
+        <a href="{{ route('events.versions.edit', $version) }}" wire:navigate class="hover:text-zinc-800 dark:hover:text-zinc-200">{{ $version->name }}</a>
         <flux:icon.chevron-right variant="micro" class="text-zinc-400" />
         <span>Invitations</span>
     </div>
