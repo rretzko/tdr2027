@@ -27,8 +27,8 @@ test('PronounSeeder seeds 9 pronoun sets with id 1 as she/her', function () {
     expect(Pronoun::find(1)->description)->toBe('she/her/hers/herself');
 });
 
-test('VoicePartSeeder seeds 17 voice parts ordered by sort_order', function () {
-    expect(VoicePart::count())->toBe(17);
+test('VoicePartSeeder seeds 18 voice parts ordered by sort_order', function () {
+    expect(VoicePart::count())->toBe(18);
     expect(VoicePart::ordered()->first()->name)->toBe('Descant');
 });
 

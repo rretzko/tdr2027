@@ -2,7 +2,7 @@
 # Event & Version Domain — Orientation & Build Specification
 
 **Audience:** Claude Code (PhpStorm) and human reviewers.
-**Status:** In-scope build (§0.2 "Build now") implemented and tested, including Version Invitations (§5.4). Verified against the codebase 2026-07-08: 157/157 Feature/Unit tests passing across the Event, Ensemble, Version, and Candidate domain. Reference-only items (§7, adjudication/tab room/cut-offs) remain intentionally unbuilt. See §9 — all tracked items are resolved except intentionally-deferred sub-features.
+**Status:** In-scope build (§0.2 "Build now") implemented and tested, including Version Invitations (§5.4) and Version Pitch Files (§5.5). Verified against the codebase 2026-07-09: 500/500 Feature/Unit tests passing app-wide. Reference-only items (§7, adjudication/tab room/cut-offs) remain intentionally unbuilt. See §9 — all tracked items are resolved except intentionally-deferred sub-features.
 
 ---
 
@@ -354,7 +354,7 @@ Date types:
 - **County assignments:** if multiple co-registration managers.
 - **Event ensemble order:** if multiple Ensembles share the same candidate pool (drives cascading / alternating assignment).
 - **Default invitations:** auto-invite current Organization members.
-- **Pitch files & visibility:** audience (teacher \| candidate \| both); visible to candidates post-candidate-close; visible to teachers post-teacher-close; visible to teachers post-version-close.
+- **Pitch files & visibility:** audience (teacher \| candidate \| both); visible to candidates post-candidate-close; visible to teachers post-teacher-close; visible to teachers post-version-close. Event Manager CRUD is built — see §5.5. The post-close visibility windows are not yet enforced (flagged in §5.5).
 - **Score order:** ascending (golf; lower is better) or descending (bowling; higher is better).
 
 **`candidates` table** — next-phase implementation, to identify a candidate:
@@ -473,6 +473,33 @@ Unique on (`version_id`, `teacher_id`).
 **Authorization.** Gate the invitation-management screen the same way as `VersionEdit`: `VersionRoleAssignmentService::canManageEvent($user, $version->event)` (Founder or Event Manager on any Version of the Event).
 
 **Not built this phase (flag, don't scaffold):** search/filter/pagination on the roster (revisit if a real organization's teacher roster proves too large for a single page), email notification on invite, and any UI for the `obligated`/`participating` transitions themselves.
+
+### 5.5 Version Pitch Files (Event Manager maintains the audio/reference library)
+
+The Event Manager maintains an ordered, per-voice-part library of pitch files (audio/video/PDF reference material — e.g., scales, solo excerpts, quintet mixes) for a Version. Confirmed 2026-07-09.
+
+**`version_pitch_files` table** — current implementation:
+
+| Column                      | Type              | Null | Default | Notes                                                          |
+|------------------------------|-------------------|------|---------|-----------------------------------------------------------------|
+| `id`                          | bigIncrements     | no   | —       | PK                                                               |
+| `version_id`                  | foreignId         | no   | —       | FK → versions; cascade on delete                                 |
+| `voice_part_id`               | foreignId         | no   | —       | FK → voice_parts; cascade on delete                              |
+| `name`                        | string            | no   | —       | File label (e.g., "scales", "solo")                              |
+| `description`                 | string            | yes  | null    |                                                                   |
+| `url`                         | string            | no   | —       | S3 object key (`pitchFiles/{version_id}/...`)                    |
+| `order_by`                    | unsignedSmallInt  | no   | 1       | Display order; resequenced on reorder/save-order                 |
+| `created_at` / `updated_at`   | timestamp         | yes  | null    | Laravel timestamps                                                |
+
+`Version::pitchFiles()` is a `HasMany` ordered by `order_by`. Uploaded files accept `mp3, wav, m4a, pdf, mp4, mov` (max 50 MB) and are stored on the `s3` disk under `pitchFiles/{version_id}/`; replacing a file on edit deletes the previous S3 object, and removing a row deletes its S3 object too.
+
+**Voice part scoping.** `voice_part_id` must be one of the Version's `availableVoiceParts()` (the union of voice parts across the Event's Ensembles) — a pitch file cannot be assigned to a voice part the Event doesn't use. `order_by` is assigned per-Version (not per-voice-part) as `max(order_by) + 1` on create.
+
+**Roster UI.** `VersionPitchFiles` Livewire component (`/events/versions/{version}/pitch-files`, route `events.versions.pitch-files`) provides: search (name/description), filter by voice part and by file-name type, sortable columns, drag-and-drop reorder (native HTML5 drag-and-drop per [[project_livewire_wire_sort]] — Livewire's `wire:sort` is broken on Flux table rows), and a bulk "save order" fallback via numeric inputs. Add/edit is a modal form; both create and edit go through the same `save()` action.
+
+**Authorization.** Gated identically to `VersionEdit` and `VersionInvitations`: `VersionRoleAssignmentService::canManageEvent($user, $version->event)` (Founder or Event Manager on any Version of the Event) on mount and on every mutating action (`save`, `remove`, `saveOrder`, `reorderPitchFiles`).
+
+**Not built this phase (flag, don't scaffold):** enforcement of `pitch_file_visibility` (§5.1) and the post-close visibility windows described in the bullet above — the column and enum (`PitchFileVisibility`: `both | candidate | teacher`) exist and are configurable on `VersionEdit`, but nothing yet reads them to gate what a teacher or candidate can see. Candidate/teacher-facing display of pitch files (StudentFolder.info side) is not built — this phase is Event Manager CRUD only.
 
 ---
 
@@ -622,7 +649,7 @@ Full set (12): `eligible`, `pending`, `registered`, `withdrew`, `teacher_withdra
 
 ## 9. Open Decisions (consolidated)
 
-Confirmed as of the 2026-07-08 implementation audit:
+Confirmed as of the 2026-07-09 implementation audit:
 
 1. ~~**Uncommitted change.**~~ Resolved — the `tests/Feature/EnumsTest.php` `VersionDateType` case-order fix was committed in `6e1ab02 "Updt: Checks and missing configuration items."`
 2. ~~**`voice_parts` naming drift.**~~ Resolved — spec §4.3 now matches the shipped `name` / `abbr` / `sort_order` columns.
@@ -633,3 +660,5 @@ Confirmed as of the 2026-07-08 implementation audit:
 7. **Reference-only items remain unbuilt by design**, confirming the §0.2 scope fence held during implementation: `version_adjudication` (rooms, scoring categories/factors, judge types), `audition_results`, `AdjudicationStatus` enum, `CutoffStrategy` enum. Do not scaffold until the Adjudication Wizard phase begins.
 8. ~~**Version Invitations (§5.4) — new capability, not yet built.**~~ Resolved — built and committed in `9e015fa "Add: Invitations functionality."`: `VersionInvitationStatus` enum, `VersionInvitation` model + migration, `VersionInvitationEligibilityService`, `VersionInvitationRosterRow`, the `VersionInvitations` Livewire component + view, and feature/unit test coverage. Membership eligibility leg accepts any `Membership` row regardless of expiration. County leg is unrestricted when a Version has no `version_counties` rows. Multi-school teachers get one roster row. Modeled as a new `version_invitations` table, intentionally separate from `EventInvitationRequest`.
 9. **Still intentionally deferred within §5.4** (flagged, not scaffolded): search/filter/pagination on the invitation roster, email notification on invite, and any UI for the `obligated`/`participating` transitions — these belong to the not-yet-designed registration workflow.
+10. ~~**Version Pitch Files (§5.5) — new capability, not yet built.**~~ Resolved — built and committed in `b70abb3 "Add: Initial pitch files functionality."` and `2a55580 "Updt: Completed pitch files functionality."`: `VersionPitchFile` model + migration (`version_pitch_files`), the `VersionPitchFiles` Livewire component + view (search/filter/sort/drag-reorder), S3-backed file storage with delete-on-replace and delete-on-remove, and feature test coverage (`VersionPitchFilesTest`, 14 tests). `voice_part_id` is validated against `Version::availableVoiceParts()`. Gated by the same `canManageEvent` check as `VersionEdit`/`VersionInvitations`. `VoicePartSeeder` gained an `'ALL'` voice part (for files that apply across parts) as part of this work; `SeedersTest` was updated from 17 to 18 expected voice parts to match.
+11. **Still intentionally deferred within §5.5** (flagged, not scaffolded): enforcement of `pitch_file_visibility` (teacher/candidate/both) and the post-close visibility windows, and any candidate/teacher-facing display of pitch files on StudentFolder.info — this phase is Event Manager CRUD only.
