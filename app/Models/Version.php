@@ -156,6 +156,14 @@ class Version extends Model
     }
 
     /**
+     * @return HasOne<VersionObligation, $this>
+     */
+    public function obligation(): HasOne
+    {
+        return $this->hasOne(VersionObligation::class);
+    }
+
+    /**
      * Voice parts valid for this Version — the union of voice parts across
      * all of the parent Event's Ensembles. Versions have no direct
      * voice-part relationship of their own; the chain is Version -> Event ->

@@ -9,6 +9,7 @@ use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
 use App\Enums\VersionDateType;
+use App\Enums\VersionObligationStatus;
 use App\Livewire\Events\VersionEdit;
 use App\Models\County;
 use App\Models\Ensemble;
@@ -20,6 +21,7 @@ use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
+use App\Models\VersionObligation;
 use App\Models\VersionUploadFile;
 use App\Services\VersionRoleAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -463,4 +465,137 @@ test('revokeRole removes an assignment when called by an Event Manager', functio
             ->get('Rehearsal Manager')
             ->pluck('id'),
     )->not->toContain($rehearsalManager->id);
+});
+
+test('saveObligation creates a draft row without publishing it', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('obligation_title', 'Teacher Obligations')
+        ->set('obligation_body', '<p>Be excellent.</p>')
+        ->call('saveObligation')
+        ->assertHasNoErrors()
+        ->assertSet('obligation_status', 'draft');
+
+    $obligation = VersionObligation::where('version_id', $version->id)->first();
+
+    expect($obligation)->not->toBeNull();
+    expect($obligation->title)->toBe('Teacher Obligations');
+    expect($obligation->getRawOriginal('status'))->toBe('draft');
+    expect($obligation->published_at)->toBeNull();
+});
+
+test('saveObligation strips disallowed HTML via the obligations purifier profile', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('obligation_body', '<p><strong>Bold</strong> text</p><script>alert(1)</script><img src="x.png" onerror="alert(2)">')
+        ->call('saveObligation');
+
+    $obligation = VersionObligation::where('version_id', $version->id)->first();
+
+    expect($obligation->body)->toContain('<strong>Bold</strong>');
+    expect($obligation->body)->not->toContain('<script');
+    expect($obligation->body)->not->toContain('<img');
+    expect($obligation->body)->not->toContain('onerror');
+});
+
+test('saveObligation on an already-published obligation does not change its status', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    VersionObligation::create([
+        'version_id' => $version->id,
+        'body' => '<p>Original.</p>',
+        'status' => VersionObligationStatus::Published->value,
+        'published_at' => now(),
+        'published_by_user_id' => $user->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('obligation_body', '<p>Edited wording.</p>')
+        ->call('saveObligation')
+        ->assertSet('obligation_status', 'published');
+
+    $obligation = VersionObligation::where('version_id', $version->id)->first();
+
+    expect($obligation->getRawOriginal('status'))->toBe('published');
+    expect($obligation->body)->toContain('Edited wording.');
+});
+
+test('publishObligation saves the current text and stamps published_at/published_by_user_id', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('obligation_title', 'Teacher Obligations')
+        ->set('obligation_body', '<p>Be excellent.</p>')
+        ->call('publishObligation')
+        ->assertSet('obligation_status', 'published');
+
+    $obligation = VersionObligation::where('version_id', $version->id)->first();
+
+    expect($obligation->getRawOriginal('status'))->toBe('published');
+    expect($obligation->published_at)->not->toBeNull();
+    expect($obligation->published_by_user_id)->toBe($user->id);
+});
+
+test('unpublishObligation reverts a published obligation back to draft', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    VersionObligation::create([
+        'version_id' => $version->id,
+        'body' => '<p>Text.</p>',
+        'status' => VersionObligationStatus::Published->value,
+        'published_at' => now(),
+        'published_by_user_id' => $user->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->call('unpublishObligation')
+        ->assertSet('obligation_status', 'draft');
+
+    $obligation = VersionObligation::where('version_id', $version->id)->first();
+
+    expect($obligation->getRawOriginal('status'))->toBe('draft');
+});
+
+test('the Obligations preview reflects unsaved edits with merge fields resolved', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['short_name' => 'TDR27']);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('activeTab', 'obligations')
+        ->set('obligation_title', 'Draft Title')
+        ->set('obligation_body', '<p>Hello {{versionShortName}}.</p>')
+        ->assertSee('Draft Title')
+        ->assertSee('Hello TDR27');
+
+    expect(VersionObligation::where('version_id', $version->id)->exists())->toBeFalse();
+});
+
+test('the Obligations preview shows an empty-state message when there is no text yet', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('activeTab', 'obligations')
+        ->assertSee('Nothing to preview yet');
 });

@@ -21,6 +21,7 @@ use App\Livewire\Onboarding\TeacherOnboardingWizard;
 use App\Livewire\Registrations\CandidateDetail;
 use App\Livewire\Registrations\Index as RegistrationsIndex;
 use App\Livewire\Registrations\VersionDashboard;
+use App\Livewire\Registrations\VersionObligations;
 use App\Livewire\Schools\Index as SchoolsIndex;
 use App\Livewire\Settings\Password;
 use App\Livewire\Settings\Profile;
@@ -105,6 +106,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/pitch-files', VersionPitchFiles::class)->name('events.versions.pitch-files');
         Route::get('/registrations', RegistrationsIndex::class)->name('registrations.index');
         Route::get('/registrations/{version}', VersionDashboard::class)->name('registrations.version');
+        Route::get('/registrations/{version}/obligations', VersionObligations::class)->name('registrations.obligations');
         Route::get('/registrations/{version}/{candidate}', CandidateDetail::class)->name('registrations.candidate');
     });
 

@@ -17,6 +17,7 @@
             <flux:tab name="dates">Dates</flux:tab>
             <flux:tab name="fees">Fees</flux:tab>
             <flux:tab name="requirements">Requirements</flux:tab>
+            <flux:tab name="obligations">Obligations</flux:tab>
             <flux:tab name="roles">Roles</flux:tab>
         </flux:tabs>
 
@@ -384,6 +385,111 @@
                 </flux:button>
             </div>
         </flux:tab.panel>
+
+        {{-- Obligations --}}
+        <flux:tab.panel name="obligations">
+            <div class="mt-6 space-y-4 max-w-3xl">
+                <div class="flex flex-wrap items-center gap-2">
+                    @if ($obligation_status === 'published')
+                        <flux:badge color="green">Published</flux:badge>
+                        @if ($obligation_published_at)
+                            <flux:text size="sm" class="text-zinc-500">since {{ $obligation_published_at }}</flux:text>
+                        @endif
+                    @else
+                        <flux:badge color="zinc">Draft</flux:badge>
+                    @endif
+
+                    @if ($obligation_response_count > 0)
+                        <flux:badge color="amber" size="sm">{{ $obligation_response_count }} teacher response{{ $obligation_response_count === 1 ? '' : 's' }}</flux:badge>
+                    @endif
+                </div>
+
+                <flux:callout variant="info" icon="information-circle">
+                    <flux:callout.text>
+                        Available merge fields: @verbatim<code class="font-mono text-xs">{{versionShortName}}</code> and <code class="font-mono text-xs">{{versionName}}</code>@endverbatim — replaced with this Version's values when a teacher views or accepts.
+                    </flux:callout.text>
+                </flux:callout>
+
+                <flux:field>
+                    <flux:label>Title (optional)</flux:label>
+                    <flux:input wire:model="obligation_title" placeholder="Teacher Obligations" />
+                    <flux:error name="obligation_title" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>Obligations Text</flux:label>
+                    <flux:editor wire:model="obligation_body" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
+                    <flux:error name="obligation_body" />
+                </flux:field>
+
+                @if ($errors->any())
+                    <flux:callout variant="danger" icon="exclamation-triangle">
+                        <flux:callout.text>Please correct the errors above.</flux:callout.text>
+                    </flux:callout>
+                @endif
+
+                <div class="flex flex-wrap gap-3">
+                    <flux:button variant="filled" wire:click="saveObligation">
+                        Save
+                    </flux:button>
+
+                    @if ($obligation_status === 'published')
+                        <flux:button
+                            variant="filled"
+                            wire:click="unpublishObligation"
+                            wire:confirm="Unpublish these obligations? Teachers will no longer be able to view or respond until you republish."
+                        >
+                            Unpublish
+                        </flux:button>
+                    @else
+                        <flux:button variant="primary" wire:click="publishObligation">
+                            Publish
+                        </flux:button>
+                    @endif
+
+                    <flux:modal.trigger name="obligation-preview">
+                        <flux:button variant="ghost" icon="eye" wire:click="$refresh">
+                            Preview
+                        </flux:button>
+                    </flux:modal.trigger>
+                </div>
+            </div>
+        </flux:tab.panel>
+
+        <flux:modal name="obligation-preview" class="md:w-[42rem]">
+            <div class="space-y-4">
+                <div>
+                    <flux:heading size="lg">{{ $obligation_title !== '' ? $obligation_title : 'Teacher Obligations' }}</flux:heading>
+                    <flux:subheading>Preview — {{ $version->name }}</flux:subheading>
+                </div>
+
+                <flux:callout variant="secondary" icon="information-circle">
+                    <flux:callout.text>
+                        This reflects your current unsaved edits with merge fields resolved, exactly as an invited teacher will see it. It does not save or publish anything.
+                    </flux:callout.text>
+                </flux:callout>
+
+                @if (trim(strip_tags($obligationPreviewBody)) === '')
+                    <flux:text class="text-zinc-500">Nothing to preview yet — add some obligations text first.</flux:text>
+                @else
+                    <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-4">
+                        <div class="obligation-content text-zinc-700 dark:text-zinc-300
+                            [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-6 [&_ul_ul]:list-[circle] [&_ul_ul]:mt-1
+                            [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-6
+                            [&_li]:mb-2 [&_strong]:font-semibold [&_u]:underline [&_p]:mb-3">
+                            {!! $obligationPreviewBody !!}
+                        </div>
+                    </div>
+                @endif
+
+                <div class="flex gap-2">
+                    <flux:spacer />
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Close</flux:button>
+                    </flux:modal.close>
+                </div>
+            </div>
+        </flux:modal>
 
         {{-- Roles --}}
         <flux:tab.panel name="roles">

@@ -8,6 +8,7 @@ use App\Enums\VersionInvitationStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable(['version_id', 'teacher_id', 'status', 'invited_at', 'invited_by_user_id'])]
 class VersionInvitation extends Model
@@ -45,5 +46,13 @@ class VersionInvitation extends Model
     public function invitedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'invited_by_user_id');
+    }
+
+    /**
+     * @return HasOne<VersionObligationResponse, $this>
+     */
+    public function obligationResponse(): HasOne
+    {
+        return $this->hasOne(VersionObligationResponse::class);
     }
 }

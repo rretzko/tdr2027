@@ -11,6 +11,7 @@ use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
 use App\Enums\VersionDateType;
+use App\Enums\VersionObligationStatus;
 use App\Models\County;
 use App\Models\User;
 use App\Models\Version;
@@ -18,8 +19,10 @@ use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
+use App\Models\VersionObligation;
 use App\Models\VersionUploadFile;
 use App\Services\VersionRoleAssignmentService;
+use Carbon\Carbon;
 use Flux\Flux;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -120,6 +123,17 @@ class VersionEdit extends Component
     /** @var array<int, int> ensemble_id → order_by */
     public array $ensemble_order = [];
 
+    // Obligations tab
+    public string $obligation_title = '';
+
+    public string $obligation_body = '';
+
+    public string $obligation_status = 'draft';
+
+    public ?string $obligation_published_at = null;
+
+    public int $obligation_response_count = 0;
+
     // Roles tab
     public string $assign_email = '';
 
@@ -129,7 +143,7 @@ class VersionEdit extends Component
     {
         abort_unless($service->canAccessVersion(Auth::user(), $version), 403);
 
-        $this->version = $version->load(['dates', 'fees', 'membershipRequirement', 'counties', 'uploadFiles']);
+        $this->version = $version->load(['dates', 'fees', 'membershipRequirement', 'counties', 'uploadFiles', 'obligation']);
 
         $this->name = $version->name;
         $this->short_name = $version->short_name ?? '';
@@ -188,6 +202,16 @@ class VersionEdit extends Component
                 'order_by' => (int) $uploadFile->order_by,
             ];
         }
+
+        $obligation = $version->obligation;
+        $this->obligation_title = $obligation !== null ? ($obligation->title ?? '') : '';
+        $this->obligation_body = $obligation !== null ? $obligation->body : '';
+        $this->obligation_status = $obligation !== null ? $obligation->getRawOriginal('status') : VersionObligationStatus::Draft->value;
+        $rawPublishedAt = $obligation !== null ? $obligation->getRawOriginal('published_at') : null;
+        $this->obligation_published_at = $rawPublishedAt !== null
+            ? Carbon::parse($rawPublishedAt)->format('M j, Y g:ia')
+            : null;
+        $this->obligation_response_count = $obligation !== null ? $obligation->responses()->count() : 0;
     }
 
     public function saveGeneral(): void
@@ -342,6 +366,66 @@ class VersionEdit extends Component
         Flux::toast('Version requirements saved.');
     }
 
+    public function saveObligation(): void
+    {
+        $validated = $this->validate([
+            'obligation_title' => ['nullable', 'string', 'max:255'],
+            'obligation_body' => ['required', 'string'],
+        ]);
+
+        $obligation = VersionObligation::updateOrCreate(
+            ['version_id' => $this->version->id],
+            [
+                'title' => ($validated['obligation_title'] ?? '') ?: null,
+                'body' => $validated['obligation_body'],
+            ],
+        )->refresh();
+
+        $this->obligation_status = $obligation->getRawOriginal('status');
+        $this->obligation_response_count = $obligation->responses()->count();
+
+        Flux::toast('Obligations saved.');
+    }
+
+    public function publishObligation(): void
+    {
+        $validated = $this->validate([
+            'obligation_title' => ['nullable', 'string', 'max:255'],
+            'obligation_body' => ['required', 'string'],
+        ]);
+
+        $obligation = VersionObligation::updateOrCreate(
+            ['version_id' => $this->version->id],
+            [
+                'title' => ($validated['obligation_title'] ?? '') ?: null,
+                'body' => $validated['obligation_body'],
+                'status' => VersionObligationStatus::Published->value,
+                'published_at' => now(),
+                'published_by_user_id' => Auth::id(),
+            ],
+        );
+
+        $this->obligation_status = $obligation->getRawOriginal('status');
+        $this->obligation_published_at = Carbon::parse($obligation->getRawOriginal('published_at'))->format('M j, Y g:ia');
+
+        Flux::toast(text: 'Obligations published — teachers can now view and respond.', variant: 'success');
+    }
+
+    public function unpublishObligation(): void
+    {
+        $obligation = $this->version->obligation;
+
+        if ($obligation === null) {
+            return;
+        }
+
+        $obligation->update(['status' => VersionObligationStatus::Draft->value]);
+
+        $this->obligation_status = VersionObligationStatus::Draft->value;
+
+        Flux::toast(text: 'Obligations unpublished — hidden from teachers until republished.', variant: 'warning');
+    }
+
     public function saveEnsembleOrder(): void
     {
         $this->validate([
@@ -491,6 +575,7 @@ class VersionEdit extends Component
             'canManageRoles' => $service->canManageVersionRoles(Auth::user(), $this->version),
             'assignableRoles' => $service->assignableRoleNames(),
             'assignEmailSuggestions' => $this->assignEmailSuggestions(),
+            'obligationPreviewBody' => VersionObligation::mergeTokens($this->obligation_body, $this->version),
         ]);
     }
 }

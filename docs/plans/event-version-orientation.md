@@ -2,7 +2,7 @@
 # Event & Version Domain — Orientation & Build Specification
 
 **Audience:** Claude Code (PhpStorm) and human reviewers.
-**Status:** In-scope build (§0.2 "Build now") implemented and tested, including Version Invitations (§5.4) and Version Pitch Files (§5.5). Verified against the codebase 2026-07-09: 500/500 Feature/Unit tests passing app-wide. Reference-only items (§7, adjudication/tab room/cut-offs) remain intentionally unbuilt. See §9 — all tracked items are resolved except intentionally-deferred sub-features.
+**Status:** In-scope build (§0.2 "Build now") implemented and tested, including Version Invitations (§5.4), Version Pitch Files (§5.5), and Version Obligations (§5.6, not yet committed). Verified against the codebase 2026-07-09: 522/522 Feature/Unit tests passing app-wide (500 baseline + 22 new for §5.6, added across `VersionEditTest`, `Registrations/VersionObligationsTest`, and `VersionObligationObserversTest`). Reference-only items (§7, adjudication/tab room/cut-offs) remain intentionally unbuilt. See §9 — all tracked items are resolved except intentionally-deferred sub-features. **Known open issue in §5.6**: bulleted/numbered lists don't render with visible markers in the live `flux:editor` admin UI or its Preview modal, even for freshly-typed (not pasted) content — confirmed the stored HTML and server-side rendering are both correct via direct DB inspection and a Blade-render test, so the defect is isolated to the client-side editor/TipTap layer, not this codebase's PHP/Blade/CSS. Unresolved; see the note at the end of §9.
 
 ---
 
@@ -90,6 +90,8 @@ Relationship summary (read "1—\*" as one-to-many, "\*—\*" as many-to-many):
 - `Version` 1—\* `version_dates`, `version_fees`, `version_timeslots`, `version_upload_files`, `version_adjudication`
 - `Version` 1—\* `Candidate`
 - `Candidate` 1—\* `candidate_status_history`
+- `Version` 1—1 `VersionObligation` (via `version_obligations`, unique `version_id`)
+- `VersionObligation` 1—\* `VersionObligationResponse`; `VersionInvitation` 1—1 `VersionObligationResponse` (via `version_obligation_responses`, unique `version_invitation_id`)
 
 ---
 
@@ -501,6 +503,49 @@ The Event Manager maintains an ordered, per-voice-part library of pitch files (a
 
 **Not built this phase (flag, don't scaffold):** enforcement of `pitch_file_visibility` (§5.1) and the post-close visibility windows described in the bullet above — the column and enum (`PitchFileVisibility`: `both | candidate | teacher`) exist and are configurable on `VersionEdit`, but nothing yet reads them to gate what a teacher or candidate can see. Candidate/teacher-facing display of pitch files (StudentFolder.info side) is not built — this phase is Event Manager CRUD only.
 
+### 5.6 Version Obligations (Event Manager authors, teacher accepts/rejects)
+
+The Event Manager authors a per-Version "Teacher Obligations" document (rich text, previously hand-built per organization and emailed to a developer) and publishes it; an invited teacher views it and accepts or rejects, which feeds the `VersionInvitationStatus::Obligated` case reserved in §8.8. Built 2026-07-09, as the pilot for a broader "Event Manager self-serve content" strategy (Candidate Application and Estimate Form/Invoice are the next two candidates for the same pattern, not yet built).
+
+**`version_obligations` table** — current implementation:
+
+| Column                       | Type          | Null | Default | Notes                                                               |
+|-------------------------------|---------------|------|---------|----------------------------------------------------------------------|
+| `id`                           | bigIncrements | no   | —       | PK                                                                    |
+| `version_id`                   | foreignId     | no   | —       | FK → versions; cascade on delete; **unique** (one row per Version)   |
+| `title`                        | string        | yes  | null    | Optional display title                                               |
+| `body`                         | longText      | no   | —       | Sanitized HTML (see below); rendered via `{!! !!}`                   |
+| `status`                       | string        | no   | draft   | `VersionObligationStatus`: `draft \| published`                      |
+| `published_at`                 | timestamp     | yes  | null    | Set when published                                                    |
+| `published_by_user_id`         | foreignId     | yes  | null    | FK → users; null on delete                                            |
+| `created_at` / `updated_at`    | timestamp     | yes  | null    | Laravel timestamps                                                    |
+
+**`version_obligation_responses` table** — current implementation:
+
+| Column                         | Type          | Null | Default | Notes                                                                 |
+|----------------------------------|---------------|------|---------|-------------------------------------------------------------------------|
+| `id`                              | bigIncrements | no   | —       | PK                                                                       |
+| `version_invitation_id`           | foreignId     | no   | —       | FK → version_invitations; cascade on delete; **unique** (one response per invitation, toggled in place) |
+| `version_obligation_id`           | foreignId     | no   | —       | FK → version_obligations; cascade on delete                             |
+| `decision`                        | string        | no   | —       | `ObligationDecision`: `accepted \| rejected`                            |
+| `decided_at`                      | timestamp     | no   | —       | Updated on every toggle                                                 |
+| `obligation_snapshot`             | longText      | no   | —       | Frozen copy of the merged `body` at decision time — the audit record of exactly what the teacher agreed to, independent of later edits |
+| `created_at` / `updated_at`       | timestamp     | yes  | null    | Laravel timestamps                                                       |
+
+**Authoring & sanitization.** The Event Manager edits `title`/`body` via a `flux:editor` (TipTap-based) on the `VersionEdit` "Obligations" tab, toolbar restricted to `heading bold italic underline | bullet ordered blockquote | link`. `body` is passed through `mews/purifier`'s `obligations` HTMLPurifier profile (`config/purifier.php`) on every save via `VersionObligationObserver::saving()` — allowlist `p,h1,h2,h3,strong,b,em,i,u,ul,ol,li,blockquote,a[href]`, no `img`/`style`/`class`/`div`/`span`, unsafe URI schemes (e.g. `javascript:`) stripped. This runs regardless of entry point (Livewire, tinker, future tooling), not just the one form.
+
+**Merge fields.** `body` may contain literal tokens `{{versionShortName}}` / `{{versionName}}`, resolved by plain `str_replace` (not Blade evaluation — the Event Manager's content must never be passed through a Blade compile step) at render time on both the admin preview intent and the teacher-facing page, and frozen into `obligation_snapshot` at accept/reject time.
+
+**Publish workflow.** `status` starts `draft`. **Save** persists `title`/`body` without touching `status`. **Publish** persists and sets `status = published`, `published_at = now()`, `published_by_user_id = auth()->id()` in one action. **Unpublish** reverts to `draft` (`wire:confirm`-gated) — existing teacher responses are untouched (their `obligation_snapshot` remains the audit record regardless of later publish state changes). Teachers only ever see a `published` obligation; `draft` is invisible to them.
+
+**Teacher accept/reject.** `App\Livewire\Registrations\VersionObligations` (`/registrations/{version}/obligations`, route `registrations.obligations`) shows the published obligation (merge-resolved) to an invited teacher and lets them Accept or Reject via `updateOrCreate` keyed on the unique `version_invitation_id` — toggling updates the same row rather than accumulating history. `VersionObligationResponseObserver::saved()` flips the parent `VersionInvitation.status` to `VersionInvitationStatus::Obligated` (§8.8, previously reserved and unwritten) when the current decision is `accepted`. **A `rejected` decision does not revert `Obligated` or otherwise gate anything — it is currently a no-op beyond being logged; whether rejection should block further participation is an open question (§9).**
+
+**Guard activation.** `VersionInvitations::uninvite()` (§5.4) already contained a guard — `in_array($rawStatus, [Obligated, Participating])` blocks removing a teacher who has agreed to obligations — written before this feature existed. This phase is what makes that guard live for the first time.
+
+**Authorization.** Authoring is gated identically to the rest of `VersionEdit` (`VersionRoleAssignmentService::canManageEvent`), checked once at `mount()` per the existing `VersionEdit` convention (not re-checked per action). The teacher-facing page scopes by the authenticated teacher's own `VersionInvitation` row (404 if not invited); no separate role check.
+
+**Not built this phase (flag, don't scaffold):** PDF rendition of the obligations (a disabled placeholder button exists on the teacher page; `barryvdh/laravel-dompdf` is installed but this feature is not yet its first real usage); an "insert merge field" toolbar button (Event Manager must type the token literally); any consequence for a `rejected` decision beyond logging it.
+
 ---
 
 ## 6. Lifecycle — In Scope
@@ -643,7 +688,15 @@ Full set (12): `eligible`, `pending`, `registered`, `withdrew`, `teacher_withdra
 
 ### 8.8 VersionInvitationStatus
 
-`invited | obligated | participating` — no `eligible` case; absence of a `version_invitations` row is the eligible state. See §5.4. Default on row creation: `invited`. `obligated` and `participating` are reserved — set only by the not-yet-built registration workflow, not by this phase.
+`invited | obligated | participating` — no `eligible` case; absence of a `version_invitations` row is the eligible state. See §5.4. Default on row creation: `invited`. `participating` is still reserved for the not-yet-built registration workflow. `obligated` is no longer reserved-only — see §5.6: it is now written by `VersionObligationResponseObserver` when a teacher accepts Version Obligations.
+
+### 8.9 VersionObligationStatus
+
+`draft | published` — default `draft`. See §5.6.
+
+### 8.10 ObligationDecision
+
+`accepted | rejected`. See §5.6.
 
 ---
 
@@ -659,6 +712,9 @@ Confirmed as of the 2026-07-09 implementation audit:
 6. **`epayment_credentials` is schema-only.** No seeder or UI, as the spec anticipates ("next-phase implementation"). No action needed this phase.
 7. **Reference-only items remain unbuilt by design**, confirming the §0.2 scope fence held during implementation: `version_adjudication` (rooms, scoring categories/factors, judge types), `audition_results`, `AdjudicationStatus` enum, `CutoffStrategy` enum. Do not scaffold until the Adjudication Wizard phase begins.
 8. ~~**Version Invitations (§5.4) — new capability, not yet built.**~~ Resolved — built and committed in `9e015fa "Add: Invitations functionality."`: `VersionInvitationStatus` enum, `VersionInvitation` model + migration, `VersionInvitationEligibilityService`, `VersionInvitationRosterRow`, the `VersionInvitations` Livewire component + view, and feature/unit test coverage. Membership eligibility leg accepts any `Membership` row regardless of expiration. County leg is unrestricted when a Version has no `version_counties` rows. Multi-school teachers get one roster row. Modeled as a new `version_invitations` table, intentionally separate from `EventInvitationRequest`.
-9. **Still intentionally deferred within §5.4** (flagged, not scaffolded): search/filter/pagination on the invitation roster, email notification on invite, and any UI for the `obligated`/`participating` transitions — these belong to the not-yet-designed registration workflow.
+9. ~~**Still intentionally deferred within §5.4: any UI for the `obligated`/`participating` transitions.**~~ Partially resolved — the `obligated` transition now exists (§5.6: `VersionObligationResponseObserver` writes it on teacher acceptance). Still deferred: search/filter/pagination on the invitation roster, email notification on invite, and any UI for the `participating` transition — the latter still belongs to the not-yet-designed registration workflow.
 10. ~~**Version Pitch Files (§5.5) — new capability, not yet built.**~~ Resolved — built and committed in `b70abb3 "Add: Initial pitch files functionality."` and `2a55580 "Updt: Completed pitch files functionality."`: `VersionPitchFile` model + migration (`version_pitch_files`), the `VersionPitchFiles` Livewire component + view (search/filter/sort/drag-reorder), S3-backed file storage with delete-on-replace and delete-on-remove, and feature test coverage (`VersionPitchFilesTest`, 14 tests). `voice_part_id` is validated against `Version::availableVoiceParts()`. Gated by the same `canManageEvent` check as `VersionEdit`/`VersionInvitations`. `VoicePartSeeder` gained an `'ALL'` voice part (for files that apply across parts) as part of this work; `SeedersTest` was updated from 17 to 18 expected voice parts to match.
 11. **Still intentionally deferred within §5.5** (flagged, not scaffolded): enforcement of `pitch_file_visibility` (teacher/candidate/both) and the post-close visibility windows, and any candidate/teacher-facing display of pitch files on StudentFolder.info — this phase is Event Manager CRUD only.
+12. ~~**Version Obligations (§5.6) — new capability, not yet built.**~~ Resolved — built 2026-07-09 (not yet committed): `VersionObligationStatus` and `ObligationDecision` enums, `VersionObligation` + `VersionObligationResponse` models/migrations, `VersionObligationObserver` (HTMLPurifier sanitization via a new `obligations` profile in `config/purifier.php`, itself a new `mews/purifier` dependency), `VersionObligationResponseObserver` (writes `VersionInvitationStatus::Obligated`), the "Obligations" tab added to `VersionEdit` (admin CRUD, save/publish/unpublish, Preview modal), and `App\Livewire\Registrations\VersionObligations` (teacher-facing accept/reject page).
+13. ~~**Still intentionally deferred within §5.6: a dedicated Pest feature test file.**~~ Resolved — added `tests/Feature/Livewire/Events/VersionEditTest.php` (+9 tests: save/publish/unpublish, sanitization, Preview modal), `tests/Feature/Livewire/Registrations/VersionObligationsTest.php` (new file, 8 tests: 404-when-uninvited, draft invisibility, merge-field resolution, accept/reject, toggle behavior, frozen snapshot immunity to later edits), and `tests/Feature/VersionObligationObserversTest.php` (new file, 5 tests, matching the `SchoolStudentObserverTest` direct-model-observer pattern — including a regression test locking in a `getRawOriginal()`-lags-by-one-save timing bug caught and fixed during this work). 522/522 app-wide, up from the 500 baseline. Still intentionally deferred within §5.6: PDF rendition of the obligations document, an "insert merge field" toolbar affordance, and any consequence for a `rejected` decision beyond logging it (open question: should rejection gate further participation, or stay purely informational?).
+14. **Open bug, unresolved: bulleted/numbered lists render with no visible marker inside `flux:editor`'s live admin UI (and its Preview modal), for both pasted-then-cleaned-up content and freshly toolbar-typed content.** Ruled out as a cause: this codebase's stored HTML (confirmed via direct DB read still has intact `<ul><li>` structure), the `mews/purifier` sanitization allowlist (includes `ul,ol,li`), and the Blade/Tailwind rendering path (a direct `view(...)->render()` test on the real persisted content produces correct `<ul>` + `list-disc` output). The defect is therefore isolated to the client-side `flux:editor`/TipTap layer — not yet root-caused (would need live browser DevTools inspection, which this agent cannot perform) and not yet reported to Flux support. Does not block any server-side functionality (save/publish/sanitize/accept/reject/merge-fields all verified correct regardless of how the editor visually renders lists while typing) but is a real polish gap before this ships to an actual Event Manager, given the source Teacher Obligations content is list-heavy.
