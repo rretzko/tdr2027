@@ -12,3 +12,65 @@
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Renders Version Obligations markup (admin preview + teacher-facing page).
+ * Uses ::before + counters instead of native list-style-type, which was
+ * confirmed via DevTools to compute correctly (list-style-type: disc,
+ * display: list-item) yet paint no visible marker — an unresolved native
+ * marker-rendering quirk. This sidesteps it entirely rather than depending
+ * on it.
+ */
+.obligation-content strong {
+    font-weight: 600;
+}
+
+.obligation-content u {
+    text-decoration-line: underline;
+}
+
+.obligation-content p {
+    margin-bottom: 0.75rem;
+}
+
+.obligation-content ul,
+.obligation-content ol {
+    list-style: none;
+    margin: 0 0 0.75rem 0;
+    padding-left: 1.5rem;
+}
+
+.obligation-content ul > li,
+.obligation-content ol > li {
+    position: relative;
+    margin-bottom: 0.5rem;
+}
+
+.obligation-content ul > li::before {
+    content: '\2022';
+    position: absolute;
+    left: -1.25rem;
+}
+
+.obligation-content ul ul {
+    counter-reset: none;
+    margin-top: 0.25rem;
+}
+
+.obligation-content ul ul > li::before {
+    content: '\25E6';
+}
+
+.obligation-content ol {
+    counter-reset: obligation-ol;
+}
+
+.obligation-content ol > li {
+    counter-increment: obligation-ol;
+}
+
+.obligation-content ol > li::before {
+    content: counter(obligation-ol) '.';
+    position: absolute;
+    left: -1.5rem;
+}

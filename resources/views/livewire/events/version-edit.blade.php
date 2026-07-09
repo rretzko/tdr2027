@@ -473,10 +473,7 @@
                     <flux:text class="text-zinc-500">Nothing to preview yet — add some obligations text first.</flux:text>
                 @else
                     <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-4">
-                        <div class="obligation-content text-zinc-700 dark:text-zinc-300
-                            [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-6 [&_ul_ul]:list-[circle] [&_ul_ul]:mt-1
-                            [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-6
-                            [&_li]:mb-2 [&_strong]:font-semibold [&_u]:underline [&_p]:mb-3">
+                        <div class="obligation-content text-zinc-700 dark:text-zinc-300">
                             {!! $obligationPreviewBody !!}
                         </div>
                     </div>

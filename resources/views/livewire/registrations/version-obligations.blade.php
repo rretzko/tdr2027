@@ -34,10 +34,7 @@
         />
     @else
         <flux:card class="mb-6">
-            <div class="obligation-content text-zinc-700 dark:text-zinc-300
-                [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-6 [&_ul_ul]:list-[circle] [&_ul_ul]:mt-1
-                [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-6
-                [&_li]:mb-2 [&_strong]:font-semibold [&_u]:underline [&_p]:mb-3">
+            <div class="obligation-content text-zinc-700 dark:text-zinc-300">
                 {!! $body !!}
             </div>
         </flux:card>
