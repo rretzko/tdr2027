@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Enums\CandidateStatus;
+use App\Enums\VersionInvitationStatus;
 use App\Livewire\Registrations\VersionDashboard;
 use App\Models\Candidate;
 use App\Models\School;
@@ -10,6 +11,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionInvitation;
 use App\Models\VoicePart;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -133,6 +135,32 @@ test('withdraw cannot target a candidate belonging to another teacher', function
     })->toThrow(ModelNotFoundException::class);
 
     expect($candidate->refresh()->status)->toBe(CandidateStatus::Registered);
+});
+
+test('enroll is blocked once the teacher has rejected this Version\'s obligations (iron gate)', function () {
+    $teacher = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $student = attachEligibleStudentToTeacher($teacher, $school);
+    $voicePart = VoicePart::factory()->create();
+    $version = Version::factory()->create();
+
+    VersionInvitation::create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => VersionInvitationStatus::Rejected->value,
+        'invited_at' => now(),
+        'invited_by_user_id' => User::factory()->create()->id,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertDontSee('Enroll a Student')
+        ->set('enroll_student_id', (string) $student->id)
+        ->set('enroll_voice_part_id', (string) $voicePart->id)
+        ->call('enroll')
+        ->assertHasErrors('enroll_student_id');
+
+    expect(Candidate::where('version_id', $version->id)->where('student_id', $student->id)->exists())->toBeFalse();
 });
 
 test('refreshStatus recalculates the candidate status from the checklist', function () {

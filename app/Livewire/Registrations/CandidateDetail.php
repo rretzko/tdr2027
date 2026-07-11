@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\Registrations;
 
 use App\Concerns\HasCandidateChecklist;
+use App\Enums\ApplicationType;
 use App\Enums\EmergencyContactRelationship;
 use App\Models\Candidate;
 use App\Models\EmergencyContact;
@@ -105,6 +106,59 @@ class CandidateDetail extends Component
         );
 
         Flux::toast("{$ec->name} added as emergency contact.");
+    }
+
+    public function toggleApplicationCertified(CandidateService $candidates): void
+    {
+        if ($this->version->getRawOriginal('application_type') !== ApplicationType::Pdf->value) {
+            return;
+        }
+
+        if ($this->candidate->application_certified_at === null) {
+            $this->candidate->update([
+                'application_certified_at' => now(),
+                'application_certified_by_user_id' => Auth::id(),
+            ]);
+        } else {
+            $this->candidate->update([
+                'application_certified_at' => null,
+                'application_certified_by_user_id' => null,
+            ]);
+        }
+
+        $candidates->recalculateStatus($this->candidate->refresh(), $this->checklistDefs($this->version));
+
+        Flux::toast('Application certification updated.');
+    }
+
+    public function toggleApplicationCandidateSigned(CandidateService $candidates): void
+    {
+        if ($this->version->getRawOriginal('application_type') !== ApplicationType::EApplication->value) {
+            return;
+        }
+
+        $this->candidate->update([
+            'application_candidate_signed_at' => $this->candidate->application_candidate_signed_at === null ? now() : null,
+        ]);
+
+        $candidates->recalculateStatus($this->candidate->refresh(), $this->checklistDefs($this->version));
+
+        Flux::toast('Candidate signature status updated.');
+    }
+
+    public function toggleApplicationParentSigned(CandidateService $candidates): void
+    {
+        if ($this->version->getRawOriginal('application_type') !== ApplicationType::EApplication->value) {
+            return;
+        }
+
+        $this->candidate->update([
+            'application_parent_signed_at' => $this->candidate->application_parent_signed_at === null ? now() : null,
+        ]);
+
+        $candidates->recalculateStatus($this->candidate->refresh(), $this->checklistDefs($this->version));
+
+        Flux::toast('Parent signature status updated.');
     }
 
     public function refreshStatus(CandidateService $candidates): void

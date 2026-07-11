@@ -36,6 +36,8 @@ return [
         ],
         // Matches exactly what flux:editor's Obligations toolbar can produce
         // (heading bold italic underline | bullet ordered blockquote | link).
+        // Shared by VersionObligationObserver and VersionApplicationObserver —
+        // both editors use the identical restricted toolbar.
         'obligations' => [
             'HTML.Doctype' => 'HTML 4.01 Transitional',
             'HTML.Allowed' => 'p,h1,h2,h3,strong,b,em,i,u,ul,ol,li,blockquote,a[href]',

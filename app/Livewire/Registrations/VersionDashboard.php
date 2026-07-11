@@ -42,6 +42,13 @@ class VersionDashboard extends Component
         ]);
 
         $teacher = $this->teacher();
+
+        if ($eligibility->isBlockedByRejectedObligations($this->version, $teacher)) {
+            $this->addError('enroll_student_id', 'You have rejected this Version\'s obligations, so you cannot enroll students until you accept them again.');
+
+            return;
+        }
+
         $student = Student::findOrFail((int) $this->enroll_student_id);
 
         $schoolId = $eligibility->resolveSchool($student, $teacher);
@@ -114,8 +121,10 @@ class VersionDashboard extends Component
 
         $checklistDefs = $this->checklistDefs($this->version);
 
+        $obligationsRejected = app(EligibilityService::class)->isBlockedByRejectedObligations($this->version, $teacher);
+
         return view('livewire.registrations.version-dashboard', compact(
-            'myCandidates', 'eligibleStudents', 'upcomingDates', 'voiceParts', 'checklistDefs',
+            'myCandidates', 'eligibleStudents', 'upcomingDates', 'voiceParts', 'checklistDefs', 'obligationsRejected',
         ));
     }
 

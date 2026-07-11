@@ -201,6 +201,54 @@
                 </flux:card>
             @endif
 
+            {{-- Candidate Application --}}
+            @if ($version->candidateApplication?->isPublished())
+                <flux:card>
+                    <flux:heading size="sm" class="mb-3">Candidate Application</flux:heading>
+
+                    @if ($version->application_type === \App\Enums\ApplicationType::Pdf)
+                        <flux:button
+                            variant="{{ $candidate->application_certified_at !== null ? 'primary' : 'filled' }}"
+                            wire:click="toggleApplicationCertified"
+                            wire:confirm="{{ $candidate->application_certified_at !== null ? 'Undo this certification?' : 'Certify that these signatures are present, complete, and have integrity?' }}"
+                        >
+                            {{ $candidate->application_certified_at !== null ? 'Certified — Undo' : 'Certify Signatures' }}
+                        </flux:button>
+                        @if ($candidate->application_certified_at !== null)
+                            <flux:text size="sm" class="text-zinc-500 mt-2">
+                                Certified by {{ $candidate->applicationCertifiedBy?->name }}
+                                on {{ $candidate->application_certified_at->format('M j, Y g:ia') }}.
+                            </flux:text>
+                        @endif
+                    @else
+                        <div class="flex flex-wrap gap-2">
+                            <flux:button
+                                size="sm"
+                                variant="{{ $candidate->application_candidate_signed_at !== null ? 'primary' : 'filled' }}"
+                                wire:click="toggleApplicationCandidateSigned"
+                            >
+                                {{ $candidate->application_candidate_signed_at !== null ? 'Candidate Signed — Undo' : 'Mark Candidate Signed' }}
+                            </flux:button>
+                            <flux:button
+                                size="sm"
+                                variant="{{ $candidate->application_parent_signed_at !== null ? 'primary' : 'filled' }}"
+                                wire:click="toggleApplicationParentSigned"
+                            >
+                                {{ $candidate->application_parent_signed_at !== null ? 'Parent Signed — Undo' : 'Mark Parent Signed' }}
+                            </flux:button>
+                        </div>
+                    @endif
+
+                    <flux:button
+                        class="mt-4"
+                        size="sm" variant="ghost" icon="arrow-down-tray"
+                        :href="route('registrations.candidate.application-pdf', [$version, $candidate])"
+                    >
+                        Download PDF{{ $version->application_type === \App\Enums\ApplicationType::EApplication ? ' (optional copy)' : '' }}
+                    </flux:button>
+                </flux:card>
+            @endif
+
         </div>
     </div>
 </div>

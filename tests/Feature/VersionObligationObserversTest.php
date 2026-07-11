@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Enums\CandidateStatus;
 use App\Enums\ObligationDecision;
 use App\Enums\VersionInvitationStatus;
 use App\Enums\VersionObligationStatus;
+use App\Models\Candidate;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
@@ -12,6 +14,8 @@ use App\Models\VersionInvitation;
 use App\Models\VersionObligation;
 use App\Models\VersionObligationResponse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+
+use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
@@ -64,7 +68,7 @@ test('VersionObligationResponseObserver sets VersionInvitation status to Obligat
     expect($invitation->fresh()->getRawOriginal('status'))->toBe('obligated');
 });
 
-test('VersionObligationResponseObserver leaves status alone on a rejected decision', function () {
+test('VersionObligationResponseObserver sets VersionInvitation status to Rejected on a rejected decision', function () {
     $version = Version::factory()->create();
     $invitation = VersionInvitation::create([
         'version_id' => $version->id,
@@ -83,7 +87,40 @@ test('VersionObligationResponseObserver leaves status alone on a rejected decisi
         'obligation_snapshot' => $obligation->body,
     ]);
 
-    expect($invitation->fresh()->getRawOriginal('status'))->toBe('invited');
+    expect($invitation->fresh()->getRawOriginal('status'))->toBe('rejected');
+});
+
+test('rejecting obligations is an iron gate: it withdraws every active candidate the teacher enrolled for that Version', function () {
+    actingAs(User::factory()->create());
+
+    $version = Version::factory()->create();
+    $teacher = Teacher::factory()->create();
+    $invitation = VersionInvitation::create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => VersionInvitationStatus::Obligated->value,
+        'invited_at' => now(),
+        'invited_by_user_id' => User::factory()->create()->id,
+    ]);
+    $obligation = VersionObligation::create(['version_id' => $version->id, 'body' => '<p>Text</p>']);
+
+    $eligible = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id, 'status' => CandidateStatus::Eligible]);
+    $registered = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id, 'status' => CandidateStatus::Registered]);
+    $alreadyGone = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id, 'status' => CandidateStatus::Withdrew]);
+    $otherTeachersCandidate = Candidate::factory()->create(['version_id' => $version->id, 'status' => CandidateStatus::Eligible]);
+
+    VersionObligationResponse::create([
+        'version_invitation_id' => $invitation->id,
+        'version_obligation_id' => $obligation->id,
+        'decision' => ObligationDecision::Rejected->value,
+        'decided_at' => now(),
+        'obligation_snapshot' => $obligation->body,
+    ]);
+
+    expect($eligible->fresh()->getRawOriginal('status'))->toBe('teacher_withdrawn');
+    expect($registered->fresh()->getRawOriginal('status'))->toBe('teacher_withdrawn');
+    expect($alreadyGone->fresh()->getRawOriginal('status'))->toBe('withdrew');
+    expect($otherTeachersCandidate->fresh()->getRawOriginal('status'))->toBe('eligible');
 });
 
 /**
@@ -114,7 +151,7 @@ test('toggling accepted to rejected to accepted correctly ends Obligated, not on
     expect($invitation->fresh()->getRawOriginal('status'))->toBe('obligated');
 
     $response->update(['decision' => ObligationDecision::Rejected->value, 'decided_at' => now()]);
-    expect($invitation->fresh()->getRawOriginal('status'))->toBe('obligated');
+    expect($invitation->fresh()->getRawOriginal('status'))->toBe('rejected');
 
     $response->update(['decision' => ObligationDecision::Accepted->value, 'decided_at' => now()]);
     expect($invitation->fresh()->getRawOriginal('status'))->toBe('obligated');

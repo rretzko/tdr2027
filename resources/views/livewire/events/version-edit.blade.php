@@ -17,6 +17,7 @@
             <flux:tab name="dates">Dates</flux:tab>
             <flux:tab name="fees">Fees</flux:tab>
             <flux:tab name="requirements">Requirements</flux:tab>
+            <flux:tab name="application">Application</flux:tab>
             <flux:tab name="obligations">Obligations</flux:tab>
             <flux:tab name="roles">Roles</flux:tab>
         </flux:tabs>
@@ -385,6 +386,121 @@
                 </flux:button>
             </div>
         </flux:tab.panel>
+
+        {{-- Application --}}
+        <flux:tab.panel name="application">
+            <div class="mt-6 space-y-4 max-w-3xl">
+                <div class="flex flex-wrap items-center gap-2">
+                    @if ($application_status === 'published')
+                        <flux:badge color="green">Published</flux:badge>
+                        @if ($application_published_at)
+                            <flux:text size="sm" class="text-zinc-500">since {{ $application_published_at }}</flux:text>
+                        @endif
+                    @else
+                        <flux:badge color="zinc">Draft</flux:badge>
+                    @endif
+                </div>
+
+                <flux:callout variant="info" icon="information-circle">
+                    <flux:callout.text>
+                        The header, candidate summary, and fee amounts are rendered automatically from this Version's
+                        real data — only the endorsement text below is authored here. Available merge fields:
+                        @verbatim<code class="font-mono text-xs">{{candidateFullName}}</code>, <code class="font-mono text-xs">{{voicePartName}}</code>, <code class="font-mono text-xs">{{grade}}</code>, <code class="font-mono text-xs">{{schoolName}}</code>, <code class="font-mono text-xs">{{schoolShortName}}</code>, <code class="font-mono text-xs">{{teacherFullName}}</code>, <code class="font-mono text-xs">{{emergencyContactName}}</code>, <code class="font-mono text-xs">{{versionShortName}}</code>, <code class="font-mono text-xs">{{versionName}}</code>, <code class="font-mono text-xs">{{registrationFee}}</code>, <code class="font-mono text-xs">{{participationFee}}</code>@endverbatim
+                        — replaced with real values when generated for a candidate.
+                    </flux:callout.text>
+                </flux:callout>
+
+                <flux:field>
+                    <flux:label>Student Endorsement</flux:label>
+                    <flux:editor wire:model="student_endorsement_body" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
+                    <flux:error name="student_endorsement_body" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>Parent/Guardian Endorsement</flux:label>
+                    <flux:editor wire:model="parent_endorsement_body" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
+                    <flux:error name="parent_endorsement_body" />
+                </flux:field>
+
+                @if ($version->application_type === \App\Enums\ApplicationType::Pdf)
+                    <flux:field>
+                        <flux:label>Teacher/Principal Endorsement</flux:label>
+                        <flux:editor wire:model="teacher_principal_endorsement_body" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
+                        <flux:error name="teacher_principal_endorsement_body" />
+                    </flux:field>
+                @endif
+
+                @if ($errors->any())
+                    <flux:callout variant="danger" icon="exclamation-triangle">
+                        <flux:callout.text>Please correct the errors above.</flux:callout.text>
+                    </flux:callout>
+                @endif
+
+                <div class="flex flex-wrap gap-3">
+                    <flux:button variant="filled" wire:click="saveApplication">
+                        Save
+                    </flux:button>
+
+                    @if ($application_status === 'published')
+                        <flux:button
+                            variant="filled"
+                            wire:click="unpublishApplication"
+                            wire:confirm="Unpublish the Candidate Application? It will be hidden from candidate records until you republish."
+                        >
+                            Unpublish
+                        </flux:button>
+                    @else
+                        <flux:button variant="primary" wire:click="publishApplication">
+                            Publish
+                        </flux:button>
+                    @endif
+
+                    <flux:modal.trigger name="application-preview">
+                        <flux:button variant="ghost" icon="eye" wire:click="$refresh">
+                            Preview
+                        </flux:button>
+                    </flux:modal.trigger>
+                </div>
+            </div>
+        </flux:tab.panel>
+
+        <flux:modal name="application-preview" class="md:w-[48rem]">
+            <div class="space-y-4">
+                <div>
+                    <flux:heading size="lg">Candidate Application</flux:heading>
+                    <flux:subheading>Preview — {{ $version->name }}</flux:subheading>
+                </div>
+
+                <flux:callout variant="secondary" icon="information-circle">
+                    <flux:callout.text>
+                        This reflects your current unsaved edits with merge fields resolved against sample candidate
+                        data, exactly as the document is structured. It does not save or publish anything.
+                    </flux:callout.text>
+                </flux:callout>
+
+                @if (trim(strip_tags($student_endorsement_body)) === '' && trim(strip_tags($parent_endorsement_body)) === '')
+                    <flux:text class="text-zinc-500">Nothing to preview yet — add some endorsement text first.</flux:text>
+                @else
+                    <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-4 max-h-[32rem] overflow-y-auto">
+                        @include('candidate-application.document', [
+                            'version' => $version,
+                            'data' => $applicationPreviewData,
+                            'studentBody' => $applicationPreviewStudentBody,
+                            'parentBody' => $applicationPreviewParentBody,
+                            'teacherBody' => $applicationPreviewTeacherBody,
+                            'showTeacherSection' => $version->application_type === \App\Enums\ApplicationType::Pdf,
+                        ])
+                    </div>
+                @endif
+
+                <div class="flex gap-2">
+                    <flux:spacer />
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Close</flux:button>
+                    </flux:modal.close>
+                </div>
+            </div>
+        </flux:modal>
 
         {{-- Obligations --}}
         <flux:tab.panel name="obligations">

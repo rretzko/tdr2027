@@ -49,6 +49,22 @@ class CandidateService
     }
 
     /**
+     * Iron-gate cascade: when a teacher rejects a Version's obligations,
+     * every candidate they've enrolled for that Version that's still in an
+     * active state is withdrawn — full stop to their participation. Each
+     * withdrawal goes through withdraw() so CandidateObserver's history
+     * trail records it like any other teacher-initiated withdrawal.
+     */
+    public function withdrawAllForTeacherVersion(int $versionId, int $teacherId): void
+    {
+        Candidate::where('version_id', $versionId)
+            ->where('teacher_id', $teacherId)
+            ->whereIn('status', array_map(fn (CandidateStatus $s): string => $s->value, CandidateStatus::registrationStates()))
+            ->get()
+            ->each(fn (Candidate $candidate) => $this->withdraw($candidate));
+    }
+
+    /**
      * Recalculate and apply the appropriate auto-promotion status for a
      * candidate based on how many milestone items are complete vs required.
      *

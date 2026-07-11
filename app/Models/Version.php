@@ -164,6 +164,17 @@ class Version extends Model
     }
 
     /**
+     * Named candidateApplication (not application()) to avoid reading
+     * confusingly next to the application_type cast attribute above.
+     *
+     * @return HasOne<VersionApplication, $this>
+     */
+    public function candidateApplication(): HasOne
+    {
+        return $this->hasOne(VersionApplication::class);
+    }
+
+    /**
      * Voice parts valid for this Version — the union of voice parts across
      * all of the parent Event's Ensembles. Versions have no direct
      * voice-part relationship of their own; the chain is Version -> Event ->

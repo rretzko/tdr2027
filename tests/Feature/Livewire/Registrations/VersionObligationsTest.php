@@ -111,7 +111,7 @@ test('accept creates a response, records the decision, and sets the invitation s
     expect($invitation->fresh()->getRawOriginal('status'))->toBe('obligated');
 });
 
-test('reject creates a response and does not change the invitation status', function () {
+test('reject creates a response and sets the invitation status to Rejected (iron gate)', function () {
     $teacher = makeObligationsTeacher();
     $version = Version::factory()->create();
     $invitation = inviteTeacherToVersion($teacher, $version);
@@ -125,7 +125,7 @@ test('reject creates a response and does not change the invitation status', func
     $response = VersionObligationResponse::where('version_invitation_id', $invitation->id)->first();
 
     expect($response->getRawOriginal('decision'))->toBe('rejected');
-    expect($invitation->fresh()->getRawOriginal('status'))->toBe('invited');
+    expect($invitation->fresh()->getRawOriginal('status'))->toBe('rejected');
 });
 
 test('toggling accept then reject then accept updates the same response row and ends Obligated', function () {

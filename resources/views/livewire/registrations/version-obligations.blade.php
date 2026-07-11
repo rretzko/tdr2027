@@ -46,6 +46,15 @@
             </flux:text>
         @endif
 
+        @if ($rawDecision === 'rejected')
+            <flux:callout variant="danger" icon="no-symbol" class="mb-4">
+                <flux:callout.text>
+                    Your participation in this Version has come to a full stop: any candidates you'd already enrolled
+                    were withdrawn, and you can't enroll new students until you accept these obligations again.
+                </flux:callout.text>
+            </flux:callout>
+        @endif
+
         <div class="flex flex-wrap items-center gap-3 mb-2">
             <flux:button
                 variant="{{ $rawDecision === 'accepted' ? 'primary' : 'filled' }}"
@@ -58,7 +67,7 @@
             <flux:button
                 variant="{{ $rawDecision === 'rejected' ? 'danger' : 'filled' }}"
                 wire:click="reject"
-                wire:confirm="Reject these obligations? You can change your response later."
+                wire:confirm="Reject these obligations? This immediately stops your participation in this Version — any candidates you've already enrolled will be withdrawn, and you won't be able to enroll new students unless you accept later."
             >
                 Reject Obligations
             </flux:button>

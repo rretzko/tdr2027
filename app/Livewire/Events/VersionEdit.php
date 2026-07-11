@@ -10,11 +10,13 @@ use App\Enums\EventStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
+use App\Enums\VersionApplicationStatus;
 use App\Enums\VersionDateType;
 use App\Enums\VersionObligationStatus;
 use App\Models\County;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionApplication;
 use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionFee;
@@ -22,6 +24,7 @@ use App\Models\VersionMembershipRequirement;
 use App\Models\VersionObligation;
 use App\Models\VersionUploadFile;
 use App\Services\VersionRoleAssignmentService;
+use App\Support\CandidateApplicationData;
 use Carbon\Carbon;
 use Flux\Flux;
 use Illuminate\Support\Collection;
@@ -123,6 +126,17 @@ class VersionEdit extends Component
     /** @var array<int, int> ensemble_id → order_by */
     public array $ensemble_order = [];
 
+    // Application tab
+    public string $student_endorsement_body = '';
+
+    public string $parent_endorsement_body = '';
+
+    public string $teacher_principal_endorsement_body = '';
+
+    public string $application_status = 'draft';
+
+    public ?string $application_published_at = null;
+
     // Obligations tab
     public string $obligation_title = '';
 
@@ -143,7 +157,7 @@ class VersionEdit extends Component
     {
         abort_unless($service->canAccessVersion(Auth::user(), $version), 403);
 
-        $this->version = $version->load(['dates', 'fees', 'membershipRequirement', 'counties', 'uploadFiles', 'obligation']);
+        $this->version = $version->load(['dates', 'fees', 'membershipRequirement', 'counties', 'uploadFiles', 'obligation', 'candidateApplication']);
 
         $this->name = $version->name;
         $this->short_name = $version->short_name ?? '';
@@ -202,6 +216,16 @@ class VersionEdit extends Component
                 'order_by' => (int) $uploadFile->order_by,
             ];
         }
+
+        $application = $version->candidateApplication;
+        $this->student_endorsement_body = $application !== null ? $application->student_endorsement_body : '';
+        $this->parent_endorsement_body = $application !== null ? $application->parent_endorsement_body : '';
+        $this->teacher_principal_endorsement_body = $application !== null ? ($application->teacher_principal_endorsement_body ?? '') : '';
+        $this->application_status = $application !== null ? $application->getRawOriginal('status') : VersionApplicationStatus::Draft->value;
+        $rawApplicationPublishedAt = $application !== null ? $application->getRawOriginal('published_at') : null;
+        $this->application_published_at = $rawApplicationPublishedAt !== null
+            ? Carbon::parse($rawApplicationPublishedAt)->format('M j, Y g:ia')
+            : null;
 
         $obligation = $version->obligation;
         $this->obligation_title = $obligation !== null ? ($obligation->title ?? '') : '';
@@ -364,6 +388,73 @@ class VersionEdit extends Component
         }
 
         Flux::toast('Version requirements saved.');
+    }
+
+    public function saveApplication(): void
+    {
+        $validated = $this->validateApplication();
+
+        VersionApplication::updateOrCreate(
+            ['version_id' => $this->version->id],
+            $validated,
+        )->refresh();
+
+        Flux::toast('Candidate Application saved.');
+    }
+
+    public function publishApplication(): void
+    {
+        $validated = $this->validateApplication();
+
+        $application = VersionApplication::updateOrCreate(
+            ['version_id' => $this->version->id],
+            [
+                ...$validated,
+                'status' => VersionApplicationStatus::Published->value,
+                'published_at' => now(),
+                'published_by_user_id' => Auth::id(),
+            ],
+        );
+
+        $this->application_status = $application->getRawOriginal('status');
+        $this->application_published_at = Carbon::parse($application->getRawOriginal('published_at'))->format('M j, Y g:ia');
+
+        Flux::toast(text: 'Candidate Application published — visible on candidate records.', variant: 'success');
+    }
+
+    public function unpublishApplication(): void
+    {
+        $application = $this->version->candidateApplication;
+
+        if ($application === null) {
+            return;
+        }
+
+        $application->update(['status' => VersionApplicationStatus::Draft->value]);
+
+        $this->application_status = VersionApplicationStatus::Draft->value;
+
+        Flux::toast(text: 'Candidate Application unpublished — hidden from candidate records until republished.', variant: 'warning');
+    }
+
+    /**
+     * @return array{student_endorsement_body: string, parent_endorsement_body: string, teacher_principal_endorsement_body: ?string}
+     */
+    private function validateApplication(): array
+    {
+        $isPdfMode = $this->version->getRawOriginal('application_type') === ApplicationType::Pdf->value;
+
+        $validated = $this->validate([
+            'student_endorsement_body' => ['required', 'string'],
+            'parent_endorsement_body' => ['required', 'string'],
+            'teacher_principal_endorsement_body' => [$isPdfMode ? 'required' : 'nullable', 'string'],
+        ]);
+
+        return [
+            'student_endorsement_body' => $validated['student_endorsement_body'],
+            'parent_endorsement_body' => $validated['parent_endorsement_body'],
+            'teacher_principal_endorsement_body' => $isPdfMode ? $validated['teacher_principal_endorsement_body'] : null,
+        ];
     }
 
     public function saveObligation(): void
@@ -559,6 +650,8 @@ class VersionEdit extends Component
 
     public function render(VersionRoleAssignmentService $service): View
     {
+        $applicationPreviewData = CandidateApplicationData::placeholder($this->version);
+
         return view('livewire.events.version-edit', [
             'statuses' => EventStatus::cases(),
             'auditionTypes' => AuditionType::cases(),
@@ -576,6 +669,12 @@ class VersionEdit extends Component
             'assignableRoles' => $service->assignableRoleNames(),
             'assignEmailSuggestions' => $this->assignEmailSuggestions(),
             'obligationPreviewBody' => VersionObligation::mergeTokens($this->obligation_body, $this->version),
+            'applicationPreviewData' => $applicationPreviewData,
+            'applicationPreviewStudentBody' => VersionApplication::mergeTokens($this->student_endorsement_body, $applicationPreviewData),
+            'applicationPreviewParentBody' => VersionApplication::mergeTokens($this->parent_endorsement_body, $applicationPreviewData),
+            'applicationPreviewTeacherBody' => $this->teacher_principal_endorsement_body !== ''
+                ? VersionApplication::mergeTokens($this->teacher_principal_endorsement_body, $applicationPreviewData)
+                : null,
         ]);
     }
 }

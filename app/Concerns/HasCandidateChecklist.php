@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Concerns;
 
+use App\Enums\ApplicationType;
 use App\Models\Candidate;
 use App\Models\Version;
 
@@ -58,6 +59,24 @@ trait HasCandidateChecklist
                 'label' => 'Shirt size',
                 'check' => fn (Candidate $c): bool => $c->student->getRawOriginal('shirt_size') !== null,
             ];
+        }
+
+        if ($version->candidateApplication?->isPublished()) {
+            if ($version->getRawOriginal('application_type') === ApplicationType::Pdf->value) {
+                $items[] = [
+                    'label' => 'Signatures certified',
+                    'check' => fn (Candidate $c): bool => $c->application_certified_at !== null,
+                ];
+            } else {
+                $items[] = [
+                    'label' => 'Candidate signed',
+                    'check' => fn (Candidate $c): bool => $c->application_candidate_signed_at !== null,
+                ];
+                $items[] = [
+                    'label' => 'Parent signed',
+                    'check' => fn (Candidate $c): bool => $c->application_parent_signed_at !== null,
+                ];
+            }
         }
 
         return $items;

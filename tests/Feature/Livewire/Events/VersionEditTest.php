@@ -8,6 +8,7 @@ use App\Enums\EventStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
+use App\Enums\VersionApplicationStatus;
 use App\Enums\VersionDateType;
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Events\VersionEdit;
@@ -17,6 +18,7 @@ use App\Models\Event;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionApplication;
 use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionFee;
@@ -597,5 +599,184 @@ test('the Obligations preview shows an empty-state message when there is no text
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
         ->set('activeTab', 'obligations')
+        ->assertSee('Nothing to preview yet');
+});
+
+test('saveApplication creates a draft row without publishing it, for an EApplication-mode Version', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['application_type' => ApplicationType::EApplication->value]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('student_endorsement_body', '<p>Student text.</p>')
+        ->set('parent_endorsement_body', '<p>Parent text.</p>')
+        ->call('saveApplication')
+        ->assertHasNoErrors()
+        ->assertSet('application_status', 'draft');
+
+    $application = VersionApplication::where('version_id', $version->id)->first();
+
+    expect($application)->not->toBeNull();
+    expect($application->teacher_principal_endorsement_body)->toBeNull();
+    expect($application->getRawOriginal('status'))->toBe('draft');
+});
+
+test('saveApplication requires the Teacher/Principal body for a Pdf-mode Version', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['application_type' => ApplicationType::Pdf->value]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('student_endorsement_body', '<p>Student text.</p>')
+        ->set('parent_endorsement_body', '<p>Parent text.</p>')
+        ->set('teacher_principal_endorsement_body', '')
+        ->call('saveApplication')
+        ->assertHasErrors(['teacher_principal_endorsement_body']);
+
+    expect(VersionApplication::where('version_id', $version->id)->exists())->toBeFalse();
+});
+
+test('saveApplication succeeds for a Pdf-mode Version when the Teacher/Principal body is present', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['application_type' => ApplicationType::Pdf->value]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('student_endorsement_body', '<p>Student text.</p>')
+        ->set('parent_endorsement_body', '<p>Parent text.</p>')
+        ->set('teacher_principal_endorsement_body', '<p>Teacher text.</p>')
+        ->call('saveApplication')
+        ->assertHasNoErrors();
+
+    $application = VersionApplication::where('version_id', $version->id)->first();
+
+    expect($application->teacher_principal_endorsement_body)->toContain('Teacher text.');
+});
+
+test('saveApplication strips disallowed HTML from all three bodies via the shared purifier profile', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['application_type' => ApplicationType::Pdf->value]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    $dirty = '<p><strong>Bold</strong> text</p><script>alert(1)</script><img src="x.png" onerror="alert(2)">';
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('student_endorsement_body', $dirty)
+        ->set('parent_endorsement_body', $dirty)
+        ->set('teacher_principal_endorsement_body', $dirty)
+        ->call('saveApplication');
+
+    $application = VersionApplication::where('version_id', $version->id)->first();
+
+    foreach ([
+        $application->student_endorsement_body,
+        $application->parent_endorsement_body,
+        $application->teacher_principal_endorsement_body,
+    ] as $body) {
+        expect($body)->toContain('<strong>Bold</strong>');
+        expect($body)->not->toContain('<script');
+        expect($body)->not->toContain('onerror');
+    }
+});
+
+test('publishApplication fails to publish a Pdf-mode Version missing the Teacher/Principal body', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['application_type' => ApplicationType::Pdf->value]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('student_endorsement_body', '<p>Student text.</p>')
+        ->set('parent_endorsement_body', '<p>Parent text.</p>')
+        ->call('publishApplication')
+        ->assertHasErrors(['teacher_principal_endorsement_body']);
+
+    expect(VersionApplication::where('version_id', $version->id)->exists())->toBeFalse();
+});
+
+test('publishApplication stamps published_at/published_by_user_id', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['application_type' => ApplicationType::EApplication->value]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('student_endorsement_body', '<p>Student text.</p>')
+        ->set('parent_endorsement_body', '<p>Parent text.</p>')
+        ->call('publishApplication')
+        ->assertSet('application_status', 'published');
+
+    $application = VersionApplication::where('version_id', $version->id)->first();
+
+    expect($application->getRawOriginal('status'))->toBe('published');
+    expect($application->published_at)->not->toBeNull();
+    expect($application->published_by_user_id)->toBe($user->id);
+});
+
+test('unpublishApplication reverts a published Application back to draft', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['application_type' => ApplicationType::EApplication->value]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    VersionApplication::create([
+        'version_id' => $version->id,
+        'student_endorsement_body' => '<p>Student text.</p>',
+        'parent_endorsement_body' => '<p>Parent text.</p>',
+        'status' => VersionApplicationStatus::Published->value,
+        'published_at' => now(),
+        'published_by_user_id' => $user->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->call('unpublishApplication')
+        ->assertSet('application_status', 'draft');
+
+    $application = VersionApplication::where('version_id', $version->id)->first();
+
+    expect($application->getRawOriginal('status'))->toBe('draft');
+});
+
+test('the Application preview resolves merge fields and shows the Teacher/Principal section only in Pdf mode', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['application_type' => ApplicationType::Pdf->value, 'short_name' => 'TDR27']);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('activeTab', 'application')
+        ->set('student_endorsement_body', '<p>Hello {{candidateFullName}}, welcome to {{versionShortName}}.</p>')
+        ->set('parent_endorsement_body', '<p>Parent of {{candidateFullName}}.</p>')
+        ->set('teacher_principal_endorsement_body', '<p>Teacher section text.</p>')
+        ->assertSee('Hello Jane A. Sample')
+        ->assertSee('welcome to TDR27')
+        ->assertSee('Teacher section text.');
+});
+
+test('the Application preview omits the Teacher/Principal section for an EApplication-mode Version', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['application_type' => ApplicationType::EApplication->value]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('activeTab', 'application')
+        ->set('student_endorsement_body', '<p>Student text.</p>')
+        ->set('parent_endorsement_body', '<p>Parent text.</p>')
+        ->assertDontSee('Teacher/Principal Endorsement');
+});
+
+test('the Application preview shows an empty-state message when there is no text yet', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('activeTab', 'application')
         ->assertSee('Nothing to preview yet');
 });

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\SocialAuthController;
+use App\Http\Controllers\CandidateApplicationPdfController;
 use App\Http\Controllers\SchoolEmailVerificationController;
 use App\Http\Controllers\StopImpersonatingController;
 use App\Http\Controllers\StudentClaimController;
@@ -108,6 +109,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/registrations/{version}', VersionDashboard::class)->name('registrations.version');
         Route::get('/registrations/{version}/obligations', VersionObligations::class)->name('registrations.obligations');
         Route::get('/registrations/{version}/{candidate}', CandidateDetail::class)->name('registrations.candidate');
+        Route::get('/registrations/{version}/{candidate}/application.pdf', CandidateApplicationPdfController::class)->name('registrations.candidate.application-pdf');
     });
 
     Route::get('/settings/profile', Profile::class)->name('settings.profile');
