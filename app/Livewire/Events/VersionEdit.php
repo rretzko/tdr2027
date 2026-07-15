@@ -25,10 +25,12 @@ use App\Models\VersionObligation;
 use App\Models\VersionUploadFile;
 use App\Services\VersionRoleAssignmentService;
 use App\Support\CandidateApplicationData;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Flux\Flux;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -435,6 +437,30 @@ class VersionEdit extends Component
         $this->application_status = VersionApplicationStatus::Draft->value;
 
         Flux::toast(text: 'Candidate Application unpublished — hidden from candidate records until republished.', variant: 'warning');
+    }
+
+    public function downloadApplicationPreviewPdf(): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $data = CandidateApplicationData::placeholder($this->version);
+
+        $studentBody = VersionApplication::mergeTokens($this->student_endorsement_body, $data);
+        $parentBody = VersionApplication::mergeTokens($this->parent_endorsement_body, $data);
+        $teacherBody = $this->teacher_principal_endorsement_body !== ''
+            ? VersionApplication::mergeTokens($this->teacher_principal_endorsement_body, $data)
+            : null;
+
+        $pdf = Pdf::loadView('pdf.candidate-application', [
+            'version' => $this->version,
+            'data' => $data,
+            'studentBody' => $studentBody,
+            'parentBody' => $parentBody,
+            'teacherBody' => $teacherBody,
+            'showTeacherSection' => $this->version->getRawOriginal('application_type') === ApplicationType::Pdf->value,
+        ]);
+
+        $filename = 'application-preview-' . Str::slug($this->version->short_name ?? $this->version->name) . '.pdf';
+
+        return response()->streamDownload(fn () => print $pdf->output(), $filename);
     }
 
     /**

@@ -26,7 +26,7 @@ class CandidateApplicationPdfController extends Controller
         abort_if($application === null || ! $application->isPublished(), 404);
 
         $data = CandidateApplicationData::fromCandidate($candidate->load([
-            'student.user', 'student.emergencyContacts', 'teacher.user', 'school', 'voicePart', 'version.fees', 'version.event.organization',
+            'student.user.pronoun', 'student.emergencyContacts', 'teacher.user', 'school', 'voicePart', 'version.fees', 'version.dates', 'version.event.organization',
         ]));
 
         $studentBody = VersionApplication::mergeTokens($application->student_endorsement_body, $data);

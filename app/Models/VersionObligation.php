@@ -50,11 +50,37 @@ class VersionObligation extends Model
 
     public static function mergeTokens(string $body, Version $version): string
     {
+        $values = [
+            'versionShortName' => $version->short_name,
+            'versionName' => $version->name,
+        ];
+
         return str_replace(
-            ['{{versionShortName}}', '{{versionName}}'],
-            [$version->short_name, $version->name],
+            array_map(fn (string $key): string => "{{{$key}}}", array_keys($values)),
+            array_values($values),
             $body,
         );
+    }
+
+    /**
+     * Human-readable labels for every token mergeTokens() replaces, keyed
+     * identically — drives the "Insert token" picker so its list can never
+     * drift from what mergeTokens() actually replaces. Sorted by token name
+     * for display; mergeTokens() pairs keys/values by name, not by order,
+     * so this sort can't desync the replacement.
+     *
+     * @return array<string, string>
+     */
+    public static function tokenDescriptions(): array
+    {
+        $descriptions = [
+            'versionShortName' => 'Version short name',
+            'versionName' => 'Version full name',
+        ];
+
+        ksort($descriptions);
+
+        return $descriptions;
     }
 
     /**

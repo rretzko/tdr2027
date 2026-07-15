@@ -39,6 +39,8 @@
 
         .ca-conditions {
             font-size: 0.85rem;
+            word-wrap: break-word;
+            overflow-wrap: anywhere;
         }
     </style>
 
@@ -122,8 +124,11 @@
             <div class="ca-conditions">{!! $teacherBody !!}</div>
             <table style="width: 100%; margin-top: 0.5rem;">
                 <tr>
-                    <td style="text-align: left;">{{ $data->teacherFullName }} Signature: ________________________</td>
-                    <td style="text-align: center;">Principal Signature: ________________________</td>
+                    <td style="text-align: left;">{{ $data->teacherFullName }} Signature: ________________________________________________</td>
+                    <td style="text-align: right;">Date: _________</td>
+                </tr>
+                <tr>
+                    <td style="text-align: left;">Principal Signature: ________________________________________________</td>
                     <td style="text-align: right;">Date: _________</td>
                 </tr>
             </table>

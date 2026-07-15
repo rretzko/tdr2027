@@ -161,7 +161,7 @@ return [
          *
          * @see CPDF_Adapter::PAPER_SIZES for valid sizes ('letter', 'legal', 'A4', etc.)
          */
-        'default_paper_size' => 'a4',
+        'default_paper_size' => 'letter',
 
         /**
          * The default paper orientation.
@@ -267,7 +267,7 @@ return [
          *
          * @var bool
          */
-        'enable_remote' => false,
+        'enable_remote' => true,
 
         /**
          * List of allowed remote hosts
@@ -281,7 +281,9 @@ return [
          *
          * @var array|null
          */
-        'allowed_remote_hosts' => null,
+        'allowed_remote_hosts' => [
+            env('AWS_BUCKET') . '.s3.amazonaws.com',
+        ],
 
         /**
          * A ratio applied to the fonts height to be more like browsers' line height

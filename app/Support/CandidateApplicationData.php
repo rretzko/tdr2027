@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use App\Enums\VersionDateType;
 use App\Models\Candidate;
 use App\Models\Version;
 
@@ -17,6 +18,8 @@ final class CandidateApplicationData
         public readonly ?string $organizationLogoAlt,
         public readonly string $candidateFullName,
         public readonly string $candidateFirstName,
+        public readonly string $candidatePronounObject,
+        public readonly string $candidatePronounPossessive,
         public readonly string $voicePartName,
         public readonly string $grade,
         public readonly string $schoolName,
@@ -31,6 +34,7 @@ final class CandidateApplicationData
         public readonly string $participationFee,
         public readonly string $epaymentSurchargeFee,
         public readonly string $housingFee,
+        public readonly string $applicationDeadline,
         public readonly string $generatedAt,
     ) {}
 
@@ -47,10 +51,12 @@ final class CandidateApplicationData
             versionShortName: $version->short_name ?? $version->name,
             versionName: $version->name,
             organizationName: $event->organization->name,
-            organizationLogoUrl: $event->logo_url ?? $event->organization->logo_file_url,
-            organizationLogoAlt: $event->logo_alt ?? $event->organization->logo_file_alt,
+            organizationLogoUrl: self::resolveLogoUrl($event->organization->logo_file_url),
+            organizationLogoAlt: $event->organization->logo_file_alt,
             candidateFullName: $candidate->program_name,
             candidateFirstName: $programNameParts[0],
+            candidatePronounObject: $studentUser->pronoun !== null ? $studentUser->pronoun->object : 'them',
+            candidatePronounPossessive: $studentUser->pronoun !== null ? $studentUser->pronoun->possessive : 'their',
             voicePartName: $candidate->voicePart->name,
             grade: $candidate->student->grade !== null ? (string) $candidate->student->grade : '—',
             schoolName: $candidate->school->name,
@@ -65,6 +71,7 @@ final class CandidateApplicationData
             participationFee: self::formatFee($version->fees?->participation),
             epaymentSurchargeFee: self::formatFee($version->fees?->epayment_surcharge),
             housingFee: self::formatFee($version->fees?->housing),
+            applicationDeadline: self::formatDeadline($version),
             generatedAt: now()->format('M j, Y g:ia'),
         );
     }
@@ -79,10 +86,12 @@ final class CandidateApplicationData
             versionShortName: $version->short_name ?? $version->name,
             versionName: $version->name,
             organizationName: $event->organization->name,
-            organizationLogoUrl: $event->logo_url ?? $event->organization->logo_file_url,
-            organizationLogoAlt: $event->logo_alt ?? $event->organization->logo_file_alt,
+            organizationLogoUrl: self::resolveLogoUrl($event->organization->logo_file_url),
+            organizationLogoAlt: $event->organization->logo_file_alt,
             candidateFullName: 'Jane A. Sample',
             candidateFirstName: 'Jane',
+            candidatePronounObject: 'her',
+            candidatePronounPossessive: 'her',
             voicePartName: $voicePartName,
             grade: '10',
             schoolName: 'Sample High School',
@@ -97,6 +106,7 @@ final class CandidateApplicationData
             participationFee: self::formatFee($version->fees?->participation),
             epaymentSurchargeFee: self::formatFee($version->fees?->epayment_surcharge),
             housingFee: self::formatFee($version->fees?->housing),
+            applicationDeadline: self::formatDeadline($version),
             generatedAt: now()->format('M j, Y g:ia'),
         );
     }
@@ -112,6 +122,8 @@ final class CandidateApplicationData
             'organizationName' => $this->organizationName,
             'candidateFullName' => $this->candidateFullName,
             'candidateFirstName' => $this->candidateFirstName,
+            'candidatePronounObject' => $this->candidatePronounObject,
+            'candidatePronounPossessive' => $this->candidatePronounPossessive,
             'voicePartName' => $this->voicePartName,
             'grade' => $this->grade,
             'schoolName' => $this->schoolName,
@@ -126,11 +138,69 @@ final class CandidateApplicationData
             'participationFee' => $this->participationFee,
             'epaymentSurchargeFee' => $this->epaymentSurchargeFee,
             'housingFee' => $this->housingFee,
+            'applicationDeadline' => $this->applicationDeadline,
         ];
+    }
+
+    /**
+     * Human-readable labels for every token in toTokenMap(), keyed identically —
+     * drives the "Insert token" picker so its list can never drift from what
+     * mergeTokens() actually replaces. Enforced by a matching-keys test.
+     * Sorted by token name for display; toTokenMap() builds an explicit
+     * key => value map (not order-dependent), so this sort is safe.
+     *
+     * @return array<string, string>
+     */
+    public static function tokenDescriptions(): array
+    {
+        $descriptions = [
+            'versionShortName' => 'Version short name',
+            'versionName' => 'Version full name',
+            'organizationName' => 'Organization name',
+            'candidateFullName' => "Candidate's full name",
+            'candidateFirstName' => "Candidate's first name",
+            'candidatePronounObject' => "Candidate's object pronoun (him/her/them)",
+            'candidatePronounPossessive' => "Candidate's possessive pronoun (his/her/their)",
+            'voicePartName' => 'Voice part',
+            'grade' => 'Grade level',
+            'schoolName' => 'School name',
+            'schoolShortName' => 'School short name',
+            'teacherFullName' => "Teacher's full name",
+            'teacherCellPhone' => "Teacher's cell phone",
+            'studentCellPhone' => "Candidate's cell phone",
+            'emergencyContactName' => 'Emergency contact name',
+            'emergencyContactPhone' => 'Emergency contact phone',
+            'registrationFee' => 'Registration fee',
+            'onSiteRegistrationFee' => 'On-site registration fee',
+            'participationFee' => 'Participation fee',
+            'epaymentSurchargeFee' => 'E-payment surcharge fee',
+            'housingFee' => 'Housing fee',
+            'applicationDeadline' => 'Postmark deadline date',
+        ];
+
+        ksort($descriptions);
+
+        return $descriptions;
+    }
+
+    private static function resolveLogoUrl(?string $key): ?string
+    {
+        return $key !== null && $key !== ''
+            ? \Illuminate\Support\Facades\Storage::disk('s3')->url($key)
+            : null;
     }
 
     private static function formatFee(?int $cents): string
     {
         return number_format(($cents ?? 0) / 100, 2, '.', '');
+    }
+
+    private static function formatDeadline(Version $version): string
+    {
+        $deadline = $version->dates->firstWhere('date_type', VersionDateType::PostmarkDeadline);
+
+        return $deadline !== null
+            ? \Illuminate\Support\Carbon::parse($deadline->start_at)->format('M j, Y')
+            : '—';
     }
 }

@@ -401,31 +401,45 @@
                     @endif
                 </div>
 
+                @php $applicationTokens = \App\Support\CandidateApplicationData::tokenDescriptions(); @endphp
+
                 <flux:callout variant="info" icon="information-circle">
                     <flux:callout.text>
                         The header, candidate summary, and fee amounts are rendered automatically from this Version's
                         real data — only the endorsement text below is authored here. Available merge fields:
-                        @verbatim<code class="font-mono text-xs">{{candidateFullName}}</code>, <code class="font-mono text-xs">{{voicePartName}}</code>, <code class="font-mono text-xs">{{grade}}</code>, <code class="font-mono text-xs">{{schoolName}}</code>, <code class="font-mono text-xs">{{schoolShortName}}</code>, <code class="font-mono text-xs">{{teacherFullName}}</code>, <code class="font-mono text-xs">{{emergencyContactName}}</code>, <code class="font-mono text-xs">{{versionShortName}}</code>, <code class="font-mono text-xs">{{versionName}}</code>, <code class="font-mono text-xs">{{registrationFee}}</code>, <code class="font-mono text-xs">{{participationFee}}</code>@endverbatim
-                        — replaced with real values when generated for a candidate.
+                        @foreach ($applicationTokens as $token => $description)
+                            <code class="font-mono text-xs">{{ '{' . '{' . $token . '}' . '}' }}</code>@if (! $loop->last), @endif
+                        @endforeach
+                        — replaced with real values when generated for a candidate, or use the "Insert token" button
+                        below each field to avoid typos.
                     </flux:callout.text>
                 </flux:callout>
 
                 <flux:field>
-                    <flux:label>Student Endorsement</flux:label>
-                    <flux:editor wire:model="student_endorsement_body" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
+                    <div class="flex items-center justify-between gap-2">
+                        <flux:label>Student Endorsement</flux:label>
+                        <x-merge-token-picker :tokens="$applicationTokens" target="studentEditor" />
+                    </div>
+                    <flux:editor wire:model="student_endorsement_body" x-ref="studentEditor" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
                     <flux:error name="student_endorsement_body" />
                 </flux:field>
 
                 <flux:field>
-                    <flux:label>Parent/Guardian Endorsement</flux:label>
-                    <flux:editor wire:model="parent_endorsement_body" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
+                    <div class="flex items-center justify-between gap-2">
+                        <flux:label>Parent/Guardian Endorsement</flux:label>
+                        <x-merge-token-picker :tokens="$applicationTokens" target="parentEditor" />
+                    </div>
+                    <flux:editor wire:model="parent_endorsement_body" x-ref="parentEditor" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
                     <flux:error name="parent_endorsement_body" />
                 </flux:field>
 
                 @if ($version->application_type === \App\Enums\ApplicationType::Pdf)
                     <flux:field>
-                        <flux:label>Teacher/Principal Endorsement</flux:label>
-                        <flux:editor wire:model="teacher_principal_endorsement_body" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
+                        <div class="flex items-center justify-between gap-2">
+                            <flux:label>Teacher/Principal Endorsement</flux:label>
+                            <x-merge-token-picker :tokens="$applicationTokens" target="teacherEditor" />
+                        </div>
+                        <flux:editor wire:model="teacher_principal_endorsement_body" x-ref="teacherEditor" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
                         <flux:error name="teacher_principal_endorsement_body" />
                     </flux:field>
                 @endif
@@ -460,6 +474,10 @@
                             Preview
                         </flux:button>
                     </flux:modal.trigger>
+
+                    <flux:button variant="ghost" icon="arrow-down-tray" wire:click="downloadApplicationPreviewPdf">
+                        Print Preview PDF
+                    </flux:button>
                 </div>
             </div>
         </flux:tab.panel>
@@ -520,9 +538,15 @@
                     @endif
                 </div>
 
+                @php $obligationTokens = \App\Models\VersionObligation::tokenDescriptions(); @endphp
+
                 <flux:callout variant="info" icon="information-circle">
                     <flux:callout.text>
-                        Available merge fields: @verbatim<code class="font-mono text-xs">{{versionShortName}}</code> and <code class="font-mono text-xs">{{versionName}}</code>@endverbatim — replaced with this Version's values when a teacher views or accepts.
+                        Available merge fields:
+                        @foreach ($obligationTokens as $token => $description)
+                            <code class="font-mono text-xs">{{ '{' . '{' . $token . '}' . '}' }}</code>@if (! $loop->last), @endif
+                        @endforeach
+                        — replaced with this Version's values when a teacher views or accepts.
                     </flux:callout.text>
                 </flux:callout>
 
@@ -533,8 +557,11 @@
                 </flux:field>
 
                 <flux:field>
-                    <flux:label>Obligations Text</flux:label>
-                    <flux:editor wire:model="obligation_body" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
+                    <div class="flex items-center justify-between gap-2">
+                        <flux:label>Obligations Text</flux:label>
+                        <x-merge-token-picker :tokens="$obligationTokens" target="obligationEditor" />
+                    </div>
+                    <flux:editor wire:model="obligation_body" x-ref="obligationEditor" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
                     <flux:error name="obligation_body" />
                 </flux:field>
 
