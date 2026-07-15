@@ -34,6 +34,7 @@ use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 #[Layout('components.layouts.app')]
 class VersionEdit extends Component
@@ -439,7 +440,7 @@ class VersionEdit extends Component
         Flux::toast(text: 'Candidate Application unpublished — hidden from candidate records until republished.', variant: 'warning');
     }
 
-    public function downloadApplicationPreviewPdf(): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function downloadApplicationPreviewPdf(): StreamedResponse
     {
         $data = CandidateApplicationData::placeholder($this->version);
 
@@ -458,7 +459,7 @@ class VersionEdit extends Component
             'showTeacherSection' => $this->version->getRawOriginal('application_type') === ApplicationType::Pdf->value,
         ]);
 
-        $filename = 'application-preview-' . Str::slug($this->version->short_name ?? $this->version->name) . '.pdf';
+        $filename = 'application-preview-'.Str::slug($this->version->short_name ?? $this->version->name).'.pdf';
 
         return response()->streamDownload(fn () => print $pdf->output(), $filename);
     }

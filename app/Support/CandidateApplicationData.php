@@ -7,6 +7,8 @@ namespace App\Support;
 use App\Enums\VersionDateType;
 use App\Models\Candidate;
 use App\Models\Version;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 
 final class CandidateApplicationData
 {
@@ -186,7 +188,7 @@ final class CandidateApplicationData
     private static function resolveLogoUrl(?string $key): ?string
     {
         return $key !== null && $key !== ''
-            ? \Illuminate\Support\Facades\Storage::disk('s3')->url($key)
+            ? Storage::disk('s3')->url($key)
             : null;
     }
 
@@ -200,7 +202,7 @@ final class CandidateApplicationData
         $deadline = $version->dates->firstWhere('date_type', VersionDateType::PostmarkDeadline);
 
         return $deadline !== null
-            ? \Illuminate\Support\Carbon::parse($deadline->start_at)->format('M j, Y')
+            ? Carbon::parse($deadline->start_at)->format('M j, Y')
             : '—';
     }
 }

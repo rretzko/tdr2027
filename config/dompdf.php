@@ -282,7 +282,7 @@ return [
          * @var array|null
          */
         'allowed_remote_hosts' => [
-            env('AWS_BUCKET') . '.s3.amazonaws.com',
+            env('AWS_BUCKET').'.s3.amazonaws.com',
         ],
 
         /**
