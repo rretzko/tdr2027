@@ -34,6 +34,12 @@ class CandidateApplicationPdfController extends Controller
         $teacherBody = $application->teacher_principal_endorsement_body !== null
             ? VersionApplication::mergeTokens($application->teacher_principal_endorsement_body, $data)
             : null;
+        $scheduleBody = $application->schedule_body !== null
+            ? VersionApplication::mergeTokens($application->schedule_body, $data)
+            : null;
+        $policiesBody = $application->policies_body !== null
+            ? VersionApplication::mergeTokens($application->policies_body, $data)
+            : null;
 
         return Pdf::loadView('pdf.candidate-application', [
             'version' => $version,
@@ -41,6 +47,8 @@ class CandidateApplicationPdfController extends Controller
             'studentBody' => $studentBody,
             'parentBody' => $parentBody,
             'teacherBody' => $teacherBody,
+            'scheduleBody' => $scheduleBody,
+            'policiesBody' => $policiesBody,
             'showTeacherSection' => $version->getRawOriginal('application_type') === ApplicationType::Pdf->value,
         ])->download("application-{$candidate->ref}.pdf");
     }

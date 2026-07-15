@@ -11,6 +11,8 @@
     @var string $studentBody
     @var string $parentBody
     @var string|null $teacherBody
+    @var string|null $scheduleBody
+    @var string|null $policiesBody
     @var bool $showTeacherSection
 --}}
 <div class="mt-4" style="font-family: sans-serif;">
@@ -92,6 +94,22 @@
     <section style="text-align: right; font-weight: bold; margin-bottom: 0.5rem;">
         <div>Registration Fee: ${{ $data->registrationFee }} &nbsp; Participation Fee: ${{ $data->participationFee }}</div>
     </section>
+
+    {{-- SCHEDULE (optional) --}}
+    @if ($scheduleBody !== null && trim(strip_tags($scheduleBody)) !== '')
+        <section style="margin-bottom: 1rem;">
+            <header class="ca-sectionHeader">Schedule</header>
+            <div class="ca-conditions">{!! $scheduleBody !!}</div>
+        </section>
+    @endif
+
+    {{-- POLICIES (optional) --}}
+    @if ($policiesBody !== null && trim(strip_tags($policiesBody)) !== '')
+        <section style="margin-bottom: 1rem;">
+            <header class="ca-sectionHeader">Policies</header>
+            <div class="ca-conditions">{!! $policiesBody !!}</div>
+        </section>
+    @endif
 
     {{-- STUDENT ENDORSEMENT --}}
     <section style="margin-bottom: 1rem;">

@@ -406,7 +406,9 @@
                 <flux:callout variant="info" icon="information-circle">
                     <flux:callout.text>
                         The header, candidate summary, and fee amounts are rendered automatically from this Version's
-                        real data — only the endorsement text below is authored here. Available merge fields:
+                        real data — only the schedule, policies, and endorsement text below are authored here.
+                        Schedule and Policies are optional and only appear on the document when filled in.
+                        Available merge fields:
                         @foreach ($applicationTokens as $token => $description)
                             <code class="font-mono text-xs">{{ '{' . '{' . $token . '}' . '}' }}</code>@if (! $loop->last), @endif
                         @endforeach
@@ -414,6 +416,24 @@
                         below each field to avoid typos.
                     </flux:callout.text>
                 </flux:callout>
+
+                <flux:field>
+                    <div class="flex items-center justify-between gap-2">
+                        <flux:label>Schedule (optional)</flux:label>
+                        <x-merge-token-picker :tokens="$applicationTokens" target="scheduleEditor" />
+                    </div>
+                    <flux:editor wire:model="schedule_body" x-ref="scheduleEditor" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
+                    <flux:error name="schedule_body" />
+                </flux:field>
+
+                <flux:field>
+                    <div class="flex items-center justify-between gap-2">
+                        <flux:label>Policies (optional)</flux:label>
+                        <x-merge-token-picker :tokens="$applicationTokens" target="policiesEditor" />
+                    </div>
+                    <flux:editor wire:model="policies_body" x-ref="policiesEditor" toolbar="heading bold italic underline | bullet ordered blockquote | link" />
+                    <flux:error name="policies_body" />
+                </flux:field>
 
                 <flux:field>
                     <div class="flex items-center justify-between gap-2">
@@ -506,6 +526,8 @@
                             'studentBody' => $applicationPreviewStudentBody,
                             'parentBody' => $applicationPreviewParentBody,
                             'teacherBody' => $applicationPreviewTeacherBody,
+                            'scheduleBody' => $applicationPreviewScheduleBody,
+                            'policiesBody' => $applicationPreviewPoliciesBody,
                             'showTeacherSection' => $version->application_type === \App\Enums\ApplicationType::Pdf,
                         ])
                     </div>

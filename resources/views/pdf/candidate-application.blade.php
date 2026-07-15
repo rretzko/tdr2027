@@ -19,6 +19,8 @@
         'studentBody' => $studentBody,
         'parentBody' => $parentBody,
         'teacherBody' => $teacherBody,
+        'scheduleBody' => $scheduleBody ?? null,
+        'policiesBody' => $policiesBody ?? null,
         'showTeacherSection' => $showTeacherSection,
     ])
 </body>

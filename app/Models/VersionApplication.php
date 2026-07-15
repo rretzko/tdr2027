@@ -14,7 +14,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'version_id', 'student_endorsement_body', 'parent_endorsement_body',
-    'teacher_principal_endorsement_body', 'status', 'published_at', 'published_by_user_id',
+    'teacher_principal_endorsement_body', 'schedule_body', 'policies_body',
+    'status', 'published_at', 'published_by_user_id',
 ])]
 #[ObservedBy(VersionApplicationObserver::class)]
 class VersionApplication extends Model

@@ -136,6 +136,10 @@ class VersionEdit extends Component
 
     public string $teacher_principal_endorsement_body = '';
 
+    public string $schedule_body = '';
+
+    public string $policies_body = '';
+
     public string $application_status = 'draft';
 
     public ?string $application_published_at = null;
@@ -224,6 +228,8 @@ class VersionEdit extends Component
         $this->student_endorsement_body = $application !== null ? $application->student_endorsement_body : '';
         $this->parent_endorsement_body = $application !== null ? $application->parent_endorsement_body : '';
         $this->teacher_principal_endorsement_body = $application !== null ? ($application->teacher_principal_endorsement_body ?? '') : '';
+        $this->schedule_body = $application !== null ? ($application->schedule_body ?? '') : '';
+        $this->policies_body = $application !== null ? ($application->policies_body ?? '') : '';
         $this->application_status = $application !== null ? $application->getRawOriginal('status') : VersionApplicationStatus::Draft->value;
         $rawApplicationPublishedAt = $application !== null ? $application->getRawOriginal('published_at') : null;
         $this->application_published_at = $rawApplicationPublishedAt !== null
@@ -449,6 +455,12 @@ class VersionEdit extends Component
         $teacherBody = $this->teacher_principal_endorsement_body !== ''
             ? VersionApplication::mergeTokens($this->teacher_principal_endorsement_body, $data)
             : null;
+        $scheduleBody = $this->schedule_body !== ''
+            ? VersionApplication::mergeTokens($this->schedule_body, $data)
+            : null;
+        $policiesBody = $this->policies_body !== ''
+            ? VersionApplication::mergeTokens($this->policies_body, $data)
+            : null;
 
         $pdf = Pdf::loadView('pdf.candidate-application', [
             'version' => $this->version,
@@ -456,6 +468,8 @@ class VersionEdit extends Component
             'studentBody' => $studentBody,
             'parentBody' => $parentBody,
             'teacherBody' => $teacherBody,
+            'scheduleBody' => $scheduleBody,
+            'policiesBody' => $policiesBody,
             'showTeacherSection' => $this->version->getRawOriginal('application_type') === ApplicationType::Pdf->value,
         ]);
 
@@ -465,7 +479,7 @@ class VersionEdit extends Component
     }
 
     /**
-     * @return array{student_endorsement_body: string, parent_endorsement_body: string, teacher_principal_endorsement_body: ?string}
+     * @return array{student_endorsement_body: string, parent_endorsement_body: string, teacher_principal_endorsement_body: ?string, schedule_body: ?string, policies_body: ?string}
      */
     private function validateApplication(): array
     {
@@ -475,12 +489,16 @@ class VersionEdit extends Component
             'student_endorsement_body' => ['required', 'string'],
             'parent_endorsement_body' => ['required', 'string'],
             'teacher_principal_endorsement_body' => [$isPdfMode ? 'required' : 'nullable', 'string'],
+            'schedule_body' => ['nullable', 'string'],
+            'policies_body' => ['nullable', 'string'],
         ]);
 
         return [
             'student_endorsement_body' => $validated['student_endorsement_body'],
             'parent_endorsement_body' => $validated['parent_endorsement_body'],
             'teacher_principal_endorsement_body' => $isPdfMode ? $validated['teacher_principal_endorsement_body'] : null,
+            'schedule_body' => $validated['schedule_body'] !== '' ? $validated['schedule_body'] : null,
+            'policies_body' => $validated['policies_body'] !== '' ? $validated['policies_body'] : null,
         ];
     }
 
@@ -701,6 +719,12 @@ class VersionEdit extends Component
             'applicationPreviewParentBody' => VersionApplication::mergeTokens($this->parent_endorsement_body, $applicationPreviewData),
             'applicationPreviewTeacherBody' => $this->teacher_principal_endorsement_body !== ''
                 ? VersionApplication::mergeTokens($this->teacher_principal_endorsement_body, $applicationPreviewData)
+                : null,
+            'applicationPreviewScheduleBody' => $this->schedule_body !== ''
+                ? VersionApplication::mergeTokens($this->schedule_body, $applicationPreviewData)
+                : null,
+            'applicationPreviewPoliciesBody' => $this->policies_body !== ''
+                ? VersionApplication::mergeTokens($this->policies_body, $applicationPreviewData)
                 : null,
         ]);
     }

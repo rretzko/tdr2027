@@ -22,5 +22,13 @@ class VersionApplicationObserver
         if ($application->teacher_principal_endorsement_body !== null && $application->isDirty('teacher_principal_endorsement_body')) {
             $application->teacher_principal_endorsement_body = Purifier::clean($application->teacher_principal_endorsement_body, 'obligations');
         }
+
+        if ($application->schedule_body !== null && $application->isDirty('schedule_body')) {
+            $application->schedule_body = Purifier::clean($application->schedule_body, 'obligations');
+        }
+
+        if ($application->policies_body !== null && $application->isDirty('policies_body')) {
+            $application->policies_body = Purifier::clean($application->policies_body, 'obligations');
+        }
     }
 }
