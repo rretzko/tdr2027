@@ -65,20 +65,81 @@
         </flux:heading>
 
         @if ($myCandidates->isEmpty())
-            <flux:text class="text-zinc-500">No candidates yet. Enroll a student below.</flux:text>
+            <flux:text class="text-zinc-500">No candidates yet. Eligible students are enrolled automatically once you're invited and once they're added to your roster.</flux:text>
         @else
+            <div class="space-y-4 mb-4">
+                <flux:table class="min-w-0 w-fit">
+                    <flux:table.columns>
+                        @foreach ($voicePartCounts as $row)
+                            <flux:table.column>{{ $row['label'] }}</flux:table.column>
+                        @endforeach
+                        <flux:table.column>Registered</flux:table.column>
+                    </flux:table.columns>
+                    <flux:table.rows>
+                        <flux:table.row>
+                            @foreach ($voicePartCounts as $row)
+                                <flux:table.cell>{{ $row['count'] }}</flux:table.cell>
+                            @endforeach
+                            <flux:table.cell class="font-semibold">{{ $voicePartTotal }}</flux:table.cell>
+                        </flux:table.row>
+                    </flux:table.rows>
+                </flux:table>
+
+                <flux:table class="min-w-0 w-fit">
+                    <flux:table.columns>
+                        @foreach ($statusCounts as $row)
+                            <flux:table.column align="center" class="!px-4">{{ $row['label'] }}</flux:table.column>
+                        @endforeach
+                        <flux:table.column align="center" class="!px-4">Total</flux:table.column>
+                    </flux:table.columns>
+                    <flux:table.rows>
+                        <flux:table.row>
+                            @foreach ($statusCounts as $row)
+                                <flux:table.cell align="center">{{ $row['count'] }}</flux:table.cell>
+                            @endforeach
+                            <flux:table.cell align="center" class="font-semibold">{{ $statusTotal }}</flux:table.cell>
+                        </flux:table.row>
+                    </flux:table.rows>
+                </flux:table>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3 mb-4">
+                <flux:input
+                    wire:model.live.debounce.300ms="search"
+                    placeholder="Search by name..."
+                    icon="magnifying-glass"
+                    class="sm:max-w-xs"
+                />
+                <flux:select wire:model.live="voicePartFilter" placeholder="All voice parts" class="sm:max-w-2xs">
+                    <flux:select.option value="">All voice parts</flux:select.option>
+                    @foreach ($voiceParts as $voicePart)
+                        <flux:select.option value="{{ $voicePart->id }}">{{ $voicePart->name }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <flux:select wire:model.live="statusFilter" placeholder="All statuses" class="sm:max-w-2xs">
+                    <flux:select.option value="">All statuses</flux:select.option>
+                    @foreach ($statusOptions as $status)
+                        <flux:select.option value="{{ $status->value }}">{{ $status->label() }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+            </div>
+
+            @if ($filteredCandidates->isEmpty())
+                <flux:text class="text-zinc-500">No candidates match your search/filters.</flux:text>
+            @else
             {{-- Cards below md:, table at md:+ --}}
             <div class="md:hidden space-y-3">
-                @foreach ($myCandidates as $candidate)
+                @foreach ($filteredCandidates as $candidate)
                     @php
                         $rawStatus = $candidate->getRawOriginal('status');
                         $allDone = collect($checklistDefs)->every(fn ($def) => ($def['check'])($candidate));
+                        $studentUser = $candidate->student->user;
+                        $displayName = $studentUser->last_name.', '.trim($studentUser->first_name.' '.$studentUser->middle_name);
                     @endphp
                     <flux:card size="sm">
                         <div class="flex items-start justify-between gap-3 mb-3">
                             <div>
-                                <flux:heading size="base">{{ $candidate->program_name }}</flux:heading>
-                                <flux:text size="sm" class="text-zinc-400 font-mono">{{ $candidate->ref }}</flux:text>
+                                <flux:heading size="base">{{ $displayName }}</flux:heading>
                             </div>
                             <div class="flex flex-col items-end gap-1">
                                 @if ($rawStatus === 'eligible')
@@ -136,7 +197,6 @@
             <flux:table class="hidden md:table">
                 <flux:table.columns>
                     <flux:table.column>Name</flux:table.column>
-                    <flux:table.column>Ref</flux:table.column>
                     <flux:table.column>Voice Part</flux:table.column>
                     <flux:table.column>Checklist</flux:table.column>
                     <flux:table.column>Status</flux:table.column>
@@ -144,14 +204,15 @@
                 </flux:table.columns>
 
                 <flux:table.rows>
-                    @foreach ($myCandidates as $candidate)
+                    @foreach ($filteredCandidates as $candidate)
                         @php
                             $rawStatus = $candidate->getRawOriginal('status');
                             $allDone = collect($checklistDefs)->every(fn ($def) => ($def['check'])($candidate));
+                            $studentUser = $candidate->student->user;
+                            $displayName = $studentUser->last_name.', '.trim($studentUser->first_name.' '.$studentUser->middle_name);
                         @endphp
                         <flux:table.row>
-                            <flux:table.cell class="font-medium">{{ $candidate->program_name }}</flux:table.cell>
-                            <flux:table.cell class="font-mono text-zinc-500">{{ $candidate->ref }}</flux:table.cell>
+                            <flux:table.cell class="font-medium">{{ $displayName }}</flux:table.cell>
                             <flux:table.cell>{{ $candidate->voicePart?->name ?? '—' }}</flux:table.cell>
                             <flux:table.cell>
                                 <div class="flex flex-wrap gap-1.5">
@@ -206,54 +267,8 @@
                     @endforeach
                 </flux:table.rows>
             </flux:table>
+            @endif
         @endif
     </div>
-
-    {{-- Enroll a student --}}
-    @if ($obligationsRejected)
-        {{-- Banner above already explains why; nothing further to show here. --}}
-    @elseif ($eligibleStudents->isNotEmpty())
-        <div class="border border-zinc-200 dark:border-zinc-700 rounded-xl p-5 max-w-lg">
-            <flux:heading size="base" class="mb-4">Enroll a Student</flux:heading>
-
-            <div class="space-y-4">
-                <flux:field>
-                    <flux:label>Student</flux:label>
-                    <flux:select wire:model="enroll_student_id">
-                        <flux:select.option value="">— select student —</flux:select.option>
-                        @foreach ($eligibleStudents as $student)
-                            <flux:select.option value="{{ $student->id }}">
-                                {{ $student->user->last_name }}, {{ $student->user->first_name }}
-                            </flux:select.option>
-                        @endforeach
-                    </flux:select>
-                    <flux:error name="enroll_student_id" />
-                </flux:field>
-
-                <flux:field>
-                    <flux:label>Voice Part</flux:label>
-                    <flux:select wire:model="enroll_voice_part_id">
-                        <flux:select.option value="">— select voice part —</flux:select.option>
-                        @foreach ($voiceParts as $vp)
-                            <flux:select.option value="{{ $vp->id }}">{{ $vp->name }}</flux:select.option>
-                        @endforeach
-                    </flux:select>
-                    <flux:error name="enroll_voice_part_id" />
-                </flux:field>
-
-                <flux:button variant="primary" wire:click="enroll">
-                    Enroll Student
-                </flux:button>
-            </div>
-        </div>
-    @elseif ($myCandidates->isEmpty())
-        <flux:callout variant="info" icon="information-circle">
-            <flux:callout.text>
-                No eligible students found. Students must be actively enrolled in one of your verified schools and linked to you.
-            </flux:callout.text>
-        </flux:callout>
-    @else
-        <flux:text size="sm" class="text-zinc-400">All eligible students have been enrolled.</flux:text>
-    @endif
 
 </div>

@@ -69,7 +69,11 @@
 
             <flux:separator />
 
-            @php $teacher = auth()->user()->teacher; @endphp
+            @php
+                $teacher = auth()->user()->teacher;
+                $hasRegistrationAccess = $teacher?->hasActiveSchool()
+                    && app(\App\Services\VersionInvitationEligibilityService::class)->hasAnyRegistrationAccess($teacher);
+            @endphp
             @if ($teacher?->onboarding_completed_at !== null)
                 <flux:sidebar.item icon="building-library" :href="route('schools.index')" :current="request()->routeIs('schools.*')">
                     Schools
@@ -91,9 +95,12 @@
                     <flux:sidebar.item icon="calendar" :href="route('events.index')" :current="request()->routeIs('events.*')">
                         Events
                     </flux:sidebar.item>
-                    <flux:sidebar.item icon="clipboard-document-list" :href="route('registrations.index')" :current="request()->routeIs('registrations.*')">
-                        Registrations
-                    </flux:sidebar.item>
+
+                    @if ($hasRegistrationAccess)
+                        <flux:sidebar.item icon="clipboard-document-list" :href="route('registrations.index')" :current="request()->routeIs('registrations.*')">
+                            Registrations
+                        </flux:sidebar.item>
+                    @endif
                 @endif
             @endif
 

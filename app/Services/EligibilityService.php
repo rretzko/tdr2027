@@ -28,22 +28,37 @@ class EligibilityService
     }
 
     /**
+     * A teacher with no version_invitations row at all for this Version has
+     * never been invited (or approved via a §5.8 request) and has no
+     * standing to enroll anyone — the page-level counterpart to this check
+     * lives in VersionDashboard::mount().
+     */
+    public function isNotInvited(Version $version, Teacher $teacher): bool
+    {
+        return ! VersionInvitation::where('version_id', $version->id)
+            ->where('teacher_id', $teacher->id)
+            ->exists();
+    }
+
+    /**
      * Returns students the teacher can still enroll in this version:
+     * - Invited (or obligations-accepted) for this Version — see isNotInvited()
      * - Active + verified at one of the teacher's active+verified schools
      * - Linked to this teacher (student_teacher.is_active = true)
      * - Not already a candidate for this version
      * - Not blocked by a rejected obligations response (iron gate)
+     * - In one of the Event's eligible grades (event_grades), unrestricted
+     *   if the Event has none configured — same "zero rows means
+     *   unrestricted" convention as version_counties (§5.4)
      *
-     * Grade filtering is intentionally skipped here: event_grades defines
-     * eligible grades but grade is a computed attribute, not a stored column.
-     * Event managers control eligibility at the invitation level; this service
-     * surfaces everyone the teacher can legally submit.
+     * Grade is a computed attribute (Student::grade), not a stored column,
+     * so it's filtered in PHP after the query rather than in SQL.
      *
      * @return Collection<int, Student>
      */
     public function eligibleStudents(Version $version, Teacher $teacher): Collection
     {
-        if ($this->isBlockedByRejectedObligations($version, $teacher)) {
+        if ($this->isNotInvited($version, $teacher) || $this->isBlockedByRejectedObligations($version, $teacher)) {
             /** @var Collection<int, Student> */
             return collect();
         }
@@ -61,7 +76,7 @@ class EligibilityService
         $enrolledStudentIds = Candidate::where('version_id', $version->id)
             ->pluck('student_id');
 
-        return Student::query()
+        $students = Student::query()
             ->whereHas('teachers', function ($q) use ($teacher): void {
                 $q->where('teacher_id', $teacher->id)
                     ->where('student_teacher.is_active', true);
@@ -74,6 +89,14 @@ class EligibilityService
             ->with('user')
             ->orderByRaw('(SELECT last_name FROM users WHERE users.id = students.user_id)')
             ->get();
+
+        $eventGrades = $version->event->grades->pluck('grade');
+
+        if ($eventGrades->isEmpty()) {
+            return $students;
+        }
+
+        return $students->filter(fn (Student $student): bool => $eventGrades->contains($student->grade))->values();
     }
 
     /**

@@ -100,4 +100,12 @@ class Teacher extends Model
     {
         return $this->hasMany(VersionInvitation::class);
     }
+
+    /**
+     * @return HasMany<VersionInvitationRequest, $this>
+     */
+    public function versionInvitationRequests(): HasMany
+    {
+        return $this->hasMany(VersionInvitationRequest::class);
+    }
 }

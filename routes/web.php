@@ -5,6 +5,7 @@ use App\Http\Controllers\CandidateApplicationPdfController;
 use App\Http\Controllers\SchoolEmailVerificationController;
 use App\Http\Controllers\StopImpersonatingController;
 use App\Http\Controllers\StudentClaimController;
+use App\Http\Controllers\VersionInvitationRequestController;
 use App\Livewire\Auth\SocialPhoneCheck;
 use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
@@ -21,6 +22,7 @@ use App\Livewire\Founder\TrackablePages as FounderTrackablePages;
 use App\Livewire\Onboarding\TeacherOnboardingWizard;
 use App\Livewire\Registrations\CandidateDetail;
 use App\Livewire\Registrations\Index as RegistrationsIndex;
+use App\Livewire\Registrations\RequestInvitation;
 use App\Livewire\Registrations\VersionDashboard;
 use App\Livewire\Registrations\VersionObligations;
 use App\Livewire\Schools\Index as SchoolsIndex;
@@ -62,6 +64,17 @@ Route::get('/student-claim/{student}/{teacher}/{school}/approve', [StudentClaimC
 Route::get('/student-claim/{student}/{teacher}/{school}/deny', [StudentClaimController::class, 'deny'])
     ->middleware('signed')
     ->name('student-claim.deny');
+
+// Signed, unauthenticated: approve/deny links emailed to each Event Manager
+// when a teacher requests a Version invitation (§5.8). {user} is the specific
+// recipient the link was generated for, so decided_by can be attributed
+// without an active session.
+Route::get('/version-invitation-requests/{versionInvitationRequest}/{user}/approve', [VersionInvitationRequestController::class, 'approve'])
+    ->middleware('signed')
+    ->name('version-invitation-requests.approve');
+Route::get('/version-invitation-requests/{versionInvitationRequest}/{user}/deny', [VersionInvitationRequestController::class, 'deny'])
+    ->middleware('signed')
+    ->name('version-invitation-requests.deny');
 
 // Profile completion: auth only — user may not yet have a verified email.
 Route::middleware('auth')->group(function () {
@@ -107,6 +120,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/pitch-files', VersionPitchFiles::class)->name('events.versions.pitch-files');
         Route::get('/registrations', RegistrationsIndex::class)->name('registrations.index');
         Route::get('/registrations/{version}', VersionDashboard::class)->name('registrations.version');
+        Route::get('/registrations/{version}/request-invitation', RequestInvitation::class)->name('registrations.request-invitation');
         Route::get('/registrations/{version}/obligations', VersionObligations::class)->name('registrations.obligations');
         Route::get('/registrations/{version}/{candidate}', CandidateDetail::class)->name('registrations.candidate');
         Route::get('/registrations/{version}/{candidate}/application.pdf', CandidateApplicationPdfController::class)->name('registrations.candidate.application-pdf');

@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\VersionInvitationStatus;
+use App\Observers\VersionInvitationObserver;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable(['version_id', 'teacher_id', 'status', 'invited_at', 'invited_by_user_id'])]
+#[ObservedBy(VersionInvitationObserver::class)]
 class VersionInvitation extends Model
 {
     /**

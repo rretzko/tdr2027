@@ -5,17 +5,21 @@ declare(strict_types=1);
 namespace App\Livewire\Registrations;
 
 use App\Concerns\HasCandidateChecklist;
+use App\Enums\CandidateStatus;
 use App\Models\Candidate;
-use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\Version;
+use App\Models\VersionInvitation;
 use App\Models\VoicePart;
 use App\Services\CandidateService;
 use App\Services\EligibilityService;
+use App\Services\VersionInvitationEligibilityService;
 use Flux\Flux;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 #[Layout('components.layouts.app')]
@@ -25,53 +29,40 @@ class VersionDashboard extends Component
 
     public Version $version;
 
-    public string $enroll_student_id = '';
+    #[Url]
+    public string $search = '';
 
-    public string $enroll_voice_part_id = '';
+    #[Url]
+    public string $voicePartFilter = '';
 
-    public function mount(Version $version): void
+    #[Url]
+    public string $statusFilter = '';
+
+    /**
+     * Page-level counterpart to EligibilityService::isNotInvited() — without
+     * this, any teacher with an active school could open this page directly
+     * (nav visibility alone is not an authorization boundary) and enroll
+     * candidates into a Version they were never invited to.
+     */
+    public function mount(Version $version, VersionInvitationEligibilityService $eligibility): void
     {
-        $this->version = $version;
-    }
-
-    public function enroll(EligibilityService $eligibility, CandidateService $candidates): void
-    {
-        $this->validate([
-            'enroll_student_id' => ['required', 'integer', 'exists:students,id'],
-            'enroll_voice_part_id' => ['required', 'integer', 'exists:voice_parts,id'],
-        ]);
-
         $teacher = $this->teacher();
 
-        if ($eligibility->isBlockedByRejectedObligations($this->version, $teacher)) {
-            $this->addError('enroll_student_id', 'You have rejected this Version\'s obligations, so you cannot enroll students until you accept them again.');
+        $invited = VersionInvitation::where('version_id', $version->id)
+            ->where('teacher_id', $teacher->id)
+            ->exists();
 
-            return;
+        if (! $invited) {
+            if ($eligibility->isEligible($version, $teacher)) {
+                $this->redirect(route('registrations.request-invitation', $version), navigate: true);
+
+                return;
+            }
+
+            abort(403);
         }
 
-        $student = Student::findOrFail((int) $this->enroll_student_id);
-
-        $schoolId = $eligibility->resolveSchool($student, $teacher);
-
-        if ($schoolId === null) {
-            $this->addError('enroll_student_id', 'No shared active school found between you and this student.');
-
-            return;
-        }
-
-        $candidate = $candidates->enroll(
-            $this->version,
-            $student,
-            $teacher,
-            $schoolId,
-            (int) $this->enroll_voice_part_id,
-        );
-
-        $this->enroll_student_id = '';
-        $this->enroll_voice_part_id = '';
-        $this->resetValidation();
-
-        Flux::toast("{$candidate->program_name} enrolled as {$candidate->ref}.");
+        $this->version = $version;
     }
 
     public function withdraw(CandidateService $candidates, int $candidateId): void
@@ -103,13 +94,45 @@ class VersionDashboard extends Component
     {
         $teacher = $this->teacher();
 
+        // Sorted by the student's sort_name (Last, First — the same "alpha
+        // order" convention used elsewhere, e.g. VersionInvitationEligibilityService::roster()),
+        // not program_name — a teacher can freely edit program_name to
+        // anything for the concert program, so it isn't a reliable
+        // alphabetical key.
         $myCandidates = Candidate::where('version_id', $this->version->id)
             ->where('teacher_id', $teacher->id)
             ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'voicePart'])
             ->get()
-            ->sortBy('program_name');
+            ->sortBy(fn (Candidate $candidate): string => mb_strtolower($candidate->student->user->sort_name));
 
-        $eligibleStudents = app(EligibilityService::class)->eligibleStudents($this->version, $teacher);
+        $filteredCandidates = $this->filterCandidates($myCandidates);
+
+        // Summary tables reflect the full roster (myCandidates), not the
+        // filtered view — a stable overview regardless of the search/filter
+        // row below it.
+        // Registered-only: this table answers "how many per voice part have
+        // actually made it to Registered," not a raw headcount across every
+        // status — the "Registered" column is the sum of that, not a
+        // cross-status grand total.
+        $voicePartCounts = $this->version->availableVoiceParts()
+            ->map(fn (VoicePart $voicePart): array => [
+                'label' => $voicePart->abbr,
+                'count' => $myCandidates->where('voice_part_id', $voicePart->id)->where('status', CandidateStatus::Registered)->count(),
+            ]);
+        $voicePartTotal = $voicePartCounts->sum('count');
+
+        $statusCounts = collect(CandidateStatus::registrationStates())
+            ->map(fn (CandidateStatus $status): array => [
+                'label' => $status->label(),
+                'count' => $myCandidates->where('status', $status)->count(),
+            ]);
+        $statusTotal = $statusCounts->sum('count');
+
+        $statusOptions = $myCandidates
+            ->pluck('status')
+            ->unique(fn (CandidateStatus $status): string => $status->value)
+            ->sortBy(fn (CandidateStatus $status): string => $status->label())
+            ->values();
 
         $upcomingDates = $this->version->dates()
             ->where('start_at', '>=', now())
@@ -124,8 +147,33 @@ class VersionDashboard extends Component
         $obligationsRejected = app(EligibilityService::class)->isBlockedByRejectedObligations($this->version, $teacher);
 
         return view('livewire.registrations.version-dashboard', compact(
-            'myCandidates', 'eligibleStudents', 'upcomingDates', 'voiceParts', 'checklistDefs', 'obligationsRejected',
+            'myCandidates', 'filteredCandidates', 'voicePartCounts', 'voicePartTotal',
+            'statusCounts', 'statusTotal', 'statusOptions',
+            'upcomingDates', 'voiceParts', 'checklistDefs', 'obligationsRejected',
         ));
+    }
+
+    /**
+     * @param  Collection<int, Candidate>  $candidates
+     * @return Collection<int, Candidate>
+     */
+    private function filterCandidates(Collection $candidates): Collection
+    {
+        $search = mb_strtolower(trim($this->search));
+
+        if ($search !== '') {
+            $candidates = $candidates->filter(fn (Candidate $candidate): bool => str_contains(mb_strtolower((string) $candidate->student->user->name), $search));
+        }
+
+        if ($this->voicePartFilter !== '') {
+            $candidates = $candidates->filter(fn (Candidate $candidate): bool => (string) $candidate->voice_part_id === $this->voicePartFilter);
+        }
+
+        if ($this->statusFilter !== '') {
+            $candidates = $candidates->filter(fn (Candidate $candidate): bool => $candidate->getRawOriginal('status') === $this->statusFilter);
+        }
+
+        return $candidates->values();
     }
 
     private function teacher(): Teacher

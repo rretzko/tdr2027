@@ -148,6 +148,14 @@ class Version extends Model
     }
 
     /**
+     * @return HasMany<VersionInvitationRequest, $this>
+     */
+    public function invitationRequests(): HasMany
+    {
+        return $this->hasMany(VersionInvitationRequest::class);
+    }
+
+    /**
      * @return HasMany<VersionPitchFile, $this>
      */
     public function pitchFiles(): HasMany

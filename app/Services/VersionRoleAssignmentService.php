@@ -76,6 +76,22 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Distinct users holding "Event Manager" on any Version of the Event —
+     * the notification list for Event-level emails (e.g. §5.8's invitation
+     * request notice), since the role itself is only ever stored scoped to
+     * a version_id.
+     *
+     * @return Collection<int, User>
+     */
+    public function eventManagersForEvent(Event $event): Collection
+    {
+        return $event->versions
+            ->flatMap(fn (Version $version): Collection => $this->assignmentsForVersion($version)->get('Event Manager') ?? collect())
+            ->unique('id')
+            ->values();
+    }
+
+    /**
      * @return list<int>
      */
     public function eventIdsVisibleTo(User $user): array

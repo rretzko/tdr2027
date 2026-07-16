@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\CandidateStatus;
+use App\Models\Candidate;
 use App\Models\Membership;
 use App\Models\School;
 use App\Models\Teacher;
 use App\Models\Version;
+use App\Models\VersionDate;
 use App\Models\VersionInvitation;
 use App\Support\VersionInvitationRosterRow;
 use Carbon\Carbon;
@@ -89,6 +92,64 @@ class VersionInvitationEligibilityService
         usort($rows, fn (VersionInvitationRosterRow $a, VersionInvitationRosterRow $b): int => $a->teacher->user->sort_name <=> $b->teacher->user->sort_name);
 
         return collect($rows);
+    }
+
+    /**
+     * Single-teacher eligibility check — same rules as eligibleTeachers(),
+     * without loading the whole pool. Used by VersionInvitationRequestService
+     * (§5.8) to gate a teacher's self-service invitation request.
+     */
+    public function isEligible(Version $version, Teacher $teacher): bool
+    {
+        return $this->eligibleTeachersQuery($version)->whereKey($teacher->id)->exists();
+    }
+
+    /**
+     * Whether the Registrations nav entry (Sidebar + Registrations index,
+     * §6.2) has anything to show this teacher: an existing invitation, an
+     * active candidate, or at least one currently-open Version they're
+     * eligible to request. Ordered cheapest-first — the invitation/candidate
+     * existence checks cover the common case for a teacher already
+     * registering, so the per-Version eligibility loop (the only part that
+     * scales with the number of open Versions) only runs when needed.
+     */
+    public function hasAnyRegistrationAccess(Teacher $teacher): bool
+    {
+        if (VersionInvitation::where('teacher_id', $teacher->id)->exists()) {
+            return true;
+        }
+
+        $registrationStatuses = array_map(fn (CandidateStatus $s): string => $s->value, CandidateStatus::registrationStates());
+
+        if (Candidate::where('teacher_id', $teacher->id)->whereIn('status', $registrationStatuses)->exists()) {
+            return true;
+        }
+
+        foreach (Version::whereIn('id', $this->openForTeacherVersionIds())->get() as $version) {
+            if ($this->isEligible($version, $teacher)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Version ids currently open for teacher registration work (an active
+     * version_dates row of type "teacher") — shared by hasAnyRegistrationAccess()
+     * above and Registrations\Index's "Open for Registration" section so the
+     * two can't drift on what "open" means.
+     *
+     * @return Collection<int, int>
+     */
+    public function openForTeacherVersionIds(): Collection
+    {
+        return VersionDate::where('date_type', 'teacher')
+            ->where('start_at', '<=', now())
+            ->where(function ($q): void {
+                $q->whereNull('end_at')->orWhere('end_at', '>=', now());
+            })
+            ->pluck('version_id');
     }
 
     /**

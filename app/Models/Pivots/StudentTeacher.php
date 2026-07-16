@@ -10,13 +10,16 @@ use App\Enums\TeacherRole;
 use App\Models\School;
 use App\Models\Student;
 use App\Models\Teacher;
+use App\Observers\StudentTeacherObserver;
 use Database\Factories\Pivots\StudentTeacherFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
 #[Fillable(['student_id', 'teacher_id', 'school_id', 'subject', 'role', 'is_active', 'claim_status', 'pending_class_of'])]
+#[ObservedBy(StudentTeacherObserver::class)]
 class StudentTeacher extends Pivot
 {
     /** @use HasFactory<StudentTeacherFactory> */
