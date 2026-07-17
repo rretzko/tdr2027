@@ -48,11 +48,11 @@ class VersionDashboard extends Component
     {
         $teacher = $this->teacher();
 
-        $invited = VersionInvitation::where('version_id', $version->id)
+        $invitation = VersionInvitation::where('version_id', $version->id)
             ->where('teacher_id', $teacher->id)
-            ->exists();
+            ->first();
 
-        if (! $invited) {
+        if ($invitation === null) {
             if ($eligibility->isEligible($version, $teacher)) {
                 $this->redirect(route('registrations.request-invitation', $version), navigate: true);
 
@@ -60,6 +60,18 @@ class VersionDashboard extends Component
             }
 
             abort(403);
+        }
+
+        // A teacher who has never responded to a published obligation is sent
+        // there first. A teacher who already rejected it still lands here —
+        // that's handled by the "Participation stopped" banner below, not a
+        // redirect, since they've already made a decision (just the wrong one).
+        $obligation = $version->obligation;
+
+        if ($obligation?->isPublished() && $invitation->obligationResponse()->doesntExist()) {
+            $this->redirect(route('registrations.obligations', $version), navigate: true);
+
+            return;
         }
 
         $this->version = $version;

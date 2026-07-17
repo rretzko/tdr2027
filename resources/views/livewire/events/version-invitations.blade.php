@@ -81,7 +81,7 @@
         {{-- Cards below lg:, table at lg:+ --}}
         <div class="lg:hidden space-y-3">
             @foreach ($roster as $row)
-                <flux:card size="sm">
+                <flux:card size="sm" wire:key="invitation-card-{{ $row->teacher->id }}">
                     <div class="flex items-start justify-between gap-3 mb-2">
                         <div class="min-w-0">
                             <flux:heading size="base" class="truncate">{{ $row->teacher->user->name }}</flux:heading>
@@ -136,7 +136,7 @@
 
                 <flux:table.rows>
                     @foreach ($roster as $row)
-                        <flux:table.row>
+                        <flux:table.row wire:key="invitation-row-{{ $row->teacher->id }}">
                             <flux:table.cell>
                                 <flux:checkbox
                                     wire:click="toggle({{ $row->teacher->id }})"

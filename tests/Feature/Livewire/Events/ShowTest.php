@@ -64,10 +64,10 @@ test('mount allows a Registration-Manager-only holder to view the Event', functi
         ->assertViewHas('canManageEvent', false);
 });
 
-test('createVersion succeeds for an Event Manager', function () {
+test('createVersion clones the latest sibling Version for an Event Manager', function () {
     $user = makeShowTestUser();
     $event = Event::factory()->create();
-    $version = Version::factory()->create(['event_id' => $event->id]);
+    $version = Version::factory()->create(['event_id' => $event->id, 'audition_timeslot' => 20]);
     grantVersionRole($user, $version, 'Event Manager');
 
     Livewire::actingAs($user)
@@ -77,8 +77,27 @@ test('createVersion succeeds for an Event Manager', function () {
         ->call('createVersion')
         ->assertHasNoErrors();
 
-    expect(Version::where('event_id', $event->id)->where('name', 'Second Version')->exists())->toBeTrue();
-    expect(Version::where('event_id', $event->id)->where('name', 'Second Version')->value('audition_timeslot'))->toBe(0);
+    $clone = Version::where('event_id', $event->id)->where('name', 'Second Version')->first();
+
+    expect($clone)->not->toBeNull();
+    expect($clone->audition_timeslot)->toBe(20);
+});
+
+test('createVersion falls back to defaults when the Event has no existing Version', function () {
+    $founder = makeFounder();
+    $event = Event::factory()->create();
+
+    Livewire::actingAs($founder)
+        ->test(Show::class, ['event' => $event])
+        ->set('new_name', 'First Version')
+        ->set('new_senior_class_of', '2028')
+        ->call('createVersion')
+        ->assertHasNoErrors();
+
+    $version = Version::where('event_id', $event->id)->where('name', 'First Version')->first();
+
+    expect($version)->not->toBeNull();
+    expect($version->audition_timeslot)->toBe(0);
 });
 
 test('createVersion aborts with 403 for a Registration-Manager-only holder', function () {

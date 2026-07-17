@@ -15,6 +15,7 @@ use App\Models\EnsembleGrade;
 use App\Models\Event;
 use App\Models\Version;
 use App\Models\VoicePart;
+use App\Services\VersionCloningService;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
@@ -64,13 +65,15 @@ class Show extends Component
 
     public function openAddVersion(): void
     {
+        $latest = $this->latestVersion();
+
         $this->new_name = '';
         $this->new_short_name = '';
-        $this->new_senior_class_of = (string) ((int) date('Y') + 1);
+        $this->new_senior_class_of = (string) ($latest ? $latest->senior_class_of + 1 : (int) date('Y') + 1);
         $this->resetValidation(['new_name', 'new_short_name', 'new_senior_class_of']);
     }
 
-    public function createVersion(VersionRoleAssignmentService $service): void
+    public function createVersion(VersionRoleAssignmentService $service, VersionCloningService $cloningService): void
     {
         abort_unless($service->canManageEvent(Auth::user(), $this->event), 403);
 
@@ -80,32 +83,47 @@ class Show extends Component
             'new_senior_class_of' => ['required', 'integer', 'min:2000', 'max:2100'],
         ]);
 
-        $version = Version::create([
-            'event_id' => $this->event->id,
+        $overrides = [
             'name' => $validated['new_name'],
             'short_name' => $validated['new_short_name'] ?: null,
             'senior_class_of' => (int) $validated['new_senior_class_of'],
-            'status' => EventStatus::Sandbox->value,
-            'application_type' => ApplicationType::Pdf->value,
-            'audition_timeslot' => 0,
-            'audition_type' => AuditionType::Remote->value,
-            'birthday' => false,
-            'emergency_contact_name' => true,
-            'emergency_contact_cell' => true,
-            'emergency_contact_email' => false,
-            'height' => false,
-            'home_address' => false,
-            'judge_count' => 1,
-            'pitch_file_visibility' => PitchFileVisibility::Both->value,
-            'release_confidential_results' => false,
-            'score_order' => ScoreOrder::Asc->value,
-            'shirt_size' => false,
-            'teacher_cell' => true,
-            'upload_type' => UploadType::None->value,
-        ]);
+        ];
+
+        $latest = $this->latestVersion();
+
+        if ($latest) {
+            $version = $cloningService->cloneFrom($latest, $overrides, Auth::user());
+        } else {
+            $version = Version::create([
+                ...$overrides,
+                'event_id' => $this->event->id,
+                'status' => EventStatus::Sandbox->value,
+                'application_type' => ApplicationType::Pdf->value,
+                'audition_timeslot' => 0,
+                'audition_type' => AuditionType::Remote->value,
+                'birthday' => false,
+                'emergency_contact_name' => true,
+                'emergency_contact_cell' => true,
+                'emergency_contact_email' => false,
+                'height' => false,
+                'home_address' => false,
+                'judge_count' => 1,
+                'pitch_file_visibility' => PitchFileVisibility::Both->value,
+                'release_confidential_results' => false,
+                'score_order' => ScoreOrder::Asc->value,
+                'shirt_size' => false,
+                'teacher_cell' => true,
+                'upload_type' => UploadType::None->value,
+            ]);
+        }
 
         Flux::toast("{$version->name} has been created.");
         $this->dispatch('close-modal', name: 'add-version');
+    }
+
+    private function latestVersion(): ?Version
+    {
+        return $this->event->versions()->orderByDesc('senior_class_of')->first();
     }
 
     // --- Ensembles ---

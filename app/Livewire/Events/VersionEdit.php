@@ -255,17 +255,15 @@ class VersionEdit extends Component
             'senior_class_of' => ['required', 'integer', 'min:2000', 'max:2100'],
             'status' => ['required', 'string', 'in:'.implode(',', array_column(EventStatus::cases(), 'value'))],
             'audition_type' => ['required', 'string', 'in:'.implode(',', array_column(AuditionType::cases(), 'value'))],
-            'audition_timeslot' => [
-                'required', 'integer',
-                $this->audition_type === AuditionType::InPerson->value ? 'min:5' : 'min:0',
-                'max:120',
-            ],
+            'audition_timeslot' => $this->audition_type === AuditionType::InPerson->value
+                ? ['required', 'integer', 'min:5', 'max:120']
+                : ['nullable', 'integer', 'min:0', 'max:120'],
             'application_type' => ['required', 'string', 'in:'.implode(',', array_column(ApplicationType::cases(), 'value'))],
             'upload_type' => ['required', 'string', 'in:'.implode(',', array_column(UploadType::cases(), 'value'))],
             'judge_count' => ['required', 'integer', 'min:1', 'max:20'],
             'score_order' => ['required', 'string', 'in:'.implode(',', array_column(ScoreOrder::cases(), 'value'))],
             'pitch_file_visibility' => ['required', 'string', 'in:'.implode(',', array_column(PitchFileVisibility::cases(), 'value'))],
-            'max_registrants' => ['nullable', 'integer', 'min:1'],
+            'max_registrants' => ['nullable', 'integer', 'min:0'],
             'max_upper_voice_registrants' => ['nullable', 'integer', 'min:0'],
         ]);
 
@@ -275,13 +273,13 @@ class VersionEdit extends Component
             'senior_class_of' => (int) $validated['senior_class_of'],
             'status' => $validated['status'],
             'audition_type' => $validated['audition_type'],
-            'audition_timeslot' => (int) $validated['audition_timeslot'],
+            'audition_timeslot' => ($validated['audition_timeslot'] ?? '') !== '' ? (int) $validated['audition_timeslot'] : 0,
             'application_type' => $validated['application_type'],
             'upload_type' => $validated['upload_type'],
             'judge_count' => (int) $validated['judge_count'],
             'score_order' => $validated['score_order'],
             'pitch_file_visibility' => $validated['pitch_file_visibility'],
-            'max_registrants' => ($validated['max_registrants'] ?? '') !== '' ? (int) $validated['max_registrants'] : null,
+            'max_registrants' => ($validated['max_registrants'] ?? '') !== '' && (int) $validated['max_registrants'] !== 0 ? (int) $validated['max_registrants'] : null,
             'max_upper_voice_registrants' => ($validated['max_upper_voice_registrants'] ?? '') !== '' ? (int) $validated['max_upper_voice_registrants'] : null,
         ]);
 

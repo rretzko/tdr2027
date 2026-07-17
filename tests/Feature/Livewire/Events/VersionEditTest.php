@@ -118,6 +118,25 @@ test('saveGeneral requires at least 5 minutes for in_person but allows 0 for rem
         ->assertHasErrors('audition_timeslot');
 });
 
+test('saveGeneral succeeds for a remote Version whose audition_timeslot is null (blank in the form)', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['audition_type' => AuditionType::Remote->value, 'audition_timeslot' => null]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertSet('audition_timeslot', '')
+        ->set('status', EventStatus::Active->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    expect($version->fresh()->audition_timeslot)->toBe(0);
+});
+
 test('saveGeneral accepts 0 for max_upper_voice_registrants', function () {
     $user = makeVersionEditUser();
     $version = Version::factory()->create();
@@ -136,6 +155,46 @@ test('saveGeneral accepts 0 for max_upper_voice_registrants', function () {
         ->assertHasNoErrors();
 
     expect($version->fresh()->max_upper_voice_registrants)->toBe(0);
+});
+
+test('saveGeneral treats 0 for max_registrants as no limit (saved as null)', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['max_registrants' => 50]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('status', EventStatus::Active->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->set('audition_type', AuditionType::Remote->value)
+        ->set('max_registrants', '0')
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    expect($version->fresh()->max_registrants)->toBeNull();
+});
+
+test('saveGeneral saves a positive max_registrants value as-is', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('status', EventStatus::Active->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->set('audition_type', AuditionType::Remote->value)
+        ->set('max_registrants', '75')
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    expect($version->fresh()->max_registrants)->toBe(75);
 });
 
 test('saveGeneral requires a name', function () {

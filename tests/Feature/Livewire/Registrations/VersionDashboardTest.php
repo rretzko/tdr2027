@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Enums\CandidateStatus;
+use App\Enums\ObligationDecision;
+use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\VersionDashboard;
 use App\Models\Candidate;
 use App\Models\Ensemble;
@@ -12,6 +14,8 @@ use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionInvitation;
+use App\Models\VersionObligation;
+use App\Models\VersionObligationResponse;
 use App\Models\VoicePart;
 use App\Services\EligibilityService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -56,6 +60,17 @@ function inviteRegistrationTeacher(Teacher $teacher, Version $version, string $s
     ]);
 }
 
+function publishObligationForRegistrationTeacher(Version $version): VersionObligation
+{
+    return VersionObligation::create([
+        'version_id' => $version->id,
+        'body' => '<p>Be excellent.</p>',
+        'status' => VersionObligationStatus::Published->value,
+        'published_at' => now(),
+        'published_by_user_id' => User::factory()->create()->id,
+    ]);
+}
+
 test('mount displays the version name', function () {
     $teacher = makeRegistrationTeacher();
     $version = Version::factory()->create(['name' => 'Fall Auditions']);
@@ -85,6 +100,65 @@ test('mount aborts with 403 for an ineligible, uninvited teacher', function () {
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
         ->assertStatus(403);
+});
+
+test('mount redirects an invited teacher who has not yet responded to a published obligation', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    inviteRegistrationTeacher($teacher, $version);
+    publishObligationForRegistrationTeacher($version);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertRedirect(route('registrations.obligations', $version));
+});
+
+test('mount does not redirect when the Version has no published obligation', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create(['name' => 'No Obligation Version']);
+    inviteRegistrationTeacher($teacher, $version);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee('No Obligation Version');
+});
+
+test('mount does not redirect a teacher who already accepted the obligation', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create(['name' => 'Accepted Version']);
+    $invitation = inviteRegistrationTeacher($teacher, $version, 'obligated');
+    $obligation = publishObligationForRegistrationTeacher($version);
+
+    VersionObligationResponse::create([
+        'version_invitation_id' => $invitation->id,
+        'version_obligation_id' => $obligation->id,
+        'decision' => ObligationDecision::Accepted->value,
+        'decided_at' => now(),
+        'obligation_snapshot' => $obligation->body,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee('Accepted Version');
+});
+
+test('mount does not redirect a teacher who already rejected the obligation — the dashboard shows the "Participation stopped" banner instead', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create(['name' => 'Rejected Version']);
+    $invitation = inviteRegistrationTeacher($teacher, $version, 'rejected');
+    $obligation = publishObligationForRegistrationTeacher($version);
+
+    VersionObligationResponse::create([
+        'version_invitation_id' => $invitation->id,
+        'version_obligation_id' => $obligation->id,
+        'decision' => ObligationDecision::Rejected->value,
+        'decided_at' => now(),
+        'obligation_snapshot' => $obligation->body,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee('Participation stopped');
 });
 
 test('eligibleStudents (and its isNotInvited gate) is blocked for an uninvited teacher, even bypassing the page-level gate', function () {

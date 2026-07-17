@@ -172,7 +172,7 @@
 
                     <flux:field>
                         <flux:label>Max Registrants</flux:label>
-                        <flux:input wire:model="max_registrants" type="number" min="1" placeholder="No limit" />
+                        <flux:input wire:model="max_registrants" type="number" min="0" placeholder="No limit" />
                         <flux:error name="max_registrants" />
                     </flux:field>
 
