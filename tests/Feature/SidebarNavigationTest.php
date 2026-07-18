@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Models\Event;
+use App\Models\Organization;
 use App\Models\School;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
+use App\Models\Version;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 use function Pest\Laravel\actingAs;
@@ -84,6 +87,13 @@ test('a teacher with an active school sees the Students/Events nav links', funct
     $teacher = Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
     $school = School::factory()->create();
     $teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
+
+    // The Events nav link only renders once the teacher holds a
+    // version-scoped role somewhere.
+    $organization = Organization::factory()->create();
+    $event = Event::factory()->create(['organization_id' => $organization->id]);
+    $version = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $version, 'Event Manager');
 
     actingAs($user)->get(route('schools.index'))
         ->assertOk()

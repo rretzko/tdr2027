@@ -45,7 +45,9 @@ function makeIndexVersion(): Version
     $organization = Organization::factory()->create();
     $event = Event::factory()->create(['organization_id' => $organization->id]);
 
-    return Version::factory()->create(['event_id' => $event->id]);
+    // Registrations\Index now only shows status=active Versions (closed ones
+    // moved to the Results page) — active() keeps these fixtures visible.
+    return Version::factory()->active()->create(['event_id' => $event->id]);
 }
 
 function openTeacherWindow(Version $version): void
@@ -176,9 +178,9 @@ test('versions are sorted by descending senior_class_of, then ascending name', f
     $organization = Organization::factory()->create();
     $event = Event::factory()->create(['organization_id' => $organization->id]);
 
-    $zeta2025 = Version::factory()->create(['event_id' => $event->id, 'senior_class_of' => 2025, 'name' => 'Zeta Version']);
-    $alpha2026 = Version::factory()->create(['event_id' => $event->id, 'senior_class_of' => 2026, 'name' => 'Alpha Version']);
-    $alpha2025 = Version::factory()->create(['event_id' => $event->id, 'senior_class_of' => 2025, 'name' => 'Alpha Version 2']);
+    $zeta2025 = Version::factory()->active()->create(['event_id' => $event->id, 'senior_class_of' => 2025, 'name' => 'Zeta Version']);
+    $alpha2026 = Version::factory()->active()->create(['event_id' => $event->id, 'senior_class_of' => 2026, 'name' => 'Alpha Version']);
+    $alpha2025 = Version::factory()->active()->create(['event_id' => $event->id, 'senior_class_of' => 2025, 'name' => 'Alpha Version 2']);
 
     foreach ([$zeta2025, $alpha2026, $alpha2025] as $version) {
         openTeacherWindow($version);
