@@ -94,29 +94,43 @@
                 </flux:card>
             </a>
 
-            <a href="{{ route('events.index') }}" wire:navigate class="block h-full transition hover:shadow-md">
-                <flux:card class="flex h-full flex-col gap-4 border-l-4 border-l-teal-500 sm:border-2 sm:border-teal-500">
-                    <flux:heading size="lg">Events</flux:heading>
+            @php
+                $canAccessEvents = app(\App\Services\VersionRoleAssignmentService::class)->canAccessEventsSection(auth()->user());
+            @endphp
 
-                    @php
-                        $organizationIds = $teacher->teacherSupervisors()->pluck('organization_id');
-                        $openEvents = \App\Models\Event::where('status', 'active')->whereIn('organization_id', $organizationIds)->get();
-                    @endphp
+            @if ($canAccessEvents)
+                <a href="{{ route('events.index') }}" wire:navigate class="block h-full transition hover:shadow-md">
+                    <flux:card class="flex h-full flex-col gap-4 border-l-4 border-l-teal-500 sm:border-2 sm:border-teal-500">
+                        <flux:heading size="lg">Events</flux:heading>
 
-                    @if ($openEvents->isNotEmpty())
-                        <div class="flex flex-col gap-2">
-                            @foreach ($openEvents as $event)
-                                <div class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
-                                    <flux:text class="font-medium">{{ $event->name }}</flux:text>
-                                    <flux:text size="sm" class="text-zinc-500 capitalize">{{ $event->getRawOriginal('frequency') }}</flux:text>
-                                </div>
-                            @endforeach
-                        </div>
-                    @else
-                        <flux:text size="sm" class="text-zinc-500">No open events.</flux:text>
-                    @endif
-                </flux:card>
-            </a>
+                        @php
+                            $organizationIds = $teacher->teacherSupervisors()->pluck('organization_id');
+                            $openEvents = \App\Models\Event::where('status', 'active')->whereIn('organization_id', $organizationIds)->get();
+                        @endphp
+
+                        @if ($openEvents->isNotEmpty())
+                            <div class="flex flex-col gap-2">
+                                @foreach ($openEvents as $event)
+                                    <div class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                                        <flux:text class="font-medium">{{ $event->name }}</flux:text>
+                                        <flux:text size="sm" class="text-zinc-500 capitalize">{{ $event->getRawOriginal('frequency') }}</flux:text>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @else
+                            <flux:text size="sm" class="text-zinc-500">No open events.</flux:text>
+                        @endif
+                    </flux:card>
+                </a>
+            @else
+                <a href="{{ route('events.create') }}" wire:navigate class="block h-full transition hover:shadow-md">
+                    <flux:card class="flex h-full flex-col gap-4 border-l-4 border-l-teal-500 sm:border-2 sm:border-teal-500">
+                        <flux:heading size="lg">Events</flux:heading>
+                        <flux:text size="sm" class="text-zinc-500">You're not managing any events yet.</flux:text>
+                        <flux:text size="sm" class="font-medium text-teal-600 dark:text-teal-400">+ Start a new event</flux:text>
+                    </flux:card>
+                </a>
+            @endif
         </div>
         @endif
     </div>

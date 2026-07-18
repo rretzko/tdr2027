@@ -64,6 +64,28 @@ final class VersionRoleAssignmentService
         return $this->canManageEvent($user, $event) || $this->holdsAnyVersionScopedRoleForEvent($user, $event);
     }
 
+    /**
+     * Whether the Events nav link/section should be shown at all — Founder,
+     * or holding any of the six version-scoped roles on at least one event.
+     */
+    public function canAccessEventsSection(User $user): bool
+    {
+        return $user->isFounder() || $this->eventIdsVisibleTo($user) !== [];
+    }
+
+    /**
+     * Grants "Event Manager" on a brand-new Version with no prior authorization
+     * check — used only by the self-service event-creation flow, where the
+     * creator has no standing role yet because the Version they're being
+     * granted the role on didn't exist a moment ago.
+     */
+    public function bootstrapEventManager(User $user, Version $version): void
+    {
+        $this->versionRoles->withVersion($version, function () use ($user): void {
+            $user->assignRole('Event Manager');
+        });
+    }
+
     public function canAccessVersion(User $user, Version $version): bool
     {
         return $this->canManageEvent($user, $version->event)

@@ -10,6 +10,7 @@ use App\Livewire\Auth\SocialPhoneCheck;
 use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
 use App\Livewire\Auth\TeacherRegister;
+use App\Livewire\Events\CreateEvent;
 use App\Livewire\Events\Index as EventsIndex;
 use App\Livewire\Events\Show as EventsShow;
 use App\Livewire\Events\VersionEdit;
@@ -114,6 +115,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
     Route::middleware('has.active.school')->group(function () {
         Route::get('/students', StudentsIndex::class)->name('students.index');
         Route::get('/events', EventsIndex::class)->name('events.index');
+        Route::get('/events/new', CreateEvent::class)->name('events.create');
         Route::get('/events/{event}', EventsShow::class)->name('events.show');
         Route::get('/events/versions/{version}/edit', VersionEdit::class)->name('events.versions.edit');
         Route::get('/events/versions/{version}/invitations', VersionInvitations::class)->name('events.versions.invitations');
