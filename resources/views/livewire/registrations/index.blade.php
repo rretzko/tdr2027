@@ -122,7 +122,7 @@
 
                         <div class="flex items-center gap-3 shrink-0">
                             <flux:badge color="blue">{{ $candidateCount }} {{ Str::plural('candidate', $candidateCount) }}</flux:badge>
-                            <flux:badge color="red" size="sm">Closed</flux:badge>
+                            <flux:badge color="green" size="sm">Active</flux:badge>
                             <flux:button size="sm" :href="route('registrations.version', $version)" wire:navigate>
                                 View
                             </flux:button>

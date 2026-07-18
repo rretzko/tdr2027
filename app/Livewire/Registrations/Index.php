@@ -48,6 +48,11 @@ class Index extends Component
      *   Version with no candidates is dropped, and eligibility is not
      *   considered once the window has closed.
      *
+     * All three groups are further constrained to Version::status === 'active'
+     * — a Version whose lifecycle status has moved to closed belongs on the
+     * Results page (ResultsIndex) instead, regardless of whether a stale
+     * `version_dates` row still makes it look date-wise "open".
+     *
      * @return array{open: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null}>, eligible: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null}>, active: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null}>}
      */
     private function buildSections(VersionInvitationEligibilityService $eligibility): array
@@ -74,6 +79,7 @@ class Index extends Component
         // limitation when a closure re-types through push()/sort()/values().
         $versions = Version::with(['event', 'dates'])
             ->whereIn('id', $allVersionIds)
+            ->where('status', 'active')
             ->get()
             ->sort(function (Version $a, Version $b): int {
                 $seniorClassOf = $b->senior_class_of <=> $a->senior_class_of;

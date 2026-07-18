@@ -95,8 +95,20 @@
                 @if ($teacher->hasActiveSchool())
 
                     @if ($hasRegistrationAccess)
-                        <flux:sidebar.item icon="clipboard-document-list" :href="route('registrations.index')" :current="request()->routeIs('registrations.*')">
+                        <flux:sidebar.item
+                            icon="clipboard-document-list"
+                            :href="route('registrations.index')"
+                            :current="request()->routeIs('registrations.index', 'registrations.version', 'registrations.request-invitation', 'registrations.obligations', 'registrations.candidate', 'registrations.candidate.application-pdf')"
+                        >
                             Registrations
+                        </flux:sidebar.item>
+
+                        <flux:sidebar.item
+                            icon="chart-bar"
+                            :href="route('registrations.results-index')"
+                            :current="request()->routeIs('registrations.results-index', 'registrations.results')"
+                        >
+                            Results
                         </flux:sidebar.item>
                     @endif
 
