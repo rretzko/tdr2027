@@ -92,7 +92,11 @@ class Index extends Component
 
     public function deactivate(int $schoolId): void
     {
-        $this->teacher()->schools()->updateExistingPivot($schoolId, ['is_active' => false]);
+        $this->teacher()->schools()->updateExistingPivot($schoolId, [
+            'is_active' => false,
+            'school_email' => null,
+            'verified_at' => null,
+        ]);
     }
 
     public function activate(int $schoolId): void
@@ -242,8 +246,16 @@ class Index extends Component
      */
     public function selectSuggestedSchool(int $schoolId): void
     {
+        $school = School::findOrFail($schoolId);
+
         $this->linkingSchoolId = $schoolId;
         $this->confirmedNewSchool = false;
+
+        $this->edit_type = (string) $school->getRawOriginal('type');
+        $this->edit_city = $school->city;
+        $this->edit_zip_code = $school->zip_code;
+        $this->edit_geostate_id = $school->geostate_id !== null ? (string) $school->geostate_id : '';
+        $this->edit_county_id = (string) $school->county_id;
     }
 
     /**

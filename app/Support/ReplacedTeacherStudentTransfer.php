@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use App\Models\Candidate;
 use App\Models\Pivots\SchoolTeacher;
 use App\Models\Pivots\StudentTeacher;
 
@@ -18,6 +19,9 @@ final class ReplacedTeacherStudentTransfer
      * subject (e.g. they already co-taught), the replaced teacher's row is
      * dropped instead of moved, since moving it would violate the table's unique
      * (student_id, teacher_id, school_id, subject) constraint.
+     *
+     * Candidate rows at this school for the same transferred students are moved
+     * to the new teacher too, so current-cycle applications follow the roster.
      *
      * @return int<0, max> number of students transferred
      */
@@ -64,6 +68,13 @@ final class ReplacedTeacherStudentTransfer
 
             $row->update(['teacher_id' => $schoolTeacher->teacher_id]);
             $transferredStudentIds[$row->student_id] = true;
+        }
+
+        if ($transferredStudentIds !== []) {
+            Candidate::where('school_id', $school->id)
+                ->where('teacher_id', $replacedTeacher->id)
+                ->whereIn('student_id', array_keys($transferredStudentIds))
+                ->update(['teacher_id' => $schoolTeacher->teacher_id]);
         }
 
         return count($transferredStudentIds);

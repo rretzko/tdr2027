@@ -3,15 +3,19 @@
 declare(strict_types=1);
 
 use App\Enums\TeacherRole;
+use App\Models\Candidate;
 use App\Models\Pivots\SchoolTeacher;
 use App\Models\Pivots\StudentTeacher;
 use App\Models\School;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
+use App\Models\Version;
 use App\Support\ClassOfCalculator;
 use App\Support\ReplacedTeacherStudentTransfer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+
+use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
@@ -62,6 +66,31 @@ test('transfer moves current students from the replaced teacher to the new teach
 
     $row = StudentTeacher::where('student_id', $current->id)->where('school_id', $school->id)->first();
     expect($row->teacher_id)->toBe($newTeacher->id);
+});
+
+test('transfer moves the candidate row for a transferred student to the new teacher', function () {
+    $school = School::factory()->create();
+    $replacedUser = User::factory()->create(['first_name' => 'Pat', 'last_name' => 'Former']);
+    $replacedTeacher = Teacher::factory()->create(['user_id' => $replacedUser->id]);
+    $newTeacher = Teacher::factory()->create();
+
+    linkTeacherToSchoolForTransfer($replacedTeacher, $school);
+    $newSchoolTeacher = linkTeacherToSchoolForTransfer($newTeacher, $school, $replacedUser->name);
+
+    $current = enrollStudentForTransfer($school, $replacedTeacher, grade: 11);
+
+    actingAs($replacedUser);
+
+    $candidate = Candidate::factory()->create([
+        'student_id' => $current->id,
+        'version_id' => Version::factory(),
+        'school_id' => $school->id,
+        'teacher_id' => $replacedTeacher->id,
+    ]);
+
+    ReplacedTeacherStudentTransfer::transfer($newSchoolTeacher);
+
+    expect($candidate->refresh()->teacher_id)->toBe($newTeacher->id);
 });
 
 test('transfer leaves already-graduated students with the replaced teacher', function () {
