@@ -35,6 +35,20 @@
                         <flux:spacer />
                         <flux:badge size="sm">{{ $candidate->voicePart?->abbr ?? '—' }}</flux:badge>
                     </div>
+                    <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+                        <div>
+                            <flux:text size="sm" class="text-zinc-500">Score</flux:text>
+                            <flux:text>—</flux:text>
+                        </div>
+                        <div>
+                            <flux:text size="sm" class="text-zinc-500">Accepted</flux:text>
+                            <flux:text>—</flux:text>
+                        </div>
+                        <div>
+                            <flux:text size="sm" class="text-zinc-500">Ensemble</flux:text>
+                            <flux:text>—</flux:text>
+                        </div>
+                    </div>
                 </flux:card>
             @endforeach
         </div>
@@ -44,6 +58,9 @@
                 <flux:table.column class="w-12">#</flux:table.column>
                 <flux:table.column>Name</flux:table.column>
                 <flux:table.column align="center">Voice Part</flux:table.column>
+                <flux:table.column align="center">Score</flux:table.column>
+                <flux:table.column align="center">Accepted</flux:table.column>
+                <flux:table.column align="center">Ensemble</flux:table.column>
             </flux:table.columns>
 
             <flux:table.rows>
@@ -52,6 +69,9 @@
                         <flux:table.cell class="tabular-nums text-zinc-500">{{ $index + 1 }}</flux:table.cell>
                         <flux:table.cell class="font-medium">{{ $candidate->student->user->sort_name }}</flux:table.cell>
                         <flux:table.cell align="center">{{ $candidate->voicePart?->abbr ?? '—' }}</flux:table.cell>
+                        <flux:table.cell align="center">—</flux:table.cell>
+                        <flux:table.cell align="center">—</flux:table.cell>
+                        <flux:table.cell align="center">—</flux:table.cell>
                     </flux:table.row>
                 @endforeach
             </flux:table.rows>
