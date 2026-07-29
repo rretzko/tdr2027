@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Registrations;
 
+use App\Enums\CandidateStatus;
 use App\Models\Candidate;
 use App\Models\Teacher;
 use App\Models\Version;
@@ -41,8 +42,12 @@ class ResultsIndex extends Component
             return collect();
         }
 
+        // Counts only status=registered, to match what the Results page
+        // itself lists — a Version where every candidate has since moved on
+        // (withdrawn, no-show, etc.) still appears below, just with a 0 badge.
         $counts = Candidate::where('teacher_id', $teacher->id)
             ->whereIn('version_id', $versionIds)
+            ->where('status', CandidateStatus::Registered)
             ->selectRaw('version_id, count(*) as total')
             ->groupBy('version_id')
             ->pluck('total', 'version_id');
