@@ -2,7 +2,7 @@
 # Event & Version Domain — Orientation & Build Specification
 
 **Audience:** Claude Code (PhpStorm) and human reviewers.
-**Status:** In-scope build (§0.2 "Build now") implemented and tested, including Version Invitations (§5.4), Version Pitch Files (§5.5), and Version Obligations (§5.6, not yet committed). Verified against the codebase 2026-07-09: 522/522 Feature/Unit tests passing app-wide (500 baseline + 22 new for §5.6, added across `VersionEditTest`, `Registrations/VersionObligationsTest`, and `VersionObligationObserversTest`). Reference-only items (§7, adjudication/tab room/cut-offs) remain intentionally unbuilt. See §9 — all tracked items are resolved except intentionally-deferred sub-features. **Known open issue in §5.6**: bulleted/numbered lists don't render with visible markers in the live `flux:editor` admin UI or its Preview modal, even for freshly-typed (not pasted) content — confirmed the stored HTML and server-side rendering are both correct via direct DB inspection and a Blade-render test, so the defect is isolated to the client-side editor/TipTap layer, not this codebase's PHP/Blade/CSS. Unresolved; see the note at the end of §9. **Candidate Registration workflow designed 2026-07-16** (§5.8 Version Invitation Requests, new `candidate_upload_files` table in §5.2, and the access/navigation rules in §6.2) — scoped from a source design doc plus a clarifying-question pass; **not yet built**.
+**Status:** In-scope build (§0.2 "Build now") implemented and tested, including Version Invitations (§5.4), Version Pitch Files (§5.5), and Version Obligations (§5.6, not yet committed). Verified against the codebase 2026-07-09: 522/522 Feature/Unit tests passing app-wide (500 baseline + 22 new for §5.6, added across `VersionEditTest`, `Registrations/VersionObligationsTest`, and `VersionObligationObserversTest`). Reference-only items (§7, adjudication/tab room/cut-offs) remain intentionally unbuilt. See §9 — all tracked items are resolved except intentionally-deferred sub-features. **Known open issue in §5.6**: bulleted/numbered lists don't render with visible markers in the live `flux:editor` admin UI or its Preview modal, even for freshly-typed (not pasted) content — confirmed the stored HTML and server-side rendering are both correct via direct DB inspection and a Blade-render test, so the defect is isolated to the client-side editor/TipTap layer, not this codebase's PHP/Blade/CSS. Unresolved; see the note at the end of §9. **Candidate Registration workflow designed 2026-07-16** (§5.8 Version Invitation Requests, new `candidate_upload_files` table in §5.2, and the access/navigation rules in §6.2) — scoped from a source design doc plus a clarifying-question pass; **not yet built**. **Audition Environment built 2026-07-29** (§5.9: `version_rooms`, `room_score_categories`, `room_voice_parts`, `room_judges`, `score_categories`, `score_factors`, and a schema-only `scores` table, plus the `VersionRooms` Event Manager CRUD screen) — scoped from a source design doc plus a clarifying-question pass. 651/651 Feature/Unit tests passing app-wide, PHPStan clean.
 
 ---
 
@@ -663,6 +663,100 @@ Unique on (`version_id`, `teacher_id`) — one row per teacher per Version, togg
 
 ---
 
+### 5.9 Audition Environment (Room, Judge assignment, Scoring rubric — Version configuration)
+
+Designed and built 2026-07-29. Scoped from a source design doc (`Audition_environment.docx`) plus a clarifying-question pass with the product owner. Configures the rooms, judge assignments, and scoring rubric a Version uses during adjudication — the setup half of the not-yet-built Adjudication Wizard (§7.2). Only Configuration-phase CRUD and the `scores` table schema are in scope this pass; live judge scoring UI, Tab Room, and cutoff/ensemble-assignment logic remain §7 reference-only.
+
+**Room applies identically regardless of `audition_type`.** Resolved 2026-07-29 (an open question during design): the only difference between an in-person and a remote audition is whether the Candidate is physically present — a "blind" in-person audition (judges facing away) is functionally indistinguishable from a remote one to the judge. Room, Score Category/Factor assignment, and Judge assignment are therefore a single shared model for both modes; `audition_type` (§5.1) does not branch this domain at all.
+
+**`version_scorings` dropped.** The source doc described `version_scorings` (flat `file_type`/`segment` columns) as "an alternative to using score_categories and score_factors." Resolved: not built. It offered no technical or performance benefit at this data volume — a rubric is a few dozen admin-edited rows, not a high-read table — and would have duplicated the category label across every factor row with no FK integrity, trading away the Event/Version override model for a join-avoidance that doesn't matter here. Denormalization is reserved for the genuinely high-cardinality, high-read `scores` table below, matching the existing `audition_results`/`candidate_status_history` precedent.
+
+**`score_categories` table** — new, this phase:
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | bigIncrements | no | — | PK |
+| `event_id` | foreignId | no | — | FK → events; cascade on delete |
+| `version_id` | foreignId | yes | null | FK → versions; cascade on delete; nullable — see resolution rule below |
+| `description` | string | no | — | |
+| `order_by` | unsignedTinyInt | no | 1 | Display/report order |
+| `created_at` / `updated_at` | timestamp | yes | null | Laravel timestamps |
+
+**`score_factors` table** — new, this phase:
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | bigIncrements | no | — | PK |
+| `event_id` | foreignId | no | — | FK → events; cascade on delete |
+| `version_id` | foreignId | yes | null | FK → versions; cascade on delete; nullable — see resolution rule below |
+| `score_category_id` | foreignId | no | — | FK → score_categories; cascade on delete |
+| `description` | string | no | — | |
+| `abbreviation` | string | no | — | Used in tight-spacing tables/reports |
+| `best` | unsignedTinyInt | no | — | Best possible score for this factor |
+| `worst` | unsignedTinyInt | no | — | Worst possible score for this factor |
+| `interval_by` | unsignedTinyInt | no | 1 | Non-consecutive scoring step (e.g. 3 → 3,6,9,12) |
+| `multiplier` | unsignedTinyInt | no | 1 | |
+| `tolerance` | unsignedTinyInt | yes | null | Future-proofing only — tolerance is currently enforced at the Room level (§5.2 precedent), not per-factor |
+| `order_by` | unsignedTinyInt | no | 1 | Display/report order |
+| `created_at` / `updated_at` | timestamp | yes | null | Laravel timestamps |
+
+**Event/Version resolution rule.** A Version with zero `score_categories` rows of its own inherits the Event's full rubric (`version_id IS NULL` rows); a Version with one or more of its own rows uses only its own set — all-or-nothing, not a per-row merge. Same "zero rows means unrestricted/fallback" convention already used for `version_counties` (§5.4) and `event_grades` (§6.2). Implement as `Version::availableScoreCategories()` / `availableScoreFactors()`. **Not built this phase (flag):** the authoring UI for creating a Version-specific override; the data model supports it, but only the Event-level rubric screen ships this pass.
+
+**`version_rooms` table** — new, this phase:
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | bigIncrements | no | — | PK |
+| `version_id` | foreignId | no | — | FK → versions; cascade on delete |
+| `name` | string | no | — | e.g. "Soprano I" |
+| `tolerance` | unsignedTinyInt | yes | null | Acceptable point spread between judge totals; null = not applied, zero = scores must be identical |
+| `order_by` | unsignedTinyInt | no | 1 | Display order |
+| `created_at` / `updated_at` | timestamp | yes | null | Laravel timestamps |
+
+**`room_score_categories` pivot** — `room_id` (FK → version_rooms, cascade), `score_category_id` (FK → score_categories, cascade). A Room's scoring rubric is the union of its assigned categories' factors — no per-factor cherry-picking.
+
+**`room_voice_parts` pivot** — `room_id` (FK → version_rooms, cascade), `voice_part_id` (FK → voice_parts, cascade). `VersionRoom::voiceParts()` ordered by `voice_parts.sort_order`, same rule as `Ensemble::voiceParts()` (§4.4).
+
+**`room_judges` table** — new, this phase. Renamed from the source doc's "Judge" — this row is an assignment (person + role + room + version), not a person entity; the person is the existing `User` model:
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | bigIncrements | no | — | PK |
+| `version_id` | foreignId | no | — | FK → versions; cascade on delete; denormalized alongside `room_id` for direct query without a join, matching the `audition_results` precedent (§5.2) |
+| `room_id` | foreignId | no | — | FK → version_rooms; cascade on delete |
+| `user_id` | foreignId | no | — | FK → users; cascade on delete — any User, not scoped to Teacher, since some judges are retired teachers or external judges who may never hold a Teacher role |
+| `judge_type` | enum | no | — | `JudgeType` (§8.13) |
+| `status` | enum | no | assigned | `JudgeStatus` (§8.14); default `Assigned` at creation — day-of transitions belong to the not-yet-built Adjudication phase |
+| `created_at` / `updated_at` | timestamp | yes | null | Laravel timestamps |
+
+**Judge type is a single flexible set, not gated by `audition_type`.** Resolved 2026-07-29 (an open question during design): since Room applies identically to in-person and remote auditions, there's no structural reason to enforce two separate judge-type sets by modality. The source doc's two label sets (in-person: head judge/judge2/judge3/judge4/judge monitor/monitor; remote: lead judge/judge1/judge2/judge3) more likely reflect different sponsoring organizations' own vocabulary (§7.8 already flags NJMEA/MACDA/CJMEA as having different rules) than a real in-person/remote rule. `JudgeType` merges both vocabularies into one enum with no runtime validation against `audition_type`; if organization-specific label needs emerge later, this can move to Event-configurable data (like `score_categories`) instead of a hardcoded enum.
+
+**`scores` table** — new, this phase, schema/model only (no entry UI — live scoring remains §7.2 reference-only). Denormalized to avoid highly-joined queries at report time, matching the existing `audition_results`/`candidate_status_history` denormalization precedent:
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | bigIncrements | no | — | PK |
+| `version_id` | foreignId | no | — | FK → versions |
+| `candidate_id` | foreignId | no | — | FK → candidates |
+| `student_id` | foreignId | no | — | FK → students; frozen at scoring time — same freeze-at-a-point-in-time pattern as `obligation_snapshot` (§5.6), not a live-state duplicate |
+| `school_id` | foreignId | no | — | FK → schools; frozen at scoring time |
+| `score_category_id` | foreignId | no | — | FK → score_categories |
+| `score_category_order_by` | unsignedTinyInt | no | — | Snapshot of `order_by` at scoring time, so later rubric reordering doesn't reshuffle historical reports |
+| `score_factor_id` | foreignId | no | — | FK → score_factors |
+| `score_factor_order_by` | unsignedTinyInt | no | — | Snapshot, same rationale |
+| `judge_id` | foreignId | no | — | FK → room_judges |
+| `judge_order_by` | unsignedTinyInt | no | — | Snapshot, same rationale |
+| `voice_part_id` | foreignId | no | — | FK → voice_parts; frozen at scoring time — `candidates.voice_part_id` remains the live source of truth (§5.2 invariant); this is the historical record of what part the Candidate was actually judged in |
+| `voice_part_order_by` | unsignedSmallInt | no | — | Snapshot, same rationale |
+| `score` | unsignedTinyInt | no | — | The recorded score value |
+| `created_at` / `updated_at` | timestamp | yes | null | Laravel timestamps |
+
+**Implementation.** `VersionRooms` Livewire component (`/events/versions/{version}/rooms`, route `events.versions.rooms`), reachable from a new "Rooms" button on the Event show page alongside Invitations/Pitch Files. Add/edit is a single modal: room name/tolerance, score-category checkboxes (scoped to `availableScoreCategories()`), voice-part checkboxes (scoped to `availableVoiceParts()`), and an inline judges editor (add/remove rows of email + `JudgeType`, resolved to an existing `User` by email at save time — any User, not scoped to Teacher, per §5.9's "retired teachers/external judges" note). Saving a room fully syncs its `room_score_categories`/`room_voice_parts`/`room_judges` rows to whatever was submitted (removed rows are deleted, not left orphaned) rather than only ever adding. Drag-and-drop reorder is native HTML5, same as `VersionPitchFiles` (`wire:sort` is broken on Flux table rows in this codebase). Gated identically to `VersionEdit`/`VersionPitchFiles`/`VersionInvitations`: `VersionRoleAssignmentService::canManageEvent`. Test coverage: `ScoreCategoryResolutionTest.php` (7 tests: Event/Version rubric inheritance and the all-or-nothing override), `VersionRoomsTest.php` (16 tests: authorization, CRUD, category/voice-part sync, judge-row create/update-in-place/remove, reorder), `ScoreTest.php` (2 tests: every `Score` relation resolves, cascade-delete from `Candidate`), plus 2 new `EnumsTest.php` cases. 27 new tests; 651/651 passing app-wide, PHPStan clean.
+
+**Not built this phase (flag, don't scaffold):** live judge-facing scoring entry UI, Tab Room, `AdjudicationStatus`, `CutoffStrategy` — unchanged from §7; `JudgeStatus` day-of transition UI beyond the `Assigned` default; the Version-override authoring UI for `score_categories`/`score_factors` noted above (the Event-level rubric itself also has no authoring screen yet — only the data model and the Room-side consumption of `availableScoreCategories()` were built this phase; creating `score_categories`/`score_factors` rows is direct-DB/tinker for now).
+
+---
+
 ## 6. Lifecycle — In Scope
 
 The Version moves through the following workflow. Phases 6.1–6.2 are the build target for this phase; later phases are in §7 (reference only).
@@ -842,6 +936,14 @@ Full set (12): `eligible`, `pending`, `registered`, `withdrew`, `teacher_withdra
 
 `pending | approved` — default `pending`. See §5.2 (`candidate_upload_files`). No `rejected` case by design — a rejection deletes the row instead of transitioning to a third state.
 
+### 8.13 JudgeType
+
+`HeadJudge | LeadJudge | Judge1 | Judge2 | Judge3 | Judge4 | JudgeMonitor | Monitor`. See §5.9. A single flexible set merging both label conventions from the source doc — not validated against `audition_type`.
+
+### 8.14 JudgeStatus
+
+`Assigned | Exempt | Completed | Delegated | LeftEarly | NoShow | Substitute` — default `Assigned`. See §5.9 (`room_judges`). Day-of transitions beyond the default belong to the not-yet-built Adjudication phase.
+
 ---
 
 ## 9. Open Decisions (consolidated)
@@ -870,3 +972,4 @@ Confirmed as of the 2026-07-09 implementation audit:
 Test coverage: `VersionDashboardTest` gained 3 tests (redirect-when-eligible-uninvited, 403-when-ineligible-uninvited, and a direct `EligibilityService` defense-in-depth check) and every pre-existing test in that file was updated to set up a `version_invitations` row first, since none of them had one before. `EligibilityServiceTest` gained 2 tests (`isNotInvited` true/false, `eligibleStudents` empty with no invitation row) and its 5 pre-existing `eligibleStudents` tests were updated the same way, so each still isolates the specific condition it names rather than accidentally passing because the new gate alone made the result empty. 21 new/updated tests in these two files; full suite green, PHPStan clean.
 15. **Open bug, unresolved: bulleted/numbered lists render with no visible marker inside `flux:editor`'s live admin UI (and its Preview modal), for both pasted-then-cleaned-up content and freshly toolbar-typed content.** Ruled out as a cause: this codebase's stored HTML (confirmed via direct DB read still has intact `<ul><li>` structure), the `mews/purifier` sanitization allowlist (includes `ul,ol,li`), and the Blade/Tailwind rendering path (a direct `view(...)->render()` test on the real persisted content produces correct `<ul>` + `list-disc` output). The defect is therefore isolated to the client-side `flux:editor`/TipTap layer — not yet root-caused (would need live browser DevTools inspection, which this agent cannot perform) and not yet reported to Flux support. Does not block any server-side functionality (save/publish/sanitize/accept/reject/merge-fields all verified correct regardless of how the editor visually renders lists while typing) but is a real polish gap before this ships to an actual Event Manager, given the source Teacher Obligations content is list-heavy.
 16. **Automatic candidate enrollment (§6.2) — built 2026-07-16.** The manual "Enroll a Student" form on `VersionDashboard` is gone, replaced by proactive enrollment via two new Observers (`VersionInvitationObserver`, `StudentTeacherObserver`) and `App\Services\AutoEnrollmentService` — see §6.2 for the full trigger/eligibility/voice-part-resolution writeup. `EligibilityService::eligibleStudents()` gained grade matching (`event_grades`, unrestricted if unconfigured), applied uniformly rather than scoped to only the new automatic path, per explicit direction. 23 new/updated tests across `AutoEnrollmentTest.php`, `EligibilityServiceTest.php`, and `VersionDashboardTest.php` (5 removed, 1 renamed to reflect the removed UI); 608/608 passing app-wide, PHPStan clean. ~~**Known gap, flagged not fixed:** the indirect `student_teacher.is_active` cascade in `SchoolStudentObserver::saved()` uses a raw query-builder `update()` and never fires Eloquent events, so it does not trigger auto-enrollment — only direct roster-add/reactivation call sites do.~~ **Resolved same day**: `SchoolStudentObserver::saved()` now fetches the matching `student_teacher` rows and calls `->update()` on each pivot model individually rather than a single bulk query-builder statement, so `StudentTeacherObserver::updated()` fires normally when a student's school reactivation cascades their teacher-link back to active. One new test (`AutoEnrollmentTest.php`, 10 total now) confirms the cascade path triggers enrollment; the two pre-existing `SchoolStudentObserverTest.php` tests (direct cascade behavior, multi-school deactivation) still pass unchanged.
+17. **Audition Environment (§5.9) — designed and built 2026-07-29.** Scoped from a source design doc (`Audition_environment.docx`) plus a clarifying-question pass with the product owner, resolving: (1) Room, Score Category/Factor, and Judge assignment apply identically to in-person and remote auditions — `audition_type` does not branch this domain, since the only difference between the two modes is whether the Candidate is physically present; (2) `version_scorings` (a flat alternative to score_categories/score_factors) is dropped — no technical/performance benefit at this data volume, and it would have traded away FK integrity and the Event/Version override model for a join-avoidance that doesn't matter on a few-dozen-row rubric table; (3) `score_categories`/`score_factors` are scoped to `event_id` with a nullable `version_id` override, all-or-nothing per Version (zero Version-owned rows = inherit the Event's set), matching the existing `version_counties`/`event_grades` "zero rows means unrestricted" convention; (4) the source doc's "Judge" table is renamed `RoomJudge`/`room_judges` — it's an assignment (person + role + room + version), not a person entity, avoiding confusion with the existing Spatie version-scoped role system (§5.3), which this is intentionally not part of; (5) `JudgeType` merges the source doc's in-person and remote label sets into one enum with no `audition_type` enforcement, since the two sets likely reflect different sponsoring organizations' own vocabulary (§7.8) rather than a real modality rule; (6) `scores` is built as schema/model only this phase (denormalized, frozen-at-scoring-time columns, matching the `audition_results`/`obligation_snapshot` precedent) — no live scoring entry UI, which remains §7.2 reference-only along with Tab Room and cutoff/ensemble-assignment logic. **Built:** `JudgeType`/`JudgeStatus` enums; `score_categories`/`score_factors` migrations/models with `Version::availableScoreCategories()`/`availableScoreFactors()` inheritance resolution; `version_rooms` + `room_score_categories`/`room_voice_parts` pivots + `VersionRoom` model; `room_judges` + `RoomJudge` model; the `VersionRooms` Event Manager CRUD screen (rooms, category/voice-part assignment, inline judge-by-email assignment, native drag-and-drop reorder); the schema-only `Score` model. 27 new tests (`ScoreCategoryResolutionTest.php`, `VersionRoomsTest.php`, `ScoreTest.php`, 2 new `EnumsTest.php` cases); 651/651 passing app-wide, PHPStan clean. **Still not built:** an authoring UI for `score_categories`/`score_factors` themselves (Event-level default rubric or Version-level override — both are direct-DB/tinker only for now); live judge-facing scoring entry UI, Tab Room, `AdjudicationStatus`, `CutoffStrategy` (unchanged §7 reference-only); `JudgeStatus` day-of transition UI beyond the `Assigned` default.

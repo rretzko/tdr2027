@@ -164,6 +164,14 @@ class Version extends Model
     }
 
     /**
+     * @return HasMany<VersionRoom, $this>
+     */
+    public function rooms(): HasMany
+    {
+        return $this->hasMany(VersionRoom::class)->orderBy('order_by');
+    }
+
+    /**
      * @return HasOne<VersionObligation, $this>
      */
     public function obligation(): HasOne
@@ -180,6 +188,55 @@ class Version extends Model
     public function candidateApplication(): HasOne
     {
         return $this->hasOne(VersionApplication::class);
+    }
+
+    /**
+     * This Version's own score category overrides only — not the resolved
+     * set. Use availableScoreCategories() to get what actually governs
+     * this Version (falls back to the Event's rubric when this is empty).
+     *
+     * @return HasMany<ScoreCategory, $this>
+     */
+    public function scoreCategories(): HasMany
+    {
+        return $this->hasMany(ScoreCategory::class)->orderBy('order_by');
+    }
+
+    /**
+     * The score category rubric that governs this Version: this Version's
+     * own rows if it has any, otherwise the Event's default rubric
+     * (version_id IS NULL) — all-or-nothing, not a per-row merge. Same
+     * "zero rows means inherit/unrestricted" convention as counties()
+     * and event_grades.
+     *
+     * @return Collection<int, ScoreCategory>
+     */
+    public function availableScoreCategories(): Collection
+    {
+        if ($this->scoreCategories()->exists()) {
+            return $this->scoreCategories()->get();
+        }
+
+        return ScoreCategory::query()
+            ->where('event_id', $this->event_id)
+            ->whereNull('version_id')
+            ->orderBy('order_by')
+            ->get();
+    }
+
+    /**
+     * The score factors belonging to whichever category set
+     * availableScoreCategories() resolves to, so factors always match the
+     * active rubric without a separate, independently-drifting check.
+     *
+     * @return Collection<int, ScoreFactor>
+     */
+    public function availableScoreFactors(): Collection
+    {
+        return ScoreFactor::query()
+            ->whereIn('score_category_id', $this->availableScoreCategories()->pluck('id'))
+            ->orderBy('order_by')
+            ->get();
     }
 
     /**

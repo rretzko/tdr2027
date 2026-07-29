@@ -8,6 +8,8 @@ use App\Enums\CandidateStatus;
 use App\Enums\EmergencyContactRelationship;
 use App\Enums\EventStatus;
 use App\Enums\Frequency;
+use App\Enums\JudgeStatus;
+use App\Enums\JudgeType;
 use App\Enums\PhoneType;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
@@ -193,4 +195,26 @@ test('CandidateStatus::registrationStates and isActive identify the pre-adjudica
     expect(CandidateStatus::Registered->isActive())->toBeTrue();
     expect(CandidateStatus::Withdrew->isActive())->toBeFalse();
     expect(CandidateStatus::Accepted->isActive())->toBeFalse();
+});
+
+test('JudgeType has the expected cases and non-empty labels', function () {
+    expect(array_map(fn (JudgeType $case) => $case->value, JudgeType::cases()))
+        ->toBe([
+            'head_judge', 'lead_judge', 'judge_1', 'judge_2', 'judge_3', 'judge_4', 'judge_monitor', 'monitor',
+        ]);
+
+    foreach (JudgeType::cases() as $case) {
+        expect($case->label())->not->toBe('');
+    }
+});
+
+test('JudgeStatus has the expected cases and non-empty labels', function () {
+    expect(array_map(fn (JudgeStatus $case) => $case->value, JudgeStatus::cases()))
+        ->toBe([
+            'assigned', 'exempt', 'completed', 'delegated', 'left_early', 'no_show', 'substitute',
+        ]);
+
+    foreach (JudgeStatus::cases() as $case) {
+        expect($case->label())->not->toBe('');
+    }
 });

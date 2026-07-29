@@ -73,4 +73,16 @@ class Event extends Model
     {
         return $this->hasMany(EventInvitationRequest::class);
     }
+
+    /**
+     * All of the Event's score categories, including any Version-specific
+     * overrides. Use Version::availableScoreCategories() to resolve which
+     * set actually governs a given Version.
+     *
+     * @return HasMany<ScoreCategory, $this>
+     */
+    public function scoreCategories(): HasMany
+    {
+        return $this->hasMany(ScoreCategory::class)->orderBy('order_by');
+    }
 }
