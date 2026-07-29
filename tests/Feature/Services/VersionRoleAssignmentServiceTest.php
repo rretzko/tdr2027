@@ -155,6 +155,68 @@ test('canManageVersionRoles is true for Event Manager (directly or via sibling v
     expect($service->canManageVersionRoles($registrationManager, $versionB))->toBeFalse();
 });
 
+test('canManageAuditionEnvironment is true for Registration Manager held specifically on that Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Registration Manager');
+
+    expect($service->canManageAuditionEnvironment($user, $version))->toBeTrue();
+});
+
+test('canManageAuditionEnvironment is true for Co-Registration Manager held specifically on that Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Co-Registration Manager');
+
+    expect($service->canManageAuditionEnvironment($user, $version))->toBeTrue();
+});
+
+test('canManageAuditionEnvironment is false when Registration Manager is held on a sibling Version, not this one', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $versionA = Version::factory()->create(['event_id' => $event->id]);
+    $versionB = Version::factory()->create(['event_id' => $event->id]);
+
+    grantVersionRole($user, $versionA, 'Registration Manager');
+
+    expect($service->canManageAuditionEnvironment($user, $versionB))->toBeFalse();
+});
+
+test('canManageAuditionEnvironment is true via the Event Manager sibling-version fallback', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $versionA = Version::factory()->create(['event_id' => $event->id]);
+    $versionB = Version::factory()->create(['event_id' => $event->id]);
+
+    grantVersionRole($user, $versionA, 'Event Manager');
+
+    expect($service->canManageAuditionEnvironment($user, $versionB))->toBeTrue();
+});
+
+test('canManageAuditionEnvironment is true for Founder regardless of any role assignment', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+
+    expect($service->canManageAuditionEnvironment($founder, $version))->toBeTrue();
+});
+
+test('canManageAuditionEnvironment is false for an unrelated version-scoped role (e.g. Tab Room Manager)', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Tab Room Manager');
+
+    expect($service->canManageAuditionEnvironment($user, $version))->toBeFalse();
+});
+
 test('eventIdsVisibleTo returns only Events where the user holds a version-scoped role', function () {
     $service = app(VersionRoleAssignmentService::class);
     $user = User::factory()->create();

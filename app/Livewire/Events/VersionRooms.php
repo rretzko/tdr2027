@@ -43,7 +43,7 @@ class VersionRooms extends Component
 
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
     {
-        abort_unless($roles->canManageEvent(Auth::user(), $version->event), 403);
+        abort_unless($roles->canManageAuditionEnvironment(Auth::user(), $version), 403);
 
         $this->version = $version;
     }
@@ -90,7 +90,7 @@ class VersionRooms extends Component
 
     public function save(VersionRoleAssignmentService $roles): void
     {
-        abort_unless($roles->canManageEvent(Auth::user(), $this->version->event), 403);
+        abort_unless($roles->canManageAuditionEnvironment(Auth::user(), $this->version), 403);
 
         $validCategoryIds = $this->version->availableScoreCategories()->pluck('id')->all();
         $validVoicePartIds = $this->version->availableVoiceParts()->pluck('id')->all();
@@ -156,7 +156,7 @@ class VersionRooms extends Component
 
     public function remove(int $id, VersionRoleAssignmentService $roles): void
     {
-        abort_unless($roles->canManageEvent(Auth::user(), $this->version->event), 403);
+        abort_unless($roles->canManageAuditionEnvironment(Auth::user(), $this->version), 403);
 
         $room = VersionRoom::where('id', $id)->where('version_id', $this->version->id)->firstOrFail();
 
@@ -169,7 +169,7 @@ class VersionRooms extends Component
 
     public function saveOrder(VersionRoleAssignmentService $roles): void
     {
-        abort_unless($roles->canManageEvent(Auth::user(), $this->version->event), 403);
+        abort_unless($roles->canManageAuditionEnvironment(Auth::user(), $this->version), 403);
 
         $this->validate([
             'orderInputs' => ['array'],
@@ -189,7 +189,7 @@ class VersionRooms extends Component
      */
     public function reorderRooms(int $item, int $position, VersionRoleAssignmentService $roles): void
     {
-        abort_unless($roles->canManageEvent(Auth::user(), $this->version->event), 403);
+        abort_unless($roles->canManageAuditionEnvironment(Auth::user(), $this->version), 403);
 
         $ids = $this->version->rooms()->pluck('id')->all();
         $ids = array_values(array_filter($ids, fn (int $id): bool => $id !== $item));

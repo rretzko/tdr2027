@@ -80,8 +80,13 @@
                                     <flux:button size="sm" variant="filled" class="!bg-violet-50 hover:!bg-violet-100 !text-violet-700 dark:!bg-violet-900/30 dark:hover:!bg-violet-900/50 dark:!text-violet-400" :href="route('events.versions.pitch-files', $version)" wire:navigate>
                                         Pitch Files
                                     </flux:button>
+                                @endif
+                                @if ($versionAuditionAccess[$version->id] ?? false)
                                     <flux:button size="sm" variant="filled" class="!bg-teal-50 hover:!bg-teal-100 !text-teal-700 dark:!bg-teal-900/30 dark:hover:!bg-teal-900/50 dark:!text-teal-400" :href="route('events.versions.rooms', $version)" wire:navigate>
                                         Rooms
+                                    </flux:button>
+                                    <flux:button size="sm" variant="filled" class="!bg-fuchsia-50 hover:!bg-fuchsia-100 !text-fuchsia-700 dark:!bg-fuchsia-900/30 dark:hover:!bg-fuchsia-900/50 dark:!text-fuchsia-400" :href="route('events.versions.scoring-rubric', $version)" wire:navigate>
+                                        Scoring Rubric
                                     </flux:button>
                                 @endif
                             </div>
@@ -133,8 +138,13 @@
                                         <flux:button size="sm" variant="filled" class="!bg-violet-50 hover:!bg-violet-100 !text-violet-700 dark:!bg-violet-900/30 dark:hover:!bg-violet-900/50 dark:!text-violet-400" :href="route('events.versions.pitch-files', $version)" wire:navigate>
                                             Pitch Files
                                         </flux:button>
+                                    @endif
+                                    @if ($versionAuditionAccess[$version->id] ?? false)
                                         <flux:button size="sm" variant="filled" class="!bg-teal-50 hover:!bg-teal-100 !text-teal-700 dark:!bg-teal-900/30 dark:hover:!bg-teal-900/50 dark:!text-teal-400" :href="route('events.versions.rooms', $version)" wire:navigate>
                                             Rooms
+                                        </flux:button>
+                                        <flux:button size="sm" variant="filled" class="!bg-fuchsia-50 hover:!bg-fuchsia-100 !text-fuchsia-700 dark:!bg-fuchsia-900/30 dark:hover:!bg-fuchsia-900/50 dark:!text-fuchsia-400" :href="route('events.versions.scoring-rubric', $version)" wire:navigate>
+                                            Scoring Rubric
                                         </flux:button>
                                     @endif
                                 </div>

@@ -215,13 +215,19 @@ class Show extends Component
     public function render(VersionRoleAssignmentService $service): View
     {
         $ensembles = $this->event->ensembles()->with(['grades', 'voiceParts'])->get();
+        $versions = $this->event->versions()->orderByDesc('senior_class_of')->get();
 
         return view('livewire.events.show', [
-            'versions' => $this->event->versions()->orderByDesc('senior_class_of')->get(),
+            'versions' => $versions,
             'ensembles' => $ensembles,
             'allVoiceParts' => VoicePart::ordered()->get(),
             'gradeOptions' => range(6, 12),
             'canManageEvent' => $service->canManageEvent(Auth::user(), $this->event),
+            // Rooms/Scoring Rubric are version-scoped (Registration/Co-Registration
+            // Manager included, per-Version) — distinct from canManageEvent above.
+            'versionAuditionAccess' => $versions->mapWithKeys(
+                fn (Version $version): array => [$version->id => $service->canManageAuditionEnvironment(Auth::user(), $version)],
+            ),
         ]);
     }
 

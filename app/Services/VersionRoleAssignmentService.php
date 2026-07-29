@@ -98,6 +98,21 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Access to the audition-environment configuration screens (Rooms,
+     * Scoring Rubric): Founder or Event-wide Event Manager, or Registration
+     * Manager/Co-Registration Manager held specifically on this Version —
+     * per-Version, not Event-wide, unlike Event Manager above.
+     */
+    public function canManageAuditionEnvironment(User $user, Version $version): bool
+    {
+        return $this->canManageEvent($user, $version->event)
+            || $this->versionRoles->withVersion(
+                $version,
+                fn (): bool => $user->hasAnyRole(['Registration Manager', 'Co-Registration Manager']),
+            );
+    }
+
+    /**
      * Distinct users holding "Event Manager" on any Version of the Event —
      * the notification list for Event-level emails (e.g. §5.8's invitation
      * request notice), since the role itself is only ever stored scoped to

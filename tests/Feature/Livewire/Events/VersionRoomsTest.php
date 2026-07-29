@@ -67,6 +67,36 @@ test('mount allows the Founder regardless of any role assignment', function () {
         ->assertOk();
 });
 
+test('mount allows a user holding Registration Manager on the Version', function () {
+    $user = User::factory()->create();
+    $version = makeRoomsVersion();
+    grantVersionRole($user, $version, 'Registration Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->assertOk();
+});
+
+test('mount allows a user holding Co-Registration Manager on the Version', function () {
+    $user = User::factory()->create();
+    $version = makeRoomsVersion();
+    grantVersionRole($user, $version, 'Co-Registration Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->assertOk();
+});
+
+test('mount aborts with 403 for an unrelated version-scoped role (e.g. Tab Room Manager)', function () {
+    $user = User::factory()->create();
+    $version = makeRoomsVersion();
+    grantVersionRole($user, $version, 'Tab Room Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->assertStatus(403);
+});
+
 test('save creates a new room, assigns the next order_by, and syncs categories/voice parts', function () {
     $eventManager = User::factory()->create();
     $version = makeRoomsVersion();
