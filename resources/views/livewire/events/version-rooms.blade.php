@@ -14,11 +14,23 @@
             <flux:text size="sm" class="text-zinc-500">{{ $version->name }} — adjudication rooms, scoring rubric, and voice parts</flux:text>
         </div>
 
-        <flux:modal.trigger name="room-form">
-            <flux:button size="sm" variant="primary" icon="plus" wire:click="add">
+        <div class="flex gap-2">
+            @if ($rooms->isNotEmpty())
+                <flux:button size="sm" variant="outline" icon="printer" href="{{ route('events.versions.rooms.roster-pdf', $version) }}" target="_blank">
+                    Print roster
+                </flux:button>
+            @endif
+
+            <flux:button
+                size="sm"
+                variant="primary"
+                icon="plus"
+                type="button"
+                x-on:click="$wire.add().then(() => $dispatch('modal-show', { name: 'room-form' }))"
+            >
                 Add room
             </flux:button>
-        </flux:modal.trigger>
+        </div>
     </div>
 
     @if ($rooms->isEmpty())
@@ -64,11 +76,14 @@
 
                         <flux:spacer />
 
-                        <flux:modal.trigger name="room-form">
-                            <flux:button size="sm" variant="outline" wire:click="edit({{ $room->id }})">
-                                Edit
-                            </flux:button>
-                        </flux:modal.trigger>
+                        <flux:button
+                            size="sm"
+                            variant="outline"
+                            type="button"
+                            x-on:click="$wire.edit({{ $room->id }}).then(() => $dispatch('modal-show', { name: 'room-form' }))"
+                        >
+                            Edit
+                        </flux:button>
 
                         <flux:button size="sm" variant="danger" wire:click="remove({{ $room->id }})" wire:confirm="Remove &quot;{{ $room->name }}&quot;? This cannot be undone.">
                             Remove
@@ -145,11 +160,14 @@
                             <flux:table.cell>{{ $room->order_by }}</flux:table.cell>
                             <flux:table.cell>
                                 <div class="flex items-center gap-2">
-                                    <flux:modal.trigger name="room-form">
-                                        <flux:button size="sm" variant="outline" wire:click="edit({{ $room->id }})">
-                                            Edit
-                                        </flux:button>
-                                    </flux:modal.trigger>
+                                    <flux:button
+                                        size="sm"
+                                        variant="outline"
+                                        type="button"
+                                        x-on:click="$wire.edit({{ $room->id }}).then(() => $dispatch('modal-show', { name: 'room-form' }))"
+                                    >
+                                        Edit
+                                    </flux:button>
 
                                     <flux:button size="sm" variant="danger" wire:click="remove({{ $room->id }})" wire:confirm="Remove &quot;{{ $room->name }}&quot;? This cannot be undone.">
                                         Remove
@@ -208,27 +226,84 @@
             <div>
                 <div class="flex items-center justify-between mb-1">
                     <flux:label>Judges</flux:label>
-                    <flux:button size="xs" variant="ghost" icon="plus" wire:click="addJudgeRow" type="button">
+                    <flux:button
+                        size="xs"
+                        variant="ghost"
+                        icon="plus"
+                        type="button"
+                        x-on:click="$wire.addJudgeRow().then(() => $nextTick(() => {
+                            let rows = document.querySelectorAll('[data-judge-search]');
+                            rows[rows.length - 1]?.focus();
+                        }))"
+                    >
                         Add judge
                     </flux:button>
                 </div>
 
-                <div class="space-y-2">
+                <div class="space-y-3">
                     @forelse ($judges as $index => $judge)
-                        <div class="flex items-start gap-2">
-                            <div class="flex-1">
-                                <flux:input wire:model="judges.{{ $index }}.email" placeholder="judge@example.com" size="sm" />
-                                <flux:error name="judges.{{ $index }}.email" />
+                        <div>
+                            <div class="flex items-start gap-2">
+                                <div class="flex-1 relative">
+                                    <flux:input
+                                        wire:model.live.debounce.300ms="judges.{{ $index }}.search"
+                                        wire:keydown.enter.prevent
+                                        placeholder="Search judge by name..."
+                                        size="sm"
+                                        autocomplete="off"
+                                        :disabled="($judge['user_id'] ?? null) !== null"
+                                        data-judge-search
+                                    />
+                                    <flux:error name="judges.{{ $index }}.user_id" />
+
+                                    @if (($judge['user_id'] ?? null) === null && trim($judge['search'] ?? '') !== '')
+                                        @php $results = $this->judgeSearchResults($index); @endphp
+                                        <div class="absolute z-10 mt-1 w-full rounded-md border border-zinc-200 bg-white shadow-md dark:border-zinc-700 dark:bg-zinc-800 max-h-40 overflow-y-auto">
+                                            @forelse ($results as $result)
+                                                <button
+                                                    type="button"
+                                                    wire:click="selectJudgeUser({{ $index }}, {{ $result->id }})"
+                                                    class="block w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                                                >
+                                                    {{ $result->name }}
+                                                </button>
+                                            @empty
+                                                <div class="px-3 py-1.5 text-sm text-zinc-400">No users match.</div>
+                                            @endforelse
+                                        </div>
+                                    @endif
+                                </div>
+                                <div class="flex-1">
+                                    <flux:select wire:model="judges.{{ $index }}.judge_type" placeholder="Role..." size="sm">
+                                        @foreach ($judgeTypeOptions as $option)
+                                            <flux:select.option value="{{ $option->value }}">{{ $option->label() }}</flux:select.option>
+                                        @endforeach
+                                    </flux:select>
+                                    <flux:error name="judges.{{ $index }}.judge_type" />
+                                </div>
+                                @if (($judge['user_id'] ?? null) !== null)
+                                    <flux:button size="sm" variant="ghost" icon="x-mark" wire:click="clearJudgeSelection({{ $index }})" type="button" />
+                                @endif
+                                <flux:button size="sm" variant="ghost" icon="trash" wire:click="removeJudgeRow({{ $index }})" type="button" />
                             </div>
-                            <div class="flex-1">
-                                <flux:select wire:model="judges.{{ $index }}.judge_type" placeholder="Role..." size="sm">
-                                    @foreach ($judgeTypeOptions as $option)
-                                        <flux:select.option value="{{ $option->value }}">{{ $option->label() }}</flux:select.option>
-                                    @endforeach
-                                </flux:select>
-                                <flux:error name="judges.{{ $index }}.judge_type" />
-                            </div>
-                            <flux:button size="sm" variant="ghost" icon="x-mark" wire:click="removeJudgeRow({{ $index }})" type="button" />
+
+                            @if (($judge['user_id'] ?? null) !== null)
+                                @php $history = $this->judgeAssignmentHistory($index); @endphp
+                                <div class="mt-1.5 ms-1 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-800/50">
+                                    <div class="font-medium text-zinc-500 dark:text-zinc-400 mb-1">Assignment history — {{ $version->event->name }}</div>
+                                    @if ($history->isEmpty())
+                                        <flux:text size="xs" class="text-zinc-400">No prior Room assignments for this judge.</flux:text>
+                                    @else
+                                        <ul class="space-y-0.5">
+                                            @foreach ($history as $roomJudge)
+                                                <li class="text-zinc-600 dark:text-zinc-300">
+                                                    {{ $roomJudge->version->name }} — {{ $roomJudge->room->name }} ({{ $roomJudge->judge_type->label() }})
+                                                </li>
+                                            @endforeach
+                                        </ul>
+                                    @endif
+                                </div>
+                            @endif
                         </div>
                     @empty
                         <flux:text size="sm" class="text-zinc-400">No judges assigned to this room yet.</flux:text>

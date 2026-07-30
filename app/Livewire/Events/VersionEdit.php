@@ -156,7 +156,9 @@ class VersionEdit extends Component
     public int $obligation_response_count = 0;
 
     // Roles tab
-    public string $assign_email = '';
+    public string $assign_search = '';
+
+    public ?int $assign_user_id = null;
 
     public string $assign_role = '';
 
@@ -634,51 +636,51 @@ class VersionEdit extends Component
     public function assignRole(VersionRoleAssignmentService $service): void
     {
         $validated = $this->validate([
-            'assign_email' => ['required', 'email'],
+            'assign_user_id' => ['required', 'integer', 'exists:users,id'],
             'assign_role' => ['required', 'string', 'in:'.implode(',', $service->assignableRoleNames())],
         ]);
 
-        $targetUser = User::where('email', $validated['assign_email'])->first();
-
-        if ($targetUser === null) {
-            $this->addError('assign_email', 'No user found with that email address.');
-
-            return;
-        }
+        $targetUser = User::findOrFail($validated['assign_user_id']);
 
         $service->assignRole(Auth::user(), $this->version, $targetUser, $validated['assign_role']);
 
-        $this->assign_email = '';
+        $this->assign_search = '';
+        $this->assign_user_id = null;
         $this->assign_role = '';
         $this->resetValidation();
 
         Flux::toast("{$targetUser->name} assigned as {$validated['assign_role']}.");
     }
 
-    public function selectAssignEmail(int $userId): void
+    public function selectAssignUser(int $userId): void
     {
-        $this->assign_email = User::findOrFail($userId)->email;
+        $user = User::findOrFail($userId);
+
+        $this->assign_user_id = $user->id;
+        $this->assign_search = $user->name;
+    }
+
+    public function clearAssignSelection(): void
+    {
+        $this->assign_user_id = null;
+        $this->assign_search = '';
     }
 
     /**
      * @return Collection<int, User>
      */
-    private function assignEmailSuggestions(): Collection
+    private function assignSearchResults(): Collection
     {
-        $term = trim($this->assign_email);
+        $term = trim($this->assign_search);
 
-        if (mb_strlen($term) < 4) {
+        if ($term === '' || $this->assign_user_id !== null) {
             return collect();
         }
 
         return User::query()
-            ->where('email', '!=', $term)
-            ->where(function ($query) use ($term) {
-                $query->where('email', 'like', "%{$term}%")
-                    ->orWhere('name', 'like', "%{$term}%");
-            })
+            ->where('name', 'like', "%{$term}%")
             ->orderBy('name')
-            ->limit(5)
+            ->limit(8)
             ->get();
     }
 
@@ -710,7 +712,7 @@ class VersionEdit extends Component
             'roleAssignments' => $service->assignmentsForVersion($this->version),
             'canManageRoles' => $service->canManageVersionRoles(Auth::user(), $this->version),
             'assignableRoles' => $service->assignableRoleNames(),
-            'assignEmailSuggestions' => $this->assignEmailSuggestions(),
+            'assignSearchResults' => $this->assignSearchResults(),
             'obligationPreviewBody' => VersionObligation::mergeTokens($this->obligation_body, $this->version),
             'applicationPreviewData' => $applicationPreviewData,
             'applicationPreviewStudentBody' => VersionApplication::mergeTokens($this->student_endorsement_body, $applicationPreviewData),

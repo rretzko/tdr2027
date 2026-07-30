@@ -42,6 +42,8 @@ class DatabaseSeeder extends Seeder
             VersionRoleSeeder::class,
             VersionInvitationSeeder::class,
             VersionPitchFileSeeder::class,
+            VersionRoomSeeder::class,
+            RoomVoicePartSeeder::class,
             CandidateSeeder::class,
         ]);
 

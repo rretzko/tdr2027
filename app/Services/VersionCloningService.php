@@ -20,6 +20,7 @@ use App\Models\VersionInvitation;
 use App\Models\VersionMembershipRequirement;
 use App\Models\VersionObligation;
 use App\Models\VersionPitchFile;
+use App\Models\VersionRoom;
 use App\Models\VersionUploadFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -30,9 +31,15 @@ class VersionCloningService
      * Clones $source into a brand-new Version plus its configuration
      * (dates, fees, counties, ensemble order, upload/pitch files,
      * membership requirement, obligation, application, epayment
-     * credential, and non-rejected invitations). Deliberately excludes
+     * credential, rooms with their voice-part and score-category
+     * assignments, and non-rejected invitations). Deliberately excludes
      * version_timeslots, candidates, and version_invitation_requests —
      * roster/season-specific data that a new Version must build fresh.
+     *
+     * Room score-category assignments are only copied when the category
+     * is the Event's shared default (score_categories.version_id is
+     * null). A category customized for $source alone belongs only to
+     * $source and cannot be meaningfully carried to the clone.
      *
      * @param  array{name: string, short_name: ?string, senior_class_of: int}  $overrides
      */
@@ -65,6 +72,7 @@ class VersionCloningService
             $this->clonePitchFiles($source, $version);
             $this->cloneUploadFiles($source, $version);
             $this->cloneEpaymentCredential($source, $version);
+            $this->cloneRooms($source, $version);
             $this->cloneInvitations($source, $version, $invitedBy);
 
             return $version;
@@ -218,6 +226,26 @@ class VersionCloningService
             'epayment_id' => $credential->epayment_id,
             'secret' => $credential->secret,
         ]);
+    }
+
+    private function cloneRooms(Version $source, Version $version): void
+    {
+        foreach ($source->rooms as $room) {
+            $newRoom = VersionRoom::create([
+                'version_id' => $version->id,
+                'name' => $room->name,
+                'tolerance' => $room->tolerance,
+                'order_by' => $room->order_by,
+            ]);
+
+            $newRoom->voiceParts()->attach(
+                $room->voiceParts->pluck('id')
+            );
+
+            $newRoom->scoreCategories()->attach(
+                $room->scoreCategories->whereNull('version_id')->pluck('id')
+            );
+        }
     }
 
     private function cloneInvitations(Version $source, Version $version, User $invitedBy): void

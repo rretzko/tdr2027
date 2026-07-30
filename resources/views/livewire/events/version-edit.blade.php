@@ -689,20 +689,31 @@
                         <flux:heading size="sm">Assign a Role</flux:heading>
 
                         <flux:field>
-                            <flux:label>Email</flux:label>
-                            <flux:input wire:model.live.debounce.300ms="assign_email" placeholder="person@example.com" />
-                            <flux:error name="assign_email" />
+                            <flux:label>Name</flux:label>
+                            <div class="flex items-start gap-2">
+                                <div class="flex-1">
+                                    <flux:input
+                                        wire:model.live.debounce.300ms="assign_search"
+                                        placeholder="Search by name..."
+                                        :disabled="$assign_user_id !== null"
+                                    />
+                                    <flux:error name="assign_user_id" />
+                                </div>
+                                @if ($assign_user_id !== null)
+                                    <flux:button icon="x-mark" wire:click="clearAssignSelection" type="button" />
+                                @endif
+                            </div>
                         </flux:field>
 
-                        @if ($assignEmailSuggestions->isNotEmpty())
+                        @if ($assignSearchResults->isNotEmpty())
                             <div class="flex flex-col gap-2">
-                                @foreach ($assignEmailSuggestions as $user)
+                                @foreach ($assignSearchResults as $user)
                                     <div class="flex items-center justify-between gap-4 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
                                         <div>
                                             <flux:text class="font-medium">{{ $user->name }}</flux:text>
                                             <flux:text size="sm" class="text-zinc-500">{{ $user->email }}</flux:text>
                                         </div>
-                                        <flux:button size="sm" wire:click="selectAssignEmail({{ $user->id }})">Select</flux:button>
+                                        <flux:button size="sm" wire:click="selectAssignUser({{ $user->id }})">Select</flux:button>
                                     </div>
                                 @endforeach
                             </div>
@@ -710,7 +721,7 @@
 
                         <flux:field>
                             <flux:label>Role</flux:label>
-                            <flux:select wire:model="assign_role">
+                            <flux:select wire:model.live="assign_role">
                                 <flux:select.option value="">— select role —</flux:select.option>
                                 @foreach ($assignableRoles as $role)
                                     <flux:select.option value="{{ $role }}">{{ $role }}</flux:select.option>
@@ -719,7 +730,7 @@
                             <flux:error name="assign_role" />
                         </flux:field>
 
-                        <flux:button variant="primary" wire:click="assignRole">
+                        <flux:button variant="primary" wire:click="assignRole" :disabled="$assign_user_id === null || $assign_role === ''">
                             Assign Role
                         </flux:button>
                     </div>

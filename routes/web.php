@@ -6,6 +6,7 @@ use App\Http\Controllers\SchoolEmailVerificationController;
 use App\Http\Controllers\StopImpersonatingController;
 use App\Http\Controllers\StudentClaimController;
 use App\Http\Controllers\VersionInvitationRequestController;
+use App\Http\Controllers\VersionRoomRosterPdfController;
 use App\Livewire\Auth\SocialPhoneCheck;
 use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
@@ -125,6 +126,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/invitations', VersionInvitations::class)->name('events.versions.invitations');
         Route::get('/events/versions/{version}/pitch-files', VersionPitchFiles::class)->name('events.versions.pitch-files');
         Route::get('/events/versions/{version}/rooms', VersionRooms::class)->name('events.versions.rooms');
+        Route::get('/events/versions/{version}/rooms/roster.pdf', VersionRoomRosterPdfController::class)->name('events.versions.rooms.roster-pdf');
         Route::get('/events/versions/{version}/scoring-rubric', VersionScoringRubric::class)->name('events.versions.scoring-rubric');
         Route::get('/registrations', RegistrationsIndex::class)->name('registrations.index');
         Route::get('/registrations/results', ResultsIndex::class)->name('registrations.results-index');

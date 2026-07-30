@@ -10,6 +10,7 @@ use App\Models\County;
 use App\Models\Ensemble;
 use App\Models\EpaymentCredential;
 use App\Models\Event;
+use App\Models\ScoreCategory;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
@@ -22,6 +23,7 @@ use App\Models\VersionInvitation;
 use App\Models\VersionMembershipRequirement;
 use App\Models\VersionObligation;
 use App\Models\VersionPitchFile;
+use App\Models\VersionRoom;
 use App\Models\VersionUploadFile;
 use App\Models\VoicePart;
 use App\Services\VersionCloningService;
@@ -230,4 +232,46 @@ test('cloneFrom excludes rejected invitations and resets survivors to invited wi
     expect($invitations->first()->getRawOriginal('status'))->toBe('invited');
     expect($invitations->first()->invited_by_user_id)->toBe($invitedBy->id);
     expect($invitations->first()->invited_at)->not->toBeNull();
+});
+
+test('cloneFrom copies rooms with their voice parts and only the event default score categories', function () {
+    $source = buildFullyConfiguredVersion();
+
+    $defaultCategory = ScoreCategory::create([
+        'event_id' => $source->event_id,
+        'version_id' => null,
+        'description' => 'Tone',
+        'order_by' => 1,
+    ]);
+
+    $sourceOnlyCategory = ScoreCategory::create([
+        'event_id' => $source->event_id,
+        'version_id' => $source->id,
+        'description' => 'Custom for source only',
+        'order_by' => 2,
+    ]);
+
+    $voicePart = VoicePart::factory()->create();
+
+    $room = VersionRoom::create([
+        'version_id' => $source->id,
+        'name' => 'Room 101',
+        'tolerance' => 2,
+        'order_by' => 1,
+    ]);
+
+    $room->voiceParts()->attach($voicePart->id);
+    $room->scoreCategories()->attach([$defaultCategory->id, $sourceOnlyCategory->id]);
+
+    $clone = app(VersionCloningService::class)->cloneFrom($source, [
+        'name' => 'Cloned Version', 'short_name' => null, 'senior_class_of' => 2028,
+    ], User::factory()->create());
+
+    expect($clone->rooms)->toHaveCount(1);
+
+    $clonedRoom = $clone->rooms->first();
+    expect($clonedRoom->name)->toBe('Room 101');
+    expect($clonedRoom->tolerance)->toBe(2);
+    expect($clonedRoom->voiceParts->pluck('id')->all())->toBe([$voicePart->id]);
+    expect($clonedRoom->scoreCategories->pluck('id')->all())->toBe([$defaultCategory->id]);
 });

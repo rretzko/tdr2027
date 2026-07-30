@@ -459,15 +459,16 @@ test('the Roles tab shows current assignments and lets an Event Manager assign a
     $version = Version::factory()->create();
     grantVersionRole($eventManager, $version, 'Event Manager');
 
-    $newHire = User::factory()->create(['email' => 'newhire@example.com']);
+    $newHire = User::factory()->create(['first_name' => 'New', 'last_name' => 'Hire']);
 
     Livewire::actingAs($eventManager)
         ->test(VersionEdit::class, ['version' => $version])
-        ->set('assign_email', 'newhire@example.com')
+        ->set('assign_user_id', $newHire->id)
         ->set('assign_role', 'Registration Manager')
         ->call('assignRole')
         ->assertHasNoErrors()
-        ->assertSet('assign_email', '')
+        ->assertSet('assign_search', '')
+        ->assertSet('assign_user_id', null)
         ->assertSet('assign_role', '');
 
     expect(
@@ -478,17 +479,83 @@ test('the Roles tab shows current assignments and lets an Event Manager assign a
     )->toContain($newHire->id);
 });
 
-test('assignRole shows a field error when no user exists with that email', function () {
+test('assignRole shows a field error when assign_user_id does not belong to any User', function () {
     $eventManager = makeVersionEditUser();
     $version = Version::factory()->create();
     grantVersionRole($eventManager, $version, 'Event Manager');
 
     Livewire::actingAs($eventManager)
         ->test(VersionEdit::class, ['version' => $version])
-        ->set('assign_email', 'nobody@example.com')
+        ->set('assign_user_id', 999999)
         ->set('assign_role', 'Registration Manager')
         ->call('assignRole')
-        ->assertHasErrors('assign_email');
+        ->assertHasErrors('assign_user_id');
+});
+
+test('assignRole shows a field error and assigns nothing when no role is selected', function () {
+    $eventManager = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    $targetUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Manager']);
+
+    Livewire::actingAs($eventManager)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('assign_user_id', $targetUser->id)
+        ->set('assign_role', '')
+        ->call('assignRole')
+        ->assertHasErrors('assign_role');
+
+    expect(
+        app(VersionRoleAssignmentService::class)
+            ->assignmentsForVersion($version)
+            ->flatten()
+            ->pluck('id'),
+    )->not->toContain($targetUser->id);
+});
+
+test('assignSearchResults matches by users.name', function () {
+    $eventManager = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    $match = User::factory()->create(['first_name' => 'Zzyzxjamie', 'last_name' => 'Roleperson']);
+    User::factory()->create(['first_name' => 'Someone', 'last_name' => 'Else']);
+
+    $component = Livewire::actingAs($eventManager)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('assign_search', 'Zzyzxjamie');
+
+    expect($component->viewData('assignSearchResults')->pluck('id')->all())->toBe([$match->id]);
+});
+
+test('selectAssignUser sets assign_user_id and displays the selected name', function () {
+    $eventManager = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    $targetUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Manager']);
+
+    Livewire::actingAs($eventManager)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->call('selectAssignUser', $targetUser->id)
+        ->assertSet('assign_user_id', $targetUser->id)
+        ->assertSet('assign_search', 'Jamie Manager');
+});
+
+test('clearAssignSelection resets assign_user_id and assign_search', function () {
+    $eventManager = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    $targetUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Manager']);
+
+    Livewire::actingAs($eventManager)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->call('selectAssignUser', $targetUser->id)
+        ->call('clearAssignSelection')
+        ->assertSet('assign_user_id', null)
+        ->assertSet('assign_search', '');
 });
 
 test('a Registration Manager can see the Roles tab but cannot assign or revoke roles', function () {

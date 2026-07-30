@@ -12,6 +12,7 @@ use App\Models\Version;
 use App\Models\VersionRoom;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -38,7 +39,7 @@ class VersionRooms extends Component
     /** @var array<int, int> */
     public array $orderInputs = [];
 
-    /** @var list<array{id: int|null, email: string, judge_type: string}> */
+    /** @var list<array{id: int|null, user_id: int|null, search: string, judge_type: string}> */
     public array $judges = [];
 
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
@@ -71,7 +72,8 @@ class VersionRooms extends Component
         $this->judges = $room->roomJudges()->with('user')->get()
             ->map(fn (RoomJudge $roomJudge): array => [
                 'id' => $roomJudge->id,
-                'email' => $roomJudge->user->email ?? '',
+                'user_id' => $roomJudge->user_id,
+                'search' => $roomJudge->user->name ?? '',
                 'judge_type' => (string) $roomJudge->getRawOriginal('judge_type'),
             ])->all();
         $this->resetErrorBag();
@@ -79,13 +81,71 @@ class VersionRooms extends Component
 
     public function addJudgeRow(): void
     {
-        $this->judges[] = ['id' => null, 'email' => '', 'judge_type' => ''];
+        $this->judges[] = ['id' => null, 'user_id' => null, 'search' => '', 'judge_type' => ''];
     }
 
     public function removeJudgeRow(int $index): void
     {
         unset($this->judges[$index]);
         $this->judges = array_values($this->judges);
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    public function judgeSearchResults(int $index): Collection
+    {
+        $search = trim($this->judges[$index]['search'] ?? '');
+
+        if ($search === '' || ($this->judges[$index]['user_id'] ?? null) !== null) {
+            return new Collection;
+        }
+
+        return User::query()
+            ->whereDoesntHave('student')
+            ->where('name', 'like', "%{$search}%")
+            ->orderBy('name')
+            ->limit(8)
+            ->get();
+    }
+
+    public function selectJudgeUser(int $index, int $userId): void
+    {
+        $user = User::findOrFail($userId);
+
+        $this->judges[$index]['user_id'] = $user->id;
+        $this->judges[$index]['search'] = $user->name;
+    }
+
+    public function clearJudgeSelection(int $index): void
+    {
+        $this->judges[$index]['user_id'] = null;
+        $this->judges[$index]['search'] = '';
+    }
+
+    /**
+     * A selected judge's Room assignment history across every Version of the
+     * current Event, most recent Version first — surfaced so Event Managers
+     * can avoid repeatedly stacking a judge into a high-volume Room across
+     * sequential Versions.
+     *
+     * @return Collection<int, RoomJudge>
+     */
+    public function judgeAssignmentHistory(int $index): Collection
+    {
+        $userId = $this->judges[$index]['user_id'] ?? null;
+
+        if ($userId === null) {
+            return new Collection;
+        }
+
+        return RoomJudge::query()
+            ->where('user_id', $userId)
+            ->whereHas('version', fn ($query) => $query->where('event_id', $this->version->event_id))
+            ->with(['room', 'version'])
+            ->get()
+            ->sortByDesc(fn (RoomJudge $roomJudge): int => $roomJudge->version->senior_class_of)
+            ->values();
     }
 
     public function save(VersionRoleAssignmentService $roles): void
@@ -103,7 +163,7 @@ class VersionRooms extends Component
             'voicePartIds' => ['array'],
             'voicePartIds.*' => ['integer', Rule::in($validVoicePartIds)],
             'judges' => ['array'],
-            'judges.*.email' => ['required', 'email', 'exists:users,email'],
+            'judges.*.user_id' => ['required', 'integer', 'exists:users,id'],
             'judges.*.judge_type' => ['required', Rule::in(array_map(fn (JudgeType $case): string => $case->value, JudgeType::cases()))],
         ]);
 
@@ -126,18 +186,17 @@ class VersionRooms extends Component
         $keepIds = [];
 
         foreach ($validated['judges'] as $index => $row) {
-            $user = User::where('email', $row['email'])->firstOrFail();
             $existingId = $this->judges[$index]['id'] ?? null;
             $roomJudge = $existingId !== null
                 ? RoomJudge::where('id', $existingId)->where('room_id', $room->id)->first()
                 : null;
 
             if ($roomJudge !== null) {
-                $roomJudge->update(['user_id' => $user->id, 'judge_type' => $row['judge_type']]);
+                $roomJudge->update(['user_id' => $row['user_id'], 'judge_type' => $row['judge_type']]);
             } else {
                 $roomJudge = $room->roomJudges()->create([
                     'version_id' => $this->version->id,
-                    'user_id' => $user->id,
+                    'user_id' => $row['user_id'],
                     'judge_type' => $row['judge_type'],
                     'status' => JudgeStatus::Assigned,
                 ]);

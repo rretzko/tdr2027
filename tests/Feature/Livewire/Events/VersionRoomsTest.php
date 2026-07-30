@@ -10,6 +10,7 @@ use App\Models\Event;
 use App\Models\Organization;
 use App\Models\RoomJudge;
 use App\Models\ScoreCategory;
+use App\Models\Student;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionRoom;
@@ -250,12 +251,12 @@ test('save creates a room_judge defaulting to Assigned status', function () {
     $eventManager = User::factory()->create();
     $version = makeRoomsVersion();
     grantVersionRole($eventManager, $version, 'Event Manager');
-    $judgeUser = User::factory()->create(['email' => 'judge@example.com']);
+    $judgeUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Judge']);
 
     Livewire::actingAs($eventManager)
         ->test(VersionRooms::class, ['version' => $version])
         ->set('name', 'Soprano I')
-        ->set('judges', [['id' => null, 'email' => 'judge@example.com', 'judge_type' => JudgeType::HeadJudge->value]])
+        ->set('judges', [['id' => null, 'user_id' => $judgeUser->id, 'search' => 'Jamie Judge', 'judge_type' => JudgeType::HeadJudge->value]])
         ->call('save');
 
     $room = VersionRoom::where('version_id', $version->id)->firstOrFail();
@@ -268,7 +269,7 @@ test('save creates a room_judge defaulting to Assigned status', function () {
     expect($roomJudge->status)->toBe(JudgeStatus::Assigned);
 });
 
-test('save rejects an email that does not belong to any User', function () {
+test('save rejects a user_id that does not belong to any User', function () {
     $eventManager = User::factory()->create();
     $version = makeRoomsVersion();
     grantVersionRole($eventManager, $version, 'Event Manager');
@@ -276,9 +277,9 @@ test('save rejects an email that does not belong to any User', function () {
     Livewire::actingAs($eventManager)
         ->test(VersionRooms::class, ['version' => $version])
         ->set('name', 'Soprano I')
-        ->set('judges', [['id' => null, 'email' => 'nobody@example.com', 'judge_type' => JudgeType::HeadJudge->value]])
+        ->set('judges', [['id' => null, 'user_id' => 999999, 'search' => 'Nobody', 'judge_type' => JudgeType::HeadJudge->value]])
         ->call('save')
-        ->assertHasErrors(['judges.0.email']);
+        ->assertHasErrors(['judges.0.user_id']);
 
     expect(VersionRoom::where('version_id', $version->id)->exists())->toBeFalse();
 });
@@ -287,7 +288,7 @@ test('edit prefills judges from existing room_judges rows', function () {
     $eventManager = User::factory()->create();
     $version = makeRoomsVersion();
     grantVersionRole($eventManager, $version, 'Event Manager');
-    $judgeUser = User::factory()->create(['email' => 'judge@example.com']);
+    $judgeUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Judge']);
 
     $room = VersionRoom::create(['version_id' => $version->id, 'name' => 'Alto I', 'order_by' => 1]);
     $roomJudge = RoomJudge::create([
@@ -303,7 +304,8 @@ test('edit prefills judges from existing room_judges rows', function () {
         ->call('edit', $room->id)
         ->assertSet('judges', [[
             'id' => $roomJudge->id,
-            'email' => 'judge@example.com',
+            'user_id' => $judgeUser->id,
+            'search' => 'Jamie Judge',
             'judge_type' => JudgeType::Monitor->value,
         ]]);
 });
@@ -312,7 +314,7 @@ test('save updates an existing room_judge row in place rather than duplicating i
     $eventManager = User::factory()->create();
     $version = makeRoomsVersion();
     grantVersionRole($eventManager, $version, 'Event Manager');
-    $judgeUser = User::factory()->create(['email' => 'judge@example.com']);
+    $judgeUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Judge']);
 
     $room = VersionRoom::create(['version_id' => $version->id, 'name' => 'Alto I', 'order_by' => 1]);
     $roomJudge = RoomJudge::create([
@@ -337,7 +339,7 @@ test('save removes a room_judge row that is no longer submitted', function () {
     $eventManager = User::factory()->create();
     $version = makeRoomsVersion();
     grantVersionRole($eventManager, $version, 'Event Manager');
-    $judgeUser = User::factory()->create(['email' => 'judge@example.com']);
+    $judgeUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Judge']);
 
     $room = VersionRoom::create(['version_id' => $version->id, 'name' => 'Alto I', 'order_by' => 1]);
     RoomJudge::create([
@@ -365,7 +367,167 @@ test('addJudgeRow and removeJudgeRow manage the judges array', function () {
     Livewire::actingAs($eventManager)
         ->test(VersionRooms::class, ['version' => $version])
         ->call('addJudgeRow')
-        ->assertSet('judges', [['id' => null, 'email' => '', 'judge_type' => '']])
+        ->assertSet('judges', [['id' => null, 'user_id' => null, 'search' => '', 'judge_type' => '']])
         ->call('removeJudgeRow', 0)
         ->assertSet('judges', []);
+});
+
+test('judgeSearchResults matches by users.name and goes empty once the row has a selection', function () {
+    $eventManager = User::factory()->create();
+    $version = makeRoomsVersion();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+    $match = User::factory()->create(['first_name' => 'Zzyzxjamie', 'last_name' => 'Judgeperson']);
+    User::factory()->create(['first_name' => 'Someone', 'last_name' => 'Else']);
+
+    $component = Livewire::actingAs($eventManager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('addJudgeRow')
+        ->set('judges.0.search', 'Zzyzxjamie');
+
+    /** @var VersionRooms $instance */
+    $instance = $component->instance();
+
+    expect($instance->judgeSearchResults(0)->pluck('id')->all())->toBe([$match->id]);
+
+    $component->call('selectJudgeUser', 0, $match->id);
+
+    /** @var VersionRooms $instance */
+    $instance = $component->instance();
+
+    expect($instance->judgeSearchResults(0)->count())->toBe(0);
+});
+
+test('judgeSearchResults excludes Users who are Students', function () {
+    $eventManager = User::factory()->create();
+    $version = makeRoomsVersion();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+    $teacher = User::factory()->create(['first_name' => 'Zzyzxjamie', 'last_name' => 'Teacherperson']);
+    $studentUser = User::factory()->create(['first_name' => 'Zzyzxjamie', 'last_name' => 'Studentperson']);
+    Student::factory()->create(['user_id' => $studentUser->id]);
+
+    $component = Livewire::actingAs($eventManager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('addJudgeRow')
+        ->set('judges.0.search', 'Zzyzxjamie');
+
+    /** @var VersionRooms $instance */
+    $instance = $component->instance();
+
+    expect($instance->judgeSearchResults(0)->pluck('id')->all())->toBe([$teacher->id]);
+});
+
+test('selectJudgeUser sets user_id and displays the selected name', function () {
+    $eventManager = User::factory()->create();
+    $version = makeRoomsVersion();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+    $judgeUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Judge']);
+
+    Livewire::actingAs($eventManager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('addJudgeRow')
+        ->call('selectJudgeUser', 0, $judgeUser->id)
+        ->assertSet('judges.0.user_id', $judgeUser->id)
+        ->assertSet('judges.0.search', 'Jamie Judge');
+});
+
+test('clearJudgeSelection resets user_id and search so the row can be re-searched', function () {
+    $eventManager = User::factory()->create();
+    $version = makeRoomsVersion();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+    $judgeUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Judge']);
+
+    Livewire::actingAs($eventManager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('addJudgeRow')
+        ->call('selectJudgeUser', 0, $judgeUser->id)
+        ->call('clearJudgeSelection', 0)
+        ->assertSet('judges.0.user_id', null)
+        ->assertSet('judges.0.search', '');
+});
+
+test('judgeAssignmentHistory returns empty when no judge is selected on the row', function () {
+    $eventManager = User::factory()->create();
+    $version = makeRoomsVersion();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    $component = Livewire::actingAs($eventManager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('addJudgeRow');
+
+    /** @var VersionRooms $instance */
+    $instance = $component->instance();
+
+    expect($instance->judgeAssignmentHistory(0)->isEmpty())->toBeTrue();
+});
+
+test('judgeAssignmentHistory lists a judge\'s Room assignments across the Event\'s other Versions, most recent senior_class_of first', function () {
+    $eventManager = User::factory()->create();
+    $event = Event::factory()->create(['organization_id' => Organization::factory()->create()->id]);
+    $olderVersion = Version::factory()->create(['event_id' => $event->id, 'senior_class_of' => 2026, 'name' => '2025-26 Version']);
+    $newerVersion = Version::factory()->create(['event_id' => $event->id, 'senior_class_of' => 2027, 'name' => '2026-27 Version']);
+    grantVersionRole($eventManager, $newerVersion, 'Event Manager');
+
+    $judgeUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Judge']);
+
+    $olderRoom = VersionRoom::create(['version_id' => $olderVersion->id, 'name' => 'Alto I', 'order_by' => 1]);
+    RoomJudge::create([
+        'version_id' => $olderVersion->id,
+        'room_id' => $olderRoom->id,
+        'user_id' => $judgeUser->id,
+        'judge_type' => JudgeType::Judge1,
+        'status' => JudgeStatus::Assigned,
+    ]);
+
+    $newerRoom = VersionRoom::create(['version_id' => $newerVersion->id, 'name' => 'Soprano I', 'order_by' => 1]);
+    RoomJudge::create([
+        'version_id' => $newerVersion->id,
+        'room_id' => $newerRoom->id,
+        'user_id' => $judgeUser->id,
+        'judge_type' => JudgeType::HeadJudge,
+        'status' => JudgeStatus::Assigned,
+    ]);
+
+    $component = Livewire::actingAs($eventManager)
+        ->test(VersionRooms::class, ['version' => $newerVersion])
+        ->call('addJudgeRow')
+        ->call('selectJudgeUser', 0, $judgeUser->id);
+
+    /** @var VersionRooms $instance */
+    $instance = $component->instance();
+
+    $history = $instance->judgeAssignmentHistory(0);
+
+    expect($history)->toHaveCount(2);
+    expect($history->first()->room->name)->toBe('Soprano I');
+    expect($history->first()->version->name)->toBe('2026-27 Version');
+    expect($history->last()->room->name)->toBe('Alto I');
+    expect($history->last()->version->name)->toBe('2025-26 Version');
+});
+
+test('judgeAssignmentHistory excludes Room assignments from a different Event', function () {
+    $eventManager = User::factory()->create();
+    $version = makeRoomsVersion();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    $otherEventVersion = makeRoomsVersion();
+    $judgeUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Judge']);
+
+    $otherRoom = VersionRoom::create(['version_id' => $otherEventVersion->id, 'name' => 'Bass I', 'order_by' => 1]);
+    RoomJudge::create([
+        'version_id' => $otherEventVersion->id,
+        'room_id' => $otherRoom->id,
+        'user_id' => $judgeUser->id,
+        'judge_type' => JudgeType::Judge1,
+        'status' => JudgeStatus::Assigned,
+    ]);
+
+    $component = Livewire::actingAs($eventManager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('addJudgeRow')
+        ->call('selectJudgeUser', 0, $judgeUser->id);
+
+    /** @var VersionRooms $instance */
+    $instance = $component->instance();
+
+    expect($instance->judgeAssignmentHistory(0)->isEmpty())->toBeTrue();
 });
