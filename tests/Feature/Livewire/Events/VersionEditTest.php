@@ -435,13 +435,35 @@ test('mount aborts with 403 for a user holding no version-scoped role on the Ver
         ->assertStatus(403);
 });
 
-test('mount allows a user holding any of the 6 version-scoped roles, not just Event Manager', function () {
+test('mount aborts with 403 for a user holding a version-scoped role other than Event Manager', function () {
     $user = makeVersionEditUser();
     $version = Version::factory()->create();
     grantVersionRole($user, $version, 'Tab Room Manager');
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
+        ->assertStatus(403);
+});
+
+test('mount aborts with 403 for a Co-Registration Manager (same rule as Registration Manager)', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Co-Registration Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertStatus(403);
+});
+
+test('mount allows an Event Manager assigned on a sibling Version of the same Event', function () {
+    $user = makeVersionEditUser();
+    $event = Event::factory()->create();
+    $versionA = Version::factory()->create(['event_id' => $event->id]);
+    $versionB = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $versionA, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $versionB])
         ->assertOk();
 });
 
@@ -558,7 +580,7 @@ test('clearAssignSelection resets assign_user_id and assign_search', function ()
         ->assertSet('assign_search', '');
 });
 
-test('a Registration Manager can see the Roles tab but cannot assign or revoke roles', function () {
+test('a Registration Manager cannot reach Configure at all, and cannot assign or revoke roles via the service directly', function () {
     $registrationManager = makeVersionEditUser();
     $version = Version::factory()->create();
     grantVersionRole($registrationManager, $version, 'Registration Manager');
@@ -567,8 +589,7 @@ test('a Registration Manager can see the Roles tab but cannot assign or revoke r
 
     Livewire::actingAs($registrationManager)
         ->test(VersionEdit::class, ['version' => $version])
-        ->assertOk()
-        ->assertViewHas('canManageRoles', false);
+        ->assertStatus(403);
 
     expect(fn () => app(VersionRoleAssignmentService::class)
         ->assignRole($registrationManager, $version, $someoneElse, 'Tab Room Manager'))

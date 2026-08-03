@@ -70,10 +70,10 @@
                                     <flux:badge color="red" size="sm">Closed</flux:badge>
                                 @endif
 
-                                <flux:button size="sm" variant="filled" :href="route('events.versions.edit', $version)" wire:navigate>
-                                    Configure
-                                </flux:button>
                                 @if ($canManageEvent)
+                                    <flux:button size="sm" variant="filled" :href="route('events.versions.edit', $version)" wire:navigate>
+                                        Configure
+                                    </flux:button>
                                     <flux:button size="sm" variant="filled" class="!bg-blue-50 hover:!bg-blue-100 !text-blue-700 dark:!bg-blue-900/30 dark:hover:!bg-blue-900/50 dark:!text-blue-400" :href="route('events.versions.invitations', $version)" wire:navigate>
                                         Invitations
                                     </flux:button>
@@ -128,10 +128,10 @@
                             </flux:table.cell>
                             <flux:table.cell>
                                 <div class="flex justify-end gap-2">
-                                    <flux:button size="sm" variant="filled" :href="route('events.versions.edit', $version)" wire:navigate>
-                                        Configure
-                                    </flux:button>
                                     @if ($canManageEvent)
+                                        <flux:button size="sm" variant="filled" :href="route('events.versions.edit', $version)" wire:navigate>
+                                            Configure
+                                        </flux:button>
                                         <flux:button size="sm" variant="filled" class="!bg-blue-50 hover:!bg-blue-100 !text-blue-700 dark:!bg-blue-900/30 dark:hover:!bg-blue-900/50 dark:!text-blue-400" :href="route('events.versions.invitations', $version)" wire:navigate>
                                             Invitations
                                         </flux:button>

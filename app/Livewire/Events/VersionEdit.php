@@ -164,7 +164,7 @@ class VersionEdit extends Component
 
     public function mount(Version $version, VersionRoleAssignmentService $service): void
     {
-        abort_unless($service->canAccessVersion(Auth::user(), $version), 403);
+        abort_unless($service->canManageEvent(Auth::user(), $version->event), 403);
 
         $this->version = $version->load(['dates', 'fees', 'membershipRequirement', 'counties', 'uploadFiles', 'obligation', 'candidateApplication']);
 

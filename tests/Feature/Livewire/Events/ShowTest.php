@@ -64,6 +64,52 @@ test('mount allows a Registration-Manager-only holder to view the Event', functi
         ->assertViewHas('canManageEvent', false);
 });
 
+test('a Registration Manager sees Rooms but not Configure/Invitations/Pitch Files for their Version', function () {
+    $user = makeShowTestUser();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $version, 'Registration Manager');
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['event' => $event])
+        ->assertOk()
+        ->assertSeeText('Rooms')
+        ->assertSeeText('Scoring Rubric')
+        ->assertDontSeeText('Configure')
+        ->assertDontSeeText('Invitations')
+        ->assertDontSeeText('Pitch Files');
+});
+
+test('a Co-Registration Manager sees Rooms but not Configure/Invitations/Pitch Files for their Version', function () {
+    $user = makeShowTestUser();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $version, 'Co-Registration Manager');
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['event' => $event])
+        ->assertOk()
+        ->assertSeeText('Rooms')
+        ->assertSeeText('Scoring Rubric')
+        ->assertDontSeeText('Configure')
+        ->assertDontSeeText('Invitations')
+        ->assertDontSeeText('Pitch Files');
+});
+
+test('an Event Manager sees Configure/Invitations/Pitch Files for a Version', function () {
+    $user = makeShowTestUser();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['event' => $event])
+        ->assertOk()
+        ->assertSeeText('Configure')
+        ->assertSeeText('Invitations')
+        ->assertSeeText('Pitch Files');
+});
+
 test('createVersion clones the latest sibling Version for an Event Manager', function () {
     $user = makeShowTestUser();
     $event = Event::factory()->create();

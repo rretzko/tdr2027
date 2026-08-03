@@ -115,10 +115,25 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
     Route::get('/schools', SchoolsIndex::class)->name('schools.index');
     Route::view('/organizations', 'organizations')->name('organizations.index');
 
-    // Students and Events both depend on having an active school to attach
+    // Students and Registrations depend on having an active school to attach
     // records to, so both are gated behind the teacher having at least one.
     Route::middleware('has.active.school')->group(function () {
         Route::get('/students', StudentsIndex::class)->name('students.index');
+        Route::get('/registrations', RegistrationsIndex::class)->name('registrations.index');
+        Route::get('/registrations/results', ResultsIndex::class)->name('registrations.results-index');
+        Route::get('/registrations/{version}', VersionDashboard::class)->name('registrations.version');
+        Route::get('/registrations/{version}/request-invitation', RequestInvitation::class)->name('registrations.request-invitation');
+        Route::get('/registrations/{version}/obligations', VersionObligations::class)->name('registrations.obligations');
+        Route::get('/registrations/{version}/results', Results::class)->name('registrations.results');
+        Route::get('/registrations/{version}/{candidate}', CandidateDetail::class)->name('registrations.candidate');
+        Route::get('/registrations/{version}/{candidate}/application.pdf', CandidateApplicationPdfController::class)->name('registrations.candidate.application-pdf');
+    });
+
+    // Events is gated behind having an active school OR holding a
+    // version-scoped role (Event Manager, Registration Manager, etc.) on at
+    // least one Version — a teacher administering an Event doesn't need an
+    // active school of their own to do so.
+    Route::middleware('can.access.events')->group(function () {
         Route::get('/events', EventsIndex::class)->name('events.index');
         Route::get('/events/new', CreateEvent::class)->name('events.create');
         Route::get('/events/{event}', EventsShow::class)->name('events.show');
@@ -128,14 +143,6 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/rooms', VersionRooms::class)->name('events.versions.rooms');
         Route::get('/events/versions/{version}/rooms/roster.pdf', VersionRoomRosterPdfController::class)->name('events.versions.rooms.roster-pdf');
         Route::get('/events/versions/{version}/scoring-rubric', VersionScoringRubric::class)->name('events.versions.scoring-rubric');
-        Route::get('/registrations', RegistrationsIndex::class)->name('registrations.index');
-        Route::get('/registrations/results', ResultsIndex::class)->name('registrations.results-index');
-        Route::get('/registrations/{version}', VersionDashboard::class)->name('registrations.version');
-        Route::get('/registrations/{version}/request-invitation', RequestInvitation::class)->name('registrations.request-invitation');
-        Route::get('/registrations/{version}/obligations', VersionObligations::class)->name('registrations.obligations');
-        Route::get('/registrations/{version}/results', Results::class)->name('registrations.results');
-        Route::get('/registrations/{version}/{candidate}', CandidateDetail::class)->name('registrations.candidate');
-        Route::get('/registrations/{version}/{candidate}/application.pdf', CandidateApplicationPdfController::class)->name('registrations.candidate.application-pdf');
     });
 
     Route::get('/settings/profile', Profile::class)->name('settings.profile');

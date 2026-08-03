@@ -86,12 +86,6 @@ final class VersionRoleAssignmentService
         });
     }
 
-    public function canAccessVersion(User $user, Version $version): bool
-    {
-        return $this->canManageEvent($user, $version->event)
-            || $this->versionRoles->withVersion($version, fn (): bool => $user->hasAnyRole(self::VERSION_SCOPED_ROLES));
-    }
-
     public function canManageVersionRoles(User $user, Version $version): bool
     {
         return $this->canManageEvent($user, $version->event);
@@ -108,7 +102,12 @@ final class VersionRoleAssignmentService
         return $this->canManageEvent($user, $version->event)
             || $this->versionRoles->withVersion(
                 $version,
-                fn (): bool => $user->hasAnyRole(['Registration Manager', 'Co-Registration Manager']),
+                function () use ($user): bool {
+                    // See canAccessVersion() above — same stale-relation-cache hazard.
+                    $user->unsetRelation('roles');
+
+                    return $user->hasAnyRole(['Registration Manager', 'Co-Registration Manager']);
+                },
             );
     }
 

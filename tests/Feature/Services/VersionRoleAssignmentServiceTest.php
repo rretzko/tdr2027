@@ -97,48 +97,6 @@ test('canViewEvent is false for a user with no version-scoped role on the Event'
     expect($service->canViewEvent($user, $event))->toBeFalse();
 });
 
-test('canAccessVersion is true when the user holds any of the 6 roles scoped to that specific Version', function () {
-    $service = app(VersionRoleAssignmentService::class);
-    $user = User::factory()->create();
-    $version = Version::factory()->create();
-
-    grantVersionRole($user, $version, 'Rehearsal Manager');
-
-    expect($service->canAccessVersion($user, $version))->toBeTrue();
-});
-
-test('canAccessVersion is false when the role is held on a sibling Version, not this one, and the role is not Event Manager', function () {
-    $service = app(VersionRoleAssignmentService::class);
-    $user = User::factory()->create();
-    $event = Event::factory()->create();
-    $versionA = Version::factory()->create(['event_id' => $event->id]);
-    $versionB = Version::factory()->create(['event_id' => $event->id]);
-
-    grantVersionRole($user, $versionA, 'Rehearsal Manager');
-
-    expect($service->canAccessVersion($user, $versionB))->toBeFalse();
-});
-
-test('canAccessVersion is true via the Event Manager sibling-version fallback', function () {
-    $service = app(VersionRoleAssignmentService::class);
-    $user = User::factory()->create();
-    $event = Event::factory()->create();
-    $versionA = Version::factory()->create(['event_id' => $event->id]);
-    $versionB = Version::factory()->create(['event_id' => $event->id]);
-
-    grantVersionRole($user, $versionA, 'Event Manager');
-
-    expect($service->canAccessVersion($user, $versionB))->toBeTrue();
-});
-
-test('canAccessVersion is true for Founder regardless of any role assignment', function () {
-    $service = app(VersionRoleAssignmentService::class);
-    $founder = makeFounder();
-    $version = Version::factory()->create();
-
-    expect($service->canAccessVersion($founder, $version))->toBeTrue();
-});
-
 test('canManageVersionRoles is true for Event Manager (directly or via sibling version) and false for other roles', function () {
     $service = app(VersionRoleAssignmentService::class);
     $event = Event::factory()->create();
@@ -185,6 +143,25 @@ test('canManageAuditionEnvironment is false when Registration Manager is held on
     grantVersionRole($user, $versionA, 'Registration Manager');
 
     expect($service->canManageAuditionEnvironment($user, $versionB))->toBeFalse();
+});
+
+test('canManageAuditionEnvironment for a held Version is unaffected by an earlier check against a sibling Version without the role', function () {
+    // Regression: Show::render() builds versionAuditionAccess by looping
+    // every Version of the Event with the same $user instance. Spatie's
+    // `roles` relation caches on that instance across the team-context
+    // switch inside withVersion() — checking a Version without the role
+    // first must not poison the result for a later Version where the role
+    // genuinely is held.
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $versionWithoutRole = Version::factory()->create(['event_id' => $event->id]);
+    $versionWithRole = Version::factory()->create(['event_id' => $event->id]);
+
+    grantVersionRole($user, $versionWithRole, 'Registration Manager');
+
+    expect($service->canManageAuditionEnvironment($user, $versionWithoutRole))->toBeFalse();
+    expect($service->canManageAuditionEnvironment($user, $versionWithRole))->toBeTrue();
 });
 
 test('canManageAuditionEnvironment is true via the Event Manager sibling-version fallback', function () {

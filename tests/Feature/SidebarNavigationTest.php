@@ -124,6 +124,26 @@ test('visiting Events without an active school redirects to Schools', function (
         ->assertRedirectToRoute('schools.index');
 });
 
+test('a teacher with no active school but a version-scoped role can visit Events and sees the nav link', function () {
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+    $teacher = Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
+    $school = School::factory()->create();
+    $teacher->schools()->attach($school, ['is_active' => false]);
+
+    $organization = Organization::factory()->create();
+    $event = Event::factory()->create(['organization_id' => $organization->id]);
+    $version = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $version, 'Registration Manager');
+
+    actingAs($user)->get(route('events.index'))->assertOk();
+
+    actingAs($user)->get(route('schools.index'))
+        ->assertOk()
+        ->assertSeeText('Events')
+        ->assertDontSeeText('Students');
+});
+
 test('a teacher with an active school can visit Students and Events', function () {
     $user = User::factory()->create();
     $user->markEmailAsVerified();
