@@ -116,6 +116,19 @@ class Version extends Model
     }
 
     /**
+     * Per-Co-Registration-Manager county assignments — a county appears at
+     * most once per Version (see the unique constraint), so this is the
+     * source of truth for who's responsible for which county, distinct from
+     * counties() above (the Version's overall eligible-county list).
+     *
+     * @return HasMany<CoRegistrationManagerCounty, $this>
+     */
+    public function coRegistrationManagerCounties(): HasMany
+    {
+        return $this->hasMany(CoRegistrationManagerCounty::class);
+    }
+
+    /**
      * @return HasMany<VersionEnsembleOrder, $this>
      */
     public function ensembleOrder(): HasMany

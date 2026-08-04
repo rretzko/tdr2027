@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Models\CoRegistrationManagerCounty;
+use App\Models\County;
 use App\Models\Event;
 use App\Models\User;
 use App\Models\Version;
@@ -12,13 +14,12 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 uses(RefreshDatabase::class);
 
-test('assignableRoleNames returns exactly the 6 version-scoped roles', function () {
+test('assignableRoleNames excludes Co-Registration Manager, which is assigned via its own dedicated screen', function () {
     $service = app(VersionRoleAssignmentService::class);
 
     expect($service->assignableRoleNames())->toBe([
         'Event Manager',
         'Registration Manager',
-        'Co-Registration Manager',
         'Web Registration Manager',
         'Tab Room Manager',
         'Rehearsal Manager',
@@ -276,6 +277,117 @@ test('revokeRole aborts with 403 when the acting user cannot manage the Version'
     $unauthorizedActor = User::factory()->create();
 
     expect(fn () => $service->revokeRole($unauthorizedActor, $version, $targetUser, 'Rehearsal Manager'))
+        ->toThrow(HttpException::class);
+});
+
+test('assignRole aborts with 400 when the role is Co-Registration Manager, since it is not on the general Roles-tab list', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+    $targetUser = User::factory()->create();
+
+    expect(fn () => $service->assignRole($founder, $version, $targetUser, 'Co-Registration Manager'))
+        ->toThrow(HttpException::class);
+});
+
+test('canManageCoRegistrationManagers is true for Registration Manager held specifically on that Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Registration Manager');
+
+    expect($service->canManageCoRegistrationManagers($user, $version))->toBeTrue();
+});
+
+test('canManageCoRegistrationManagers is false for a Co-Registration Manager (no further delegation)', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Co-Registration Manager');
+
+    expect($service->canManageCoRegistrationManagers($user, $version))->toBeFalse();
+});
+
+test('canManageCoRegistrationManagers is true for Founder and for an Event Manager, false for an unrelated role', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+    expect($service->canManageCoRegistrationManagers($founder, $version))->toBeTrue();
+
+    $eventManager = User::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+    expect($service->canManageCoRegistrationManagers($eventManager, $version))->toBeTrue();
+
+    $unrelated = User::factory()->create();
+    grantVersionRole($unrelated, $version, 'Tab Room Manager');
+    expect($service->canManageCoRegistrationManagers($unrelated, $version))->toBeFalse();
+});
+
+test('assignCoRegistrationManager grants the role and writes the county rows, replacing any prior set', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $version = Version::factory()->create();
+    $registrationManager = User::factory()->create();
+    grantVersionRole($registrationManager, $version, 'Registration Manager');
+
+    $countyA = County::factory()->create();
+    $countyB = County::factory()->create();
+    $version->counties()->create(['county_id' => $countyA->id]);
+    $version->counties()->create(['county_id' => $countyB->id]);
+
+    $targetUser = User::factory()->create();
+
+    $service->assignCoRegistrationManager($registrationManager, $version, $targetUser, [$countyA->id]);
+
+    expect($service->assignmentsForVersion($version)->get('Co-Registration Manager')->pluck('id'))->toContain($targetUser->id);
+    expect(CoRegistrationManagerCounty::where('version_id', $version->id)->where('user_id', $targetUser->id)->pluck('county_id')->all())
+        ->toBe([$countyA->id]);
+
+    // Reassigning replaces the prior county set rather than appending.
+    $service->assignCoRegistrationManager($registrationManager, $version, $targetUser, [$countyB->id]);
+
+    expect(CoRegistrationManagerCounty::where('version_id', $version->id)->where('user_id', $targetUser->id)->pluck('county_id')->all())
+        ->toBe([$countyB->id]);
+});
+
+test('assignCoRegistrationManager aborts with 403 when the acting user cannot manage Co-Registration Managers', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $version = Version::factory()->create();
+    $unauthorizedActor = User::factory()->create();
+    $targetUser = User::factory()->create();
+
+    expect(fn () => $service->assignCoRegistrationManager($unauthorizedActor, $version, $targetUser, []))
+        ->toThrow(HttpException::class);
+});
+
+test('revokeCoRegistrationManager removes the role and deletes the county rows', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $version = Version::factory()->create();
+    $founder = makeFounder();
+    $county = County::factory()->create();
+    $version->counties()->create(['county_id' => $county->id]);
+    $targetUser = User::factory()->create();
+
+    $service->assignCoRegistrationManager($founder, $version, $targetUser, [$county->id]);
+    expect($service->assignmentsForVersion($version)->get('Co-Registration Manager')->pluck('id'))->toContain($targetUser->id);
+
+    $service->revokeCoRegistrationManager($founder, $version, $targetUser);
+
+    expect($service->assignmentsForVersion($version)->get('Co-Registration Manager')->pluck('id'))->not->toContain($targetUser->id);
+    expect(CoRegistrationManagerCounty::where('version_id', $version->id)->where('user_id', $targetUser->id)->exists())->toBeFalse();
+});
+
+test('revokeCoRegistrationManager aborts with 403 when the acting user cannot manage Co-Registration Managers', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $version = Version::factory()->create();
+    $founder = makeFounder();
+    $targetUser = User::factory()->create();
+    $service->assignCoRegistrationManager($founder, $version, $targetUser, []);
+
+    $unauthorizedActor = User::factory()->create();
+
+    expect(fn () => $service->revokeCoRegistrationManager($unauthorizedActor, $version, $targetUser))
         ->toThrow(HttpException::class);
 });
 

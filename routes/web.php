@@ -14,6 +14,7 @@ use App\Livewire\Auth\TeacherRegister;
 use App\Livewire\Events\CreateEvent;
 use App\Livewire\Events\Index as EventsIndex;
 use App\Livewire\Events\Show as EventsShow;
+use App\Livewire\Events\VersionCoRegistrationManagers;
 use App\Livewire\Events\VersionEdit;
 use App\Livewire\Events\VersionInvitations;
 use App\Livewire\Events\VersionPitchFiles;
@@ -139,6 +140,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/{event}', EventsShow::class)->name('events.show');
         Route::get('/events/versions/{version}/edit', VersionEdit::class)->name('events.versions.edit');
         Route::get('/events/versions/{version}/invitations', VersionInvitations::class)->name('events.versions.invitations');
+        Route::get('/events/versions/{version}/co-registration-managers', VersionCoRegistrationManagers::class)->name('events.versions.co-registration-managers');
         Route::get('/events/versions/{version}/pitch-files', VersionPitchFiles::class)->name('events.versions.pitch-files');
         Route::get('/events/versions/{version}/rooms', VersionRooms::class)->name('events.versions.rooms');
         Route::get('/events/versions/{version}/rooms/roster.pdf', VersionRoomRosterPdfController::class)->name('events.versions.rooms.roster-pdf');

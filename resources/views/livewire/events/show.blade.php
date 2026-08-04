@@ -89,6 +89,11 @@
                                         Rooms
                                     </flux:button>
                                 @endif
+                                @if ($versionCoRegAccess[$version->id] ?? false)
+                                    <flux:button size="sm" variant="filled" class="!bg-lime-50 hover:!bg-lime-100 !text-lime-700 dark:!bg-lime-900/30 dark:hover:!bg-lime-900/50 dark:!text-lime-400" :href="route('events.versions.co-registration-managers', $version)" wire:navigate>
+                                        Co-Registration Managers
+                                    </flux:button>
+                                @endif
                             </div>
                         </div>
                     </flux:card>
@@ -145,6 +150,11 @@
                                         </flux:button>
                                         <flux:button size="sm" variant="filled" class="!bg-teal-50 hover:!bg-teal-100 !text-teal-700 dark:!bg-teal-900/30 dark:hover:!bg-teal-900/50 dark:!text-teal-400" :href="route('events.versions.rooms', $version)" wire:navigate>
                                             Rooms
+                                        </flux:button>
+                                    @endif
+                                    @if ($versionCoRegAccess[$version->id] ?? false)
+                                        <flux:button size="sm" variant="filled" class="!bg-lime-50 hover:!bg-lime-100 !text-lime-700 dark:!bg-lime-900/30 dark:hover:!bg-lime-900/50 dark:!text-lime-400" :href="route('events.versions.co-registration-managers', $version)" wire:navigate>
+                                            Co-Registration Managers
                                         </flux:button>
                                     @endif
                                 </div>

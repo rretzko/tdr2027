@@ -64,7 +64,7 @@ test('mount allows a Registration-Manager-only holder to view the Event', functi
         ->assertViewHas('canManageEvent', false);
 });
 
-test('a Registration Manager sees Rooms but not Configure/Invitations/Pitch Files for their Version', function () {
+test('a Registration Manager sees Rooms and Co-Registration Managers but not Configure/Invitations/Pitch Files for their Version', function () {
     $user = makeShowTestUser();
     $event = Event::factory()->create();
     $version = Version::factory()->create(['event_id' => $event->id]);
@@ -75,12 +75,13 @@ test('a Registration Manager sees Rooms but not Configure/Invitations/Pitch File
         ->assertOk()
         ->assertSeeText('Rooms')
         ->assertSeeText('Scoring Rubric')
+        ->assertSeeText('Co-Registration Managers')
         ->assertDontSeeText('Configure')
         ->assertDontSeeText('Invitations')
         ->assertDontSeeText('Pitch Files');
 });
 
-test('a Co-Registration Manager sees Rooms but not Configure/Invitations/Pitch Files for their Version', function () {
+test('a Co-Registration Manager sees Rooms but not Configure/Invitations/Pitch Files/Co-Registration Managers for their Version', function () {
     $user = makeShowTestUser();
     $event = Event::factory()->create();
     $version = Version::factory()->create(['event_id' => $event->id]);
@@ -93,7 +94,8 @@ test('a Co-Registration Manager sees Rooms but not Configure/Invitations/Pitch F
         ->assertSeeText('Scoring Rubric')
         ->assertDontSeeText('Configure')
         ->assertDontSeeText('Invitations')
-        ->assertDontSeeText('Pitch Files');
+        ->assertDontSeeText('Pitch Files')
+        ->assertDontSeeText('Co-Registration Managers');
 });
 
 test('an Event Manager sees Configure/Invitations/Pitch Files for a Version', function () {
@@ -107,7 +109,8 @@ test('an Event Manager sees Configure/Invitations/Pitch Files for a Version', fu
         ->assertOk()
         ->assertSeeText('Configure')
         ->assertSeeText('Invitations')
-        ->assertSeeText('Pitch Files');
+        ->assertSeeText('Pitch Files')
+        ->assertSeeText('Co-Registration Managers');
 });
 
 test('createVersion clones the latest sibling Version for an Event Manager', function () {

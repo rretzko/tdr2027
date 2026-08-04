@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Models\CoRegistrationManagerCounty;
 use App\Models\Event;
 use App\Models\User;
 use App\Models\Version;
@@ -34,6 +35,23 @@ final class VersionRoleAssignmentService
         'Rehearsal Manager',
     ];
 
+    /**
+     * Assignable from the generic Configure → Roles tab. Co-Registration
+     * Manager is deliberately excluded — it's assigned only via the
+     * dedicated Co-Registration Managers screen (see
+     * canManageCoRegistrationManagers() below), where it's always paired
+     * with a county assignment; the two must never diverge.
+     *
+     * @var list<string>
+     */
+    private const GENERAL_ROLES_TAB_ROLES = [
+        'Event Manager',
+        'Registration Manager',
+        'Web Registration Manager',
+        'Tab Room Manager',
+        'Rehearsal Manager',
+    ];
+
     public function __construct(private readonly VersionRoleService $versionRoles) {}
 
     /**
@@ -41,7 +59,7 @@ final class VersionRoleAssignmentService
      */
     public function assignableRoleNames(): array
     {
-        return self::VERSION_SCOPED_ROLES;
+        return self::GENERAL_ROLES_TAB_ROLES;
     }
 
     public function isEventManagerForEvent(User $user, Event $event): bool
@@ -112,6 +130,27 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Access to the Co-Registration Managers screen: Founder or Event-wide
+     * Event Manager, or "Registration Manager" held specifically on this
+     * Version. Deliberately narrower than canManageAuditionEnvironment()
+     * above — a Co-Registration Manager cannot grant the Co-Registration
+     * Manager role to someone else, so it is not included here.
+     */
+    public function canManageCoRegistrationManagers(User $user, Version $version): bool
+    {
+        return $this->canManageEvent($user, $version->event)
+            || $this->versionRoles->withVersion(
+                $version,
+                function () use ($user): bool {
+                    // See canManageAuditionEnvironment() above — same stale-relation-cache hazard.
+                    $user->unsetRelation('roles');
+
+                    return $user->hasRole('Registration Manager');
+                },
+            );
+    }
+
+    /**
      * Distinct users holding "Event Manager" on any Version of the Event —
      * the notification list for Event-level emails (e.g. §5.8's invitation
      * request notice), since the role itself is only ever stored scoped to
@@ -144,7 +183,7 @@ final class VersionRoleAssignmentService
     public function assignRole(User $actingUser, Version $version, User $targetUser, string $roleName): void
     {
         abort_unless($this->canManageVersionRoles($actingUser, $version), 403);
-        abort_unless(in_array($roleName, self::VERSION_SCOPED_ROLES, true), 400);
+        abort_unless(in_array($roleName, self::GENERAL_ROLES_TAB_ROLES, true), 400);
 
         $this->versionRoles->withVersion($version, function () use ($targetUser, $roleName): void {
             $targetUser->assignRole($roleName);
@@ -154,10 +193,63 @@ final class VersionRoleAssignmentService
     public function revokeRole(User $actingUser, Version $version, User $targetUser, string $roleName): void
     {
         abort_unless($this->canManageVersionRoles($actingUser, $version), 403);
-        abort_unless(in_array($roleName, self::VERSION_SCOPED_ROLES, true), 400);
+        abort_unless(in_array($roleName, self::GENERAL_ROLES_TAB_ROLES, true), 400);
 
         $this->versionRoles->withVersion($version, function () use ($targetUser, $roleName): void {
             $targetUser->removeRole($roleName);
+        });
+    }
+
+    /**
+     * Assigns "Co-Registration Manager" and (re)sets the target's county
+     * assignment in one operation — a Co-Registration Manager without
+     * counties has no meaningful scope, so the two are never split across
+     * separate calls. Replaces any counties previously assigned to this
+     * user on this Version.
+     *
+     * @param  list<int>  $countyIds  Caller must have already validated this
+     *                                as a subset of the Version's own
+     *                                counties() and free of any county
+     *                                already claimed by another manager on
+     *                                this Version — the unique constraint on
+     *                                co_registration_manager_counties is the
+     *                                final backstop, not the primary check.
+     */
+    public function assignCoRegistrationManager(User $actingUser, Version $version, User $targetUser, array $countyIds): void
+    {
+        abort_unless($this->canManageCoRegistrationManagers($actingUser, $version), 403);
+
+        DB::transaction(function () use ($version, $targetUser, $countyIds): void {
+            $this->versionRoles->withVersion($version, function () use ($targetUser): void {
+                $targetUser->assignRole('Co-Registration Manager');
+            });
+
+            CoRegistrationManagerCounty::where('version_id', $version->id)
+                ->where('user_id', $targetUser->id)
+                ->delete();
+
+            foreach ($countyIds as $countyId) {
+                CoRegistrationManagerCounty::create([
+                    'version_id' => $version->id,
+                    'user_id' => $targetUser->id,
+                    'county_id' => $countyId,
+                ]);
+            }
+        });
+    }
+
+    public function revokeCoRegistrationManager(User $actingUser, Version $version, User $targetUser): void
+    {
+        abort_unless($this->canManageCoRegistrationManagers($actingUser, $version), 403);
+
+        DB::transaction(function () use ($version, $targetUser): void {
+            $this->versionRoles->withVersion($version, function () use ($targetUser): void {
+                $targetUser->removeRole('Co-Registration Manager');
+            });
+
+            CoRegistrationManagerCounty::where('version_id', $version->id)
+                ->where('user_id', $targetUser->id)
+                ->delete();
         });
     }
 

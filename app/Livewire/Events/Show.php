@@ -228,6 +228,12 @@ class Show extends Component
             'versionAuditionAccess' => $versions->mapWithKeys(
                 fn (Version $version): array => [$version->id => $service->canManageAuditionEnvironment(Auth::user(), $version)],
             ),
+            // Co-Registration Managers screen: Registration Manager only
+            // (not Co-Registration Manager itself) — narrower than the
+            // audition-environment access above.
+            'versionCoRegAccess' => $versions->mapWithKeys(
+                fn (Version $version): array => [$version->id => $service->canManageCoRegistrationManagers(Auth::user(), $version)],
+            ),
         ]);
     }
 
