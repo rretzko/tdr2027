@@ -50,7 +50,8 @@
                     <flux:menu>
                         <flux:menu.group heading="Recently Visited">
                             @forelse ($fastPassRecent as $visit)
-                                <flux:menu.item :href="$visit->url" wire:navigate>{{ $visit->label }}</flux:menu.item>
+                                @continue($visit->url === null)
+                                <flux:menu.item :href="$visit->url" wire:navigate>{{ $visit->displayLabel }}</flux:menu.item>
                             @empty
                                 <flux:menu.item disabled>No visits yet</flux:menu.item>
                             @endforelse
@@ -58,7 +59,8 @@
 
                         <flux:menu.group heading="Most Visited">
                             @forelse ($fastPassTop as $visit)
-                                <flux:menu.item :href="$visit->url" wire:navigate>{{ $visit->label }}</flux:menu.item>
+                                @continue($visit->url === null)
+                                <flux:menu.item :href="$visit->url" wire:navigate>{{ $visit->displayLabel }}</flux:menu.item>
                             @empty
                                 <flux:menu.item disabled>No visits yet</flux:menu.item>
                             @endforelse

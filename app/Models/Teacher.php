@@ -108,4 +108,20 @@ class Teacher extends Model
     {
         return $this->hasMany(VersionInvitationRequest::class);
     }
+
+    /**
+     * @return HasMany<TeacherPayment, $this>
+     */
+    public function teacherPayments(): HasMany
+    {
+        return $this->hasMany(TeacherPayment::class);
+    }
+
+    /**
+     * @return HasMany<VersionTeacherPacket, $this>
+     */
+    public function versionTeacherPackets(): HasMany
+    {
+        return $this->hasMany(VersionTeacherPacket::class);
+    }
 }

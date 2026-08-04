@@ -81,6 +81,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Display Timezone
+    |--------------------------------------------------------------------------
+    |
+    | All datetimes are stored in UTC ('timezone' above). This is the single
+    | timezone every stored datetime is converted to for display, via the
+    | Carbon::forDisplay() macro registered in AppServiceProvider — never
+    | vary this per-user/per-organization without also revisiting that macro.
+    |
+    */
+
+    'display_timezone' => 'America/New_York',
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------
     |

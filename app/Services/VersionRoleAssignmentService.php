@@ -151,6 +151,60 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Access to the Registration Manager Reporting Module (§5.10 of
+     * event-version-orientation.md): the exact same gate as
+     * canManageAuditionEnvironment() above. Kept as its own named method —
+     * rather than call sites reusing canManageAuditionEnvironment()
+     * directly — so the two screens' authorization can diverge later
+     * without a misleading method name; today they resolve identically.
+     */
+    public function canManageReports(User $user, Version $version): bool
+    {
+        return $this->canManageAuditionEnvironment($user, $version);
+    }
+
+    /**
+     * The county scope a user's reports are restricted to for this Version.
+     * Null means unrestricted (every county) — Founder, Event-wide Event
+     * Manager, or Registration Manager held specifically on this Version. A
+     * Co-Registration Manager instead gets exactly their assigned
+     * co_registration_manager_counties rows for this Version (possibly
+     * empty, if somehow assigned the role with no counties). Callers should
+     * gate on canManageReports() first — a user holding neither role gets
+     * the fail-closed empty-list result, not null.
+     *
+     * @return list<int>|null
+     */
+    public function reportCountyIds(User $user, Version $version): ?array
+    {
+        if ($this->canManageEvent($user, $version->event)) {
+            return null;
+        }
+
+        return $this->versionRoles->withVersion(
+            $version,
+            function () use ($user, $version): ?array {
+                // See canManageAuditionEnvironment() above — same stale-relation-cache hazard.
+                $user->unsetRelation('roles');
+
+                if ($user->hasRole('Registration Manager')) {
+                    return null;
+                }
+
+                if ($user->hasRole('Co-Registration Manager')) {
+                    return CoRegistrationManagerCounty::query()
+                        ->where('version_id', $version->id)
+                        ->where('user_id', $user->id)
+                        ->pluck('county_id')
+                        ->all();
+                }
+
+                return [];
+            },
+        );
+    }
+
+    /**
      * Distinct users holding "Event Manager" on any Version of the Event —
      * the notification list for Event-level emails (e.g. §5.8's invitation
      * request notice), since the role itself is only ever stored scoped to

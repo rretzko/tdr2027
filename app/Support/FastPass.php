@@ -7,6 +7,7 @@ namespace App\Support;
 use App\Models\PageVisit;
 use App\Models\TrackablePage;
 use App\Models\User;
+use App\Models\Version;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 
@@ -31,11 +32,12 @@ class FastPass
         Cache::forget(self::CACHE_KEY);
     }
 
-    public static function record(User $user, string $routeName, string $label): void
+    public static function record(User $user, string $routeName, string $label, ?Version $version = null): void
     {
         $visit = PageVisit::query()
             ->where('user_id', $user->id)
             ->where('route_name', $routeName)
+            ->where('version_id', $version?->id)
             ->first();
 
         if ($visit !== null) {
@@ -48,6 +50,7 @@ class FastPass
         PageVisit::create([
             'user_id' => $user->id,
             'route_name' => $routeName,
+            'version_id' => $version?->id,
             'label' => $label,
             'visit_count' => 1,
             'last_visited_at' => now(),
@@ -60,6 +63,7 @@ class FastPass
     public static function recentFor(User $user, int $limit = 5): Collection
     {
         return $user->pageVisits()
+            ->with('version')
             ->orderByDesc('last_visited_at')
             ->limit($limit)
             ->get();
@@ -71,6 +75,7 @@ class FastPass
     public static function topFor(User $user, int $limit = 5): Collection
     {
         return $user->pageVisits()
+            ->with('version')
             ->orderByDesc('visit_count')
             ->limit($limit)
             ->get();

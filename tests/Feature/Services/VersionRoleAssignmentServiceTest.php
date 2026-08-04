@@ -195,6 +195,120 @@ test('canManageAuditionEnvironment is false for an unrelated version-scoped role
     expect($service->canManageAuditionEnvironment($user, $version))->toBeFalse();
 });
 
+test('canManageReports is true for Registration Manager held specifically on that Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Registration Manager');
+
+    expect($service->canManageReports($user, $version))->toBeTrue();
+});
+
+test('canManageReports is true for Co-Registration Manager held specifically on that Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Co-Registration Manager');
+
+    expect($service->canManageReports($user, $version))->toBeTrue();
+});
+
+test('canManageReports is true for Founder and via the Event Manager sibling-version fallback', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $event = Event::factory()->create();
+    $versionA = Version::factory()->create(['event_id' => $event->id]);
+    $versionB = Version::factory()->create(['event_id' => $event->id]);
+
+    expect($service->canManageReports($founder, $versionA))->toBeTrue();
+
+    $eventManager = User::factory()->create();
+    grantVersionRole($eventManager, $versionA, 'Event Manager');
+
+    expect($service->canManageReports($eventManager, $versionB))->toBeTrue();
+});
+
+test('canManageReports is false for an unrelated version-scoped role (e.g. Tab Room Manager)', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Tab Room Manager');
+
+    expect($service->canManageReports($user, $version))->toBeFalse();
+});
+
+test('reportCountyIds is null (unrestricted) for Founder and for an Event-wide Event Manager', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $event = Event::factory()->create();
+    $versionA = Version::factory()->create(['event_id' => $event->id]);
+    $versionB = Version::factory()->create(['event_id' => $event->id]);
+
+    expect($service->reportCountyIds($founder, $versionA))->toBeNull();
+
+    $eventManager = User::factory()->create();
+    grantVersionRole($eventManager, $versionA, 'Event Manager');
+
+    expect($service->reportCountyIds($eventManager, $versionB))->toBeNull();
+});
+
+test('reportCountyIds is null (unrestricted) for Registration Manager held specifically on that Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Registration Manager');
+
+    expect($service->reportCountyIds($user, $version))->toBeNull();
+});
+
+test('reportCountyIds returns exactly the Co-Registration Manager\'s assigned counties on that Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+    $countyA = County::factory()->create();
+    $countyB = County::factory()->create();
+    $unassignedCounty = County::factory()->create();
+
+    grantVersionRole($user, $version, 'Co-Registration Manager');
+    CoRegistrationManagerCounty::create(['version_id' => $version->id, 'user_id' => $user->id, 'county_id' => $countyA->id]);
+    CoRegistrationManagerCounty::create(['version_id' => $version->id, 'user_id' => $user->id, 'county_id' => $countyB->id]);
+
+    $result = $service->reportCountyIds($user, $version);
+
+    expect($result)->toEqualCanonicalizing([$countyA->id, $countyB->id]);
+    expect($result)->not->toContain($unassignedCounty->id);
+});
+
+test('reportCountyIds fails closed to an empty array for a user holding neither Registration nor Co-Registration Manager', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Tab Room Manager');
+
+    expect($service->reportCountyIds($user, $version))->toBe([]);
+});
+
+test('reportCountyIds for a held Version is unaffected by an earlier check against a sibling Version without the role', function () {
+    // Same stale-relation-cache hazard as canManageAuditionEnvironment (see the
+    // regression test above) — reportCountyIds shares its withVersion()/
+    // unsetRelation('roles') pattern, so it needs the same coverage.
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $versionWithoutRole = Version::factory()->create(['event_id' => $event->id]);
+    $versionWithRole = Version::factory()->create(['event_id' => $event->id]);
+
+    grantVersionRole($user, $versionWithRole, 'Registration Manager');
+
+    expect($service->reportCountyIds($user, $versionWithoutRole))->toBe([]);
+    expect($service->reportCountyIds($user, $versionWithRole))->toBeNull();
+});
+
 test('eventIdsVisibleTo returns only Events where the user holds a version-scoped role', function () {
     $service = app(VersionRoleAssignmentService::class);
     $user = User::factory()->create();

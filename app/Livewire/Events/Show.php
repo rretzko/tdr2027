@@ -234,6 +234,13 @@ class Show extends Component
             'versionCoRegAccess' => $versions->mapWithKeys(
                 fn (Version $version): array => [$version->id => $service->canManageCoRegistrationManagers(Auth::user(), $version)],
             ),
+            // Registration Manager Reporting Module (§5.10): same gate as
+            // versionAuditionAccess above (Event Manager, or Registration/
+            // Co-Registration Manager per-Version) — kept as its own map
+            // since canManageReports() is its own named method.
+            'versionReportsAccess' => $versions->mapWithKeys(
+                fn (Version $version): array => [$version->id => $service->canManageReports(Auth::user(), $version)],
+            ),
         ]);
     }
 

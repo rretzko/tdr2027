@@ -2,6 +2,15 @@
 
 use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\CandidateApplicationPdfController;
+use App\Http\Controllers\Reports\AdjudicationBackupExportController;
+use App\Http\Controllers\Reports\CandidateCountsExportController;
+use App\Http\Controllers\Reports\ObligatedTeachersPdfController;
+use App\Http\Controllers\Reports\ParticipatingCandidatesPdfController;
+use App\Http\Controllers\Reports\ParticipatingSchoolsPdfController;
+use App\Http\Controllers\Reports\ParticipatingTeachersPdfController;
+use App\Http\Controllers\Reports\ParticipationByCountyExportController;
+use App\Http\Controllers\Reports\PaymentRosterPdfController;
+use App\Http\Controllers\Reports\RegistrationCardsPdfController;
 use App\Http\Controllers\SchoolEmailVerificationController;
 use App\Http\Controllers\StopImpersonatingController;
 use App\Http\Controllers\StudentClaimController;
@@ -13,6 +22,16 @@ use App\Livewire\Auth\StudentRegister;
 use App\Livewire\Auth\TeacherRegister;
 use App\Livewire\Events\CreateEvent;
 use App\Livewire\Events\Index as EventsIndex;
+use App\Livewire\Events\Reports\AdjudicationBackup;
+use App\Livewire\Events\Reports\CandidateCounts;
+use App\Livewire\Events\Reports\Index as ReportsIndex;
+use App\Livewire\Events\Reports\ObligatedTeachers;
+use App\Livewire\Events\Reports\ParticipatingCandidates;
+use App\Livewire\Events\Reports\ParticipatingSchools;
+use App\Livewire\Events\Reports\ParticipatingTeachers;
+use App\Livewire\Events\Reports\ParticipationByCounty;
+use App\Livewire\Events\Reports\PaymentRoster;
+use App\Livewire\Events\Reports\RegistrationCards;
 use App\Livewire\Events\Show as EventsShow;
 use App\Livewire\Events\VersionCoRegistrationManagers;
 use App\Livewire\Events\VersionEdit;
@@ -145,6 +164,27 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/rooms', VersionRooms::class)->name('events.versions.rooms');
         Route::get('/events/versions/{version}/rooms/roster.pdf', VersionRoomRosterPdfController::class)->name('events.versions.rooms.roster-pdf');
         Route::get('/events/versions/{version}/scoring-rubric', VersionScoringRubric::class)->name('events.versions.scoring-rubric');
+
+        // Registration Manager Reporting Module (event-version-orientation.md §5.10).
+        Route::get('/events/versions/{version}/reports', ReportsIndex::class)->name('events.versions.reports');
+        Route::get('/events/versions/{version}/reports/obligated-teachers', ObligatedTeachers::class)->name('events.versions.reports.obligated-teachers');
+        Route::get('/events/versions/{version}/reports/obligated-teachers/export.pdf', ObligatedTeachersPdfController::class)->name('events.versions.reports.obligated-teachers.pdf');
+        Route::get('/events/versions/{version}/reports/participating-teachers', ParticipatingTeachers::class)->name('events.versions.reports.participating-teachers');
+        Route::get('/events/versions/{version}/reports/participating-teachers/export.pdf', ParticipatingTeachersPdfController::class)->name('events.versions.reports.participating-teachers.pdf');
+        Route::get('/events/versions/{version}/reports/participating-schools', ParticipatingSchools::class)->name('events.versions.reports.participating-schools');
+        Route::get('/events/versions/{version}/reports/participating-schools/export.pdf', ParticipatingSchoolsPdfController::class)->name('events.versions.reports.participating-schools.pdf');
+        Route::get('/events/versions/{version}/reports/payment-roster', PaymentRoster::class)->name('events.versions.reports.payment-roster');
+        Route::get('/events/versions/{version}/reports/payment-roster/export.pdf', PaymentRosterPdfController::class)->name('events.versions.reports.payment-roster.pdf');
+        Route::get('/events/versions/{version}/reports/participating-candidates', ParticipatingCandidates::class)->name('events.versions.reports.participating-candidates');
+        Route::get('/events/versions/{version}/reports/participating-candidates/export.pdf', ParticipatingCandidatesPdfController::class)->name('events.versions.reports.participating-candidates.pdf');
+        Route::get('/events/versions/{version}/reports/participation-by-county', ParticipationByCounty::class)->name('events.versions.reports.participation-by-county');
+        Route::get('/events/versions/{version}/reports/participation-by-county/export.{format}', ParticipationByCountyExportController::class)->whereIn('format', ['pdf', 'csv'])->name('events.versions.reports.participation-by-county.export');
+        Route::get('/events/versions/{version}/reports/candidate-counts', CandidateCounts::class)->name('events.versions.reports.candidate-counts');
+        Route::get('/events/versions/{version}/reports/candidate-counts/export.{format}', CandidateCountsExportController::class)->whereIn('format', ['pdf', 'csv'])->name('events.versions.reports.candidate-counts.export');
+        Route::get('/events/versions/{version}/reports/adjudication-backup', AdjudicationBackup::class)->name('events.versions.reports.adjudication-backup');
+        Route::get('/events/versions/{version}/reports/adjudication-backup/export.{type}', AdjudicationBackupExportController::class)->whereIn('type', ['paper', 'csv', 'checklist'])->name('events.versions.reports.adjudication-backup.export');
+        Route::get('/events/versions/{version}/reports/registration-cards', RegistrationCards::class)->name('events.versions.reports.registration-cards');
+        Route::get('/events/versions/{version}/reports/registration-cards/export.pdf', RegistrationCardsPdfController::class)->name('events.versions.reports.registration-cards.pdf');
     });
 
     Route::get('/settings/profile', Profile::class)->name('settings.profile');

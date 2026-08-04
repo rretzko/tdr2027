@@ -94,6 +94,11 @@
                                         Co-Registration Managers
                                     </flux:button>
                                 @endif
+                                @if ($versionReportsAccess[$version->id] ?? false)
+                                    <flux:button size="sm" variant="filled" class="!bg-amber-50 hover:!bg-amber-100 !text-amber-700 dark:!bg-amber-900/30 dark:hover:!bg-amber-900/50 dark:!text-amber-400" :href="route('events.versions.reports', $version)" wire:navigate>
+                                        Reports
+                                    </flux:button>
+                                @endif
                             </div>
                         </div>
                     </flux:card>
@@ -155,6 +160,11 @@
                                     @if ($versionCoRegAccess[$version->id] ?? false)
                                         <flux:button size="sm" variant="filled" class="!bg-lime-50 hover:!bg-lime-100 !text-lime-700 dark:!bg-lime-900/30 dark:hover:!bg-lime-900/50 dark:!text-lime-400" :href="route('events.versions.co-registration-managers', $version)" wire:navigate>
                                             Co-Registration Managers
+                                        </flux:button>
+                                    @endif
+                                    @if ($versionReportsAccess[$version->id] ?? false)
+                                        <flux:button size="sm" variant="filled" class="!bg-amber-50 hover:!bg-amber-100 !text-amber-700 dark:!bg-amber-900/30 dark:hover:!bg-amber-900/50 dark:!text-amber-400" :href="route('events.versions.reports', $version)" wire:navigate>
+                                            Reports
                                         </flux:button>
                                     @endif
                                 </div>

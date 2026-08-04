@@ -9,6 +9,7 @@ use App\Models\TrackablePage;
 use App\Support\FastPass;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -140,7 +141,7 @@ class TrackablePages extends Component
         $alreadyTracked = TrackablePage::pluck('route_name')->all();
 
         return collect(Route::getRoutes()->getRoutesByName())
-            ->filter(fn ($route) => in_array('GET', $route->methods(), true))
+            ->filter(fn ($route) => in_array('GET', $route->methods(), true) && $this->isTrackable($route))
             ->keys()
             ->reject(fn (string $name) => in_array($name, $alreadyTracked, true))
             ->sort()
@@ -149,15 +150,24 @@ class TrackablePages extends Component
     }
 
     /**
+     * Named GET routes Fast Pass can generate a URL for: no parameters, or
+     * a single {version} parameter (Fast Pass resolves and stores that one
+     * from the request when the visit is recorded).
+     *
      * @return list<string>
      */
     private function namedGetRoutes(): array
     {
         return collect(Route::getRoutes()->getRoutesByName())
-            ->filter(fn ($route) => in_array('GET', $route->methods(), true))
+            ->filter(fn ($route) => in_array('GET', $route->methods(), true) && $this->isTrackable($route))
             ->keys()
             ->values()
             ->all();
+    }
+
+    private function isTrackable(RouteInstance $route): bool
+    {
+        return in_array($route->parameterNames(), [[], ['version']], true);
     }
 
     public function render(): View

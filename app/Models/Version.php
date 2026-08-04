@@ -185,6 +185,30 @@ class Version extends Model
     }
 
     /**
+     * @return HasMany<TeacherPayment, $this>
+     */
+    public function teacherPayments(): HasMany
+    {
+        return $this->hasMany(TeacherPayment::class);
+    }
+
+    /**
+     * @return HasMany<CandidatePayment, $this>
+     */
+    public function candidatePayments(): HasMany
+    {
+        return $this->hasMany(CandidatePayment::class);
+    }
+
+    /**
+     * @return HasMany<VersionTeacherPacket, $this>
+     */
+    public function teacherPackets(): HasMany
+    {
+        return $this->hasMany(VersionTeacherPacket::class);
+    }
+
+    /**
      * @return HasOne<VersionObligation, $this>
      */
     public function obligation(): HasOne

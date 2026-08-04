@@ -102,6 +102,14 @@ class Candidate extends Model
     }
 
     /**
+     * @return HasMany<CandidatePayment, $this>
+     */
+    public function payments(): HasMany
+    {
+        return $this->hasMany(CandidatePayment::class);
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function applicationCertifiedBy(): BelongsTo

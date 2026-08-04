@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Models\Version;
 use App\Support\FastPass;
 use Closure;
 use Illuminate\Http\Request;
@@ -20,7 +21,9 @@ class TrackVisitedPage
         $label = $routeName !== null ? (FastPass::activeRouteMap()[$routeName] ?? null) : null;
 
         if ($user !== null && $label !== null && $response->isSuccessful()) {
-            FastPass::record($user, $routeName, $label);
+            $version = $request->route('version');
+
+            FastPass::record($user, $routeName, $label, $version instanceof Version ? $version : null);
         }
 
         return $response;
