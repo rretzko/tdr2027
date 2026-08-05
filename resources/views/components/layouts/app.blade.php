@@ -185,7 +185,9 @@
                     <x-slot name="actions">
                         <form method="POST" action="{{ route('founder.stop-impersonating') }}">
                             @csrf
-                            <flux:button type="submit" size="sm">Return to Founder account</flux:button>
+                            <flux:button type="submit" size="sm">
+                                {{ session('impersonation_scope') === 'web_registration_manager' ? 'Return to Web Registration' : 'Return to Founder account' }}
+                            </flux:button>
                         </form>
                     </x-slot>
                 </flux:callout>

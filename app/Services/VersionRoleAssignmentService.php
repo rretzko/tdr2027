@@ -164,6 +164,29 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Access to the Web Registration Manager Module (impersonate an invited
+     * teacher, transfer students between teachers — §5.11 of
+     * event-version-orientation.md): Founder or Event-wide Event Manager, or
+     * "Web Registration Manager" held specifically on this Version.
+     * Deliberately excludes Registration Manager/Co-Registration Manager,
+     * unlike canManageAuditionEnvironment()/canManageReports() — the source
+     * doc names only this one role.
+     */
+    public function canManageWebRegistration(User $user, Version $version): bool
+    {
+        return $this->canManageEvent($user, $version->event)
+            || $this->versionRoles->withVersion(
+                $version,
+                function () use ($user): bool {
+                    // See canManageAuditionEnvironment() above — same stale-relation-cache hazard.
+                    $user->unsetRelation('roles');
+
+                    return $user->hasRole('Web Registration Manager');
+                },
+            );
+    }
+
+    /**
      * The county scope a user's reports are restricted to for this Version.
      * Null means unrestricted (every county) — Founder, Event-wide Event
      * Manager, or Registration Manager held specifically on this Version. A

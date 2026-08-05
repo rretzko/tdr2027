@@ -39,6 +39,7 @@ use App\Livewire\Events\VersionInvitations;
 use App\Livewire\Events\VersionPitchFiles;
 use App\Livewire\Events\VersionRooms;
 use App\Livewire\Events\VersionScoringRubric;
+use App\Livewire\Events\WebRegistration;
 use App\Livewire\Founder\Impersonate as FounderImpersonate;
 use App\Livewire\Founder\MergeStudents as FounderMergeStudents;
 use App\Livewire\Founder\TeacherVerification as FounderTeacherVerification;
@@ -164,6 +165,9 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/rooms', VersionRooms::class)->name('events.versions.rooms');
         Route::get('/events/versions/{version}/rooms/roster.pdf', VersionRoomRosterPdfController::class)->name('events.versions.rooms.roster-pdf');
         Route::get('/events/versions/{version}/scoring-rubric', VersionScoringRubric::class)->name('events.versions.scoring-rubric');
+
+        // Web Registration Manager Module (event-version-orientation.md §5.11).
+        Route::get('/events/versions/{version}/web-registration', WebRegistration::class)->name('events.versions.web-registration');
 
         // Registration Manager Reporting Module (event-version-orientation.md §5.10).
         Route::get('/events/versions/{version}/reports', ReportsIndex::class)->name('events.versions.reports');

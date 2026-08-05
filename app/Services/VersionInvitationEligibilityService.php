@@ -95,6 +95,32 @@ class VersionInvitationEligibilityService
     }
 
     /**
+     * Teachers holding a version_invitations row for this Version, any
+     * status — the "invited" pool used by the Web Registration Manager
+     * Module (§5.11) for both its Impersonate Teacher and Transfer Students
+     * teacher pickers.
+     *
+     * @return Collection<int, Teacher>
+     */
+    public function invitedTeachers(Version $version): Collection
+    {
+        $teacherIds = VersionInvitation::where('version_id', $version->id)->pluck('teacher_id');
+
+        return Teacher::whereIn('id', $teacherIds)
+            ->with([
+                'user',
+                'schools' => function ($query) {
+                    $query->wherePivot('is_active', true)
+                        ->whereNotNull('school_teacher.verified_at')
+                        ->orderBy('schools.name');
+                },
+            ])
+            ->get()
+            ->sortBy(fn (Teacher $teacher): string => $teacher->user->sort_name)
+            ->values();
+    }
+
+    /**
      * Single-teacher eligibility check — same rules as eligibleTeachers(),
      * without loading the whole pool. Used by VersionInvitationRequestService
      * (§5.8) to gate a teacher's self-service invitation request.

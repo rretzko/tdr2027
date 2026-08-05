@@ -241,6 +241,12 @@ class Show extends Component
             'versionReportsAccess' => $versions->mapWithKeys(
                 fn (Version $version): array => [$version->id => $service->canManageReports(Auth::user(), $version)],
             ),
+            // Web Registration Manager Module (§5.11): Event Manager, or
+            // "Web Registration Manager" held specifically on this Version —
+            // its own gate, narrower than the audition-environment access above.
+            'versionWebRegistrationAccess' => $versions->mapWithKeys(
+                fn (Version $version): array => [$version->id => $service->canManageWebRegistration(Auth::user(), $version)],
+            ),
         ]);
     }
 

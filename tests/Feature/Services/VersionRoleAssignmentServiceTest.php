@@ -439,6 +439,44 @@ test('canManageCoRegistrationManagers is true for Founder and for an Event Manag
     expect($service->canManageCoRegistrationManagers($unrelated, $version))->toBeFalse();
 });
 
+test('canManageWebRegistration is true for Web Registration Manager held specifically on that Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Web Registration Manager');
+
+    expect($service->canManageWebRegistration($user, $version))->toBeTrue();
+});
+
+test('canManageWebRegistration is false for Registration Manager or Co-Registration Manager (source doc names only Web Registration Manager)', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $version = Version::factory()->create();
+
+    $registrationManager = User::factory()->create();
+    grantVersionRole($registrationManager, $version, 'Registration Manager');
+    expect($service->canManageWebRegistration($registrationManager, $version))->toBeFalse();
+
+    $coRegistrationManager = User::factory()->create();
+    grantVersionRole($coRegistrationManager, $version, 'Co-Registration Manager');
+    expect($service->canManageWebRegistration($coRegistrationManager, $version))->toBeFalse();
+});
+
+test('canManageWebRegistration is true for Founder and for an Event Manager, false for an unrelated role', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+    expect($service->canManageWebRegistration($founder, $version))->toBeTrue();
+
+    $eventManager = User::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+    expect($service->canManageWebRegistration($eventManager, $version))->toBeTrue();
+
+    $unrelated = User::factory()->create();
+    grantVersionRole($unrelated, $version, 'Tab Room Manager');
+    expect($service->canManageWebRegistration($unrelated, $version))->toBeFalse();
+});
+
 test('assignCoRegistrationManager grants the role and writes the county rows, replacing any prior set', function () {
     $service = app(VersionRoleAssignmentService::class);
     $version = Version::factory()->create();
