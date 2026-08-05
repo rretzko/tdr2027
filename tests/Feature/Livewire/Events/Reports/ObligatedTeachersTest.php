@@ -6,6 +6,7 @@ use App\Enums\ObligationDecision;
 use App\Enums\VersionInvitationStatus;
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Events\Reports\ObligatedTeachers;
+use App\Models\CoRegistrationManagerCounty;
 use App\Models\County;
 use App\Models\School;
 use App\Models\Teacher;
@@ -112,7 +113,7 @@ test('a Co-Registration Manager only sees obligated teachers within their assign
 
     $coRegManager = User::factory()->create();
     grantVersionRole($coRegManager, $version, 'Co-Registration Manager');
-    \App\Models\CoRegistrationManagerCounty::create([
+    CoRegistrationManagerCounty::create([
         'version_id' => $version->id,
         'user_id' => $coRegManager->id,
         'county_id' => $countyA->id,

@@ -14,7 +14,6 @@ use App\Models\Version;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;

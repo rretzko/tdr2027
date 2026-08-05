@@ -6,8 +6,10 @@ use App\Enums\CandidateStatus;
 use App\Enums\PhoneType;
 use App\Livewire\Events\Reports\ParticipatingCandidates;
 use App\Models\Candidate;
+use App\Models\CandidateStatusHistory;
 use App\Models\CoRegistrationManagerCounty;
 use App\Models\County;
+use App\Models\EmergencyContact;
 use App\Models\Ensemble;
 use App\Models\Phone;
 use App\Models\School;
@@ -15,6 +17,7 @@ use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VoicePart;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -115,7 +118,7 @@ test('save updates the candidate\'s name, voice part, phones, and emergency cont
     $version = Version::factory()->create();
     $candidate = makeParticipatingCandidate($version);
     $newVoicePart = makeAvailableVoicePart($version);
-    $contact = \App\Models\EmergencyContact::factory()->create(['student_id' => $candidate->student_id]);
+    $contact = EmergencyContact::factory()->create(['student_id' => $candidate->student_id]);
 
     Livewire::actingAs($founder)
         ->test(ParticipatingCandidates::class, ['version' => $version])
@@ -151,7 +154,7 @@ test('remove transitions the candidate to withdrew and records status history', 
         ->call('remove', $candidate->id, 'withdrew');
 
     expect($candidate->refresh()->status)->toBe(CandidateStatus::Withdrew);
-    expect(\App\Models\CandidateStatusHistory::where('candidate_id', $candidate->id)->where('to_status', 'withdrew')->exists())->toBeTrue();
+    expect(CandidateStatusHistory::where('candidate_id', $candidate->id)->where('to_status', 'withdrew')->exists())->toBeTrue();
 });
 
 test('remove transitions the candidate to teacher_withdrawn', function () {
@@ -198,7 +201,7 @@ test('edit aborts with 404 for a candidate outside the acting user\'s county sco
         ->test(ParticipatingCandidates::class, ['version' => $version]);
 
     expect(fn () => $component->call('edit', $candidateInB->id))
-        ->toThrow(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+        ->toThrow(ModelNotFoundException::class);
 });
 
 test('PDF export returns a PDF for an authorized user', function () {

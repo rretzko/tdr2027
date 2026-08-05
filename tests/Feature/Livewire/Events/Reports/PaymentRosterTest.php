@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Livewire\Events\Reports\PaymentRoster;
 use App\Models\Candidate;
 use App\Models\CandidatePayment;
+use App\Models\CoRegistrationManagerCounty;
 use App\Models\County;
 use App\Models\School;
 use App\Models\Teacher;
@@ -81,7 +82,7 @@ test('a Co-Registration Manager only sees payments within their assigned county'
 
     $coRegManager = User::factory()->create();
     grantVersionRole($coRegManager, $version, 'Co-Registration Manager');
-    \App\Models\CoRegistrationManagerCounty::create(['version_id' => $version->id, 'user_id' => $coRegManager->id, 'county_id' => $countyA->id]);
+    CoRegistrationManagerCounty::create(['version_id' => $version->id, 'user_id' => $coRegManager->id, 'county_id' => $countyA->id]);
 
     Livewire::actingAs($coRegManager)
         ->test(PaymentRoster::class, ['version' => $version])

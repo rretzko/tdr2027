@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Livewire\Events\Reports\ParticipatingTeachers;
 use App\Models\Candidate;
+use App\Models\CoRegistrationManagerCounty;
 use App\Models\County;
 use App\Models\School;
 use App\Models\Teacher;
@@ -89,7 +90,7 @@ test('a Co-Registration Manager only sees participating teachers within their as
 
     $coRegManager = User::factory()->create();
     grantVersionRole($coRegManager, $version, 'Co-Registration Manager');
-    \App\Models\CoRegistrationManagerCounty::create([
+    CoRegistrationManagerCounty::create([
         'version_id' => $version->id,
         'user_id' => $coRegManager->id,
         'county_id' => $countyA->id,
