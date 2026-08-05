@@ -65,8 +65,8 @@ test('shows the correct per-voice-part and total counts for a school/teacher row
         ->assertOk()
         ->assertSee($school->name)
         ->assertSee($teacher->user->name)
-        ->assertSee($sopranoPart->name.': 2')
-        ->assertSee($altoPart->name.': 1')
+        ->assertSee($sopranoPart->abbr.': 2')
+        ->assertSee($altoPart->abbr.': 1')
         ->assertSee('Total: 3');
 });
 
@@ -92,6 +92,51 @@ test('a Co-Registration Manager only sees candidate counts within their assigned
         ->assertOk()
         ->assertSee($schoolA->name)
         ->assertDontSee($schoolB->name);
+});
+
+test('shows the teacher email under the teacher name', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    $school = School::factory()->create();
+    $teacher = Teacher::factory()->create();
+    Candidate::factory()->registered()->create(['version_id' => $version->id, 'school_id' => $school->id, 'teacher_id' => $teacher->id]);
+
+    Livewire::actingAs($founder)
+        ->test(CandidateCounts::class, ['version' => $version])
+        ->assertOk()
+        ->assertSeeInOrder([$teacher->user->name, $teacher->user->email]);
+});
+
+test('shows a Totals row summing every voice-part column and the grand total', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    $sopranoPart = makeCandidateCountsVoicePart($version);
+    $altoPart = makeCandidateCountsVoicePart($version);
+
+    $schoolA = School::factory()->create();
+    $teacherA = Teacher::factory()->create();
+    Candidate::factory()->registered()->count(2)->create([
+        'version_id' => $version->id,
+        'school_id' => $schoolA->id,
+        'teacher_id' => $teacherA->id,
+        'voice_part_id' => $sopranoPart->id,
+    ]);
+
+    $schoolB = School::factory()->create();
+    $teacherB = Teacher::factory()->create();
+    Candidate::factory()->registered()->create([
+        'version_id' => $version->id,
+        'school_id' => $schoolB->id,
+        'teacher_id' => $teacherB->id,
+        'voice_part_id' => $altoPart->id,
+    ]);
+
+    Livewire::actingAs($founder)
+        ->test(CandidateCounts::class, ['version' => $version])
+        ->assertOk()
+        ->assertSeeInOrder([$schoolB->name, 'Totals']);
 });
 
 test('search filters rows by school or teacher name', function () {
@@ -135,6 +180,35 @@ test('CSV export returns a CSV for an authorized user', function () {
 
     $response->assertOk()->assertHeader('Content-Type', 'text/csv; charset=utf-8');
     expect($response->streamedContent())->toContain($school->name);
+});
+
+test('CSV export includes Email and Phone columns and abbr-based voice-part headers', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    $voicePart = makeCandidateCountsVoicePart($version);
+    $school = School::factory()->create();
+    $teacher = Teacher::factory()->create();
+    $teacher->user->update(['cell_phone' => '5551234567']);
+    Candidate::factory()->registered()->create([
+        'version_id' => $version->id,
+        'school_id' => $school->id,
+        'teacher_id' => $teacher->id,
+        'voice_part_id' => $voicePart->id,
+    ]);
+
+    $response = get(route('events.versions.reports.candidate-counts.export', ['version' => $version, 'format' => 'csv']));
+
+    $response->assertOk();
+    $content = $response->streamedContent();
+    $headerLine = strtok($content, "\n");
+
+    expect($content)->toContain('Email');
+    expect($content)->toContain($teacher->user->email);
+    expect($content)->toContain('Phone');
+    expect($content)->toContain('(555) 123-4567');
+    expect($headerLine)->toContain($voicePart->abbr);
+    expect($headerLine)->not->toContain($voicePart->name);
 });
 
 test('export aborts with 403 for a user with no relevant role', function () {

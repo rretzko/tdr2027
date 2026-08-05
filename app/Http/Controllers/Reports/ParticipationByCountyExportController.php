@@ -40,6 +40,7 @@ class ParticipationByCountyExportController extends Controller
         return Pdf::loadView('pdf.reports.participation-by-county', [
             'version' => $version,
             'rows' => $rows,
+            'totals' => ParticipationByCounty::totals($version, $rows),
         ])->stream("participation-by-county-{$version->id}.pdf");
     }
 }

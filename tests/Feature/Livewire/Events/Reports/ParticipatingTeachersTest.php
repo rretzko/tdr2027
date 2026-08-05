@@ -123,6 +123,24 @@ test('search filters the roster by teacher or school name', function () {
         ->assertSee($teacher->user->name);
 });
 
+test('sorting by Registered toggles ascending and descending order', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    $teacherFew = makeParticipatingTeacher($version, registeredCount: 1);
+    $teacherMany = makeParticipatingTeacher($version, registeredCount: 5);
+
+    $component = Livewire::actingAs($founder)
+        ->test(ParticipatingTeachers::class, ['version' => $version])
+        ->call('sortBy', 'count');
+
+    $component->assertSeeInOrder([$teacherFew->user->name, $teacherMany->user->name]);
+
+    $component->call('sortBy', 'count');
+
+    $component->assertSeeInOrder([$teacherMany->user->name, $teacherFew->user->name]);
+});
+
 test('PDF export returns a PDF for an authorized user', function () {
     $founder = makeFounder();
     actingAs($founder);

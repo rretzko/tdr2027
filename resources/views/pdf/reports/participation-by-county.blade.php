@@ -31,6 +31,13 @@
                         <td>{{ $row['managerName'] ?? '—' }}</td>
                     </tr>
                 @endforeach
+                <tr>
+                    <td class="group-header-school">Totals</td>
+                    <td class="group-header-school">{{ $totals['obligatedTeacherCount'] }}</td>
+                    <td class="group-header-school">{{ $totals['participatingTeacherCount'] }}</td>
+                    <td class="group-header-school">{{ $totals['candidateCount'] }}</td>
+                    <td class="group-header-school"></td>
+                </tr>
             </tbody>
         </table>
     @endif

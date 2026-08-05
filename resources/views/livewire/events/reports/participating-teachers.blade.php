@@ -45,9 +45,8 @@
                         </div>
                         <flux:badge color="zinc" size="sm">{{ $row['count'] }} registered</flux:badge>
                     </div>
-                    <div class="mt-2 space-y-1 text-sm">
-                        <div>{{ $row['teacher']->user->email }}</div>
-                        <div class="text-zinc-500">{{ $row['phones'] }}</div>
+                    <div class="mt-2 space-y-1">
+                        <x-reports.teacher-contact-lines :teacher="$row['teacher']" />
                     </div>
                 </flux:card>
             @endforeach
@@ -57,18 +56,17 @@
             <flux:table>
                 <flux:table.columns>
                     <flux:table.column sortable :sorted="$sortColumn === 'last_name'" :direction="$sortDirection" wire:click="sortBy('last_name')">Teacher</flux:table.column>
-                    <flux:table.column>Phone(s)</flux:table.column>
-                    <flux:table.column>Email</flux:table.column>
                     <flux:table.column sortable :sorted="$sortColumn === 'school'" :direction="$sortDirection" wire:click="sortBy('school')">School</flux:table.column>
-                    <flux:table.column>Registered</flux:table.column>
+                    <flux:table.column sortable :sorted="$sortColumn === 'count'" :direction="$sortDirection" wire:click="sortBy('count')">Registered</flux:table.column>
                 </flux:table.columns>
 
                 <flux:table.rows>
                     @foreach ($rows as $row)
                         <flux:table.row :key="$row['teacher']->id">
-                            <flux:table.cell class="font-medium">{{ $row['teacher']->user->name }}</flux:table.cell>
-                            <flux:table.cell>{{ $row['phones'] }}</flux:table.cell>
-                            <flux:table.cell>{{ $row['teacher']->user->email }}</flux:table.cell>
+                            <flux:table.cell>
+                                <div class="font-medium">{{ $row['teacher']->user->name }}</div>
+                                <x-reports.teacher-contact-lines :teacher="$row['teacher']" class="mt-0.5" />
+                            </flux:table.cell>
                             <flux:table.cell>{{ $row['school']->name ?? '—' }}</flux:table.cell>
                             <flux:table.cell>{{ $row['count'] }}</flux:table.cell>
                         </flux:table.row>

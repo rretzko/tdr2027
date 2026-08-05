@@ -49,20 +49,6 @@ class Phone extends Model
 
     public function getFormattedAttribute(): string
     {
-        $main = substr($this->raw_number, 0, 10);
-        $extension = substr($this->raw_number, 10);
-
-        $formatted = sprintf(
-            '(%s) %s-%s',
-            substr($main, 0, 3),
-            substr($main, 3, 3),
-            substr($main, 6, 4),
-        );
-
-        if ($extension !== '') {
-            $formatted .= " x{$extension}";
-        }
-
-        return $formatted;
+        return PhoneNormalizer::format($this->raw_number) ?? '';
     }
 }

@@ -8,29 +8,38 @@
     <h1>Participating Candidates</h1>
     <p class="subheading">{{ $version->event->name }} &mdash; {{ $version->name }}</p>
 
-    @if ($rows->isEmpty())
+    @if ($schoolGroups->isEmpty())
         <p class="empty">No candidates match the current filters.</p>
     @else
         <table>
             <thead>
                 <tr>
-                    <th>School</th>
-                    <th>Teacher</th>
                     <th>Candidate</th>
                     <th>Grade</th>
                     <th>Voice Part</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach ($rows as $row)
-                    @php $candidate = $row['candidate']; @endphp
+                @foreach ($schoolGroups as $schoolGroup)
                     <tr>
-                        <td>{{ $candidate->school->name ?? '—' }}</td>
-                        <td>{{ $candidate->teacher->user->name }}</td>
-                        <td>{{ $candidate->student->user->name }}</td>
-                        <td>{{ $row['grade'] ?? '—' }}</td>
-                        <td>{{ $candidate->voicePart->name }}</td>
+                        <td colspan="3" class="group-header-school">{{ $schoolGroup['school']->name ?? '—' }}</td>
                     </tr>
+                    @foreach ($schoolGroup['teacherGroups'] as $teacherGroup)
+                        <tr>
+                            <td colspan="3" class="group-header-teacher">
+                                {{ $teacherGroup['teacher']->user->name }}
+                                @include('pdf.reports.partials.teacher-contact-lines', ['teacher' => $teacherGroup['teacher']])
+                            </td>
+                        </tr>
+                        @foreach ($teacherGroup['candidates'] as $row)
+                            @php $candidate = $row['candidate']; @endphp
+                            <tr>
+                                <td class="candidate-name">{{ $candidate->student->user->name }}</td>
+                                <td>{{ $row['grade'] ?? '—' }}</td>
+                                <td>{{ $candidate->voicePart->name }}</td>
+                            </tr>
+                        @endforeach
+                    @endforeach
                 @endforeach
             </tbody>
         </table>

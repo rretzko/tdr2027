@@ -20,19 +20,17 @@ class ParticipatingCandidatesPdfController extends Controller
         abort_unless($roles->canManageReports(Auth::user(), $version), 403);
 
         $countyIds = $roles->reportCountyIds(Auth::user(), $version);
-        $rows = ParticipatingCandidates::filterAndSort(
+        $filteredRows = ParticipatingCandidates::filterRows(
             ParticipatingCandidates::baseRows($version, $countyIds),
             (string) $request->query('search', ''),
             (string) $request->query('schoolFilter', ''),
             (string) $request->query('gradeFilter', ''),
             (string) $request->query('voicePartFilter', ''),
-            'candidate',
-            'asc',
         );
 
         return Pdf::loadView('pdf.reports.participating-candidates', [
             'version' => $version,
-            'rows' => $rows,
+            'schoolGroups' => ParticipatingCandidates::groupRows($filteredRows, 'asc'),
         ])->stream("participating-candidates-{$version->id}.pdf");
     }
 }

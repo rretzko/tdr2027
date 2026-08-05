@@ -10,7 +10,6 @@ use App\Models\Candidate;
 use App\Models\School;
 use App\Models\Version;
 use App\Services\VersionRoleAssignmentService;
-use App\Support\Reports\TeacherDisplay;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -80,7 +79,6 @@ class ParticipatingTeachers extends Component
             return [
                 'teacher' => $teacher,
                 'school' => $school,
-                'phones' => TeacherDisplay::phoneNumbers($teacher),
                 'count' => $candidates->count(),
             ];
         })->values();
@@ -105,8 +103,9 @@ class ParticipatingTeachers extends Component
             });
         }
 
-        $sortValue = fn (array $row): string => match ($sortColumn) {
+        $sortValue = fn (array $row): int|string => match ($sortColumn) {
             'school' => mb_strtolower($row['school']->name),
+            'count' => $row['count'],
             default => mb_strtolower($row['teacher']->user->last_name),
         };
 

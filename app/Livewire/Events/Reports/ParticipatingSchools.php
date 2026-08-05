@@ -15,7 +15,6 @@ use App\Models\TeacherPayment;
 use App\Models\Version;
 use App\Models\VersionTeacherPacket;
 use App\Services\VersionRoleAssignmentService;
-use App\Support\Reports\TeacherDisplay;
 use Flux\Flux;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -225,7 +224,6 @@ class ParticipatingSchools extends Component
                     'key' => $key,
                     'school' => $first->school,
                     'teacher' => $first->teacher,
-                    'phones' => TeacherDisplay::phoneNumbers($first->teacher),
                     'count' => $count,
                     'packet' => $packets->get($key),
                     'dueCents' => $dueCents,
@@ -269,8 +267,11 @@ class ParticipatingSchools extends Component
             });
         }
 
-        $sortValue = fn (array $row): string => match ($sortColumn) {
+        $sortValue = fn (array $row): int|string => match ($sortColumn) {
             'teacher' => mb_strtolower($row['teacher']->user->last_name),
+            'count' => $row['count'],
+            'due' => $row['dueCents'],
+            'balance' => $row['balanceCents'],
             default => mb_strtolower($row['school']->name),
         };
 

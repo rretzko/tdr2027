@@ -10,6 +10,7 @@ use App\Enums\PhoneType;
 use App\Models\Candidate;
 use App\Models\Phone;
 use App\Models\School;
+use App\Models\Teacher;
 use App\Models\Version;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
@@ -39,8 +40,6 @@ class ParticipatingCandidates extends Component
     #[Url]
     public string $voicePartFilter = '';
 
-    public string $sortColumn = 'candidate';
-
     public string $sortDirection = 'asc';
 
     public ?int $editingCandidateId = null;
@@ -69,14 +68,14 @@ class ParticipatingCandidates extends Component
         $this->version = $version;
     }
 
-    public function sortBy(string $column): void
+    /**
+     * School and Teacher are section headers now (shown once per group,
+     * not per row), so they're no longer independently sortable — only
+     * the order of candidates within each teacher's group can be toggled.
+     */
+    public function toggleSort(): void
     {
-        if ($this->sortColumn === $column) {
-            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
-        } else {
-            $this->sortColumn = $column;
-            $this->sortDirection = 'asc';
-        }
+        $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
     }
 
     public function edit(int $candidateId): void
@@ -157,9 +156,10 @@ class ParticipatingCandidates extends Component
     public function render(): View
     {
         $allRows = self::baseRows($this->version, $this->reportCountyIds);
+        $filteredRows = self::filterRows($allRows, $this->search, $this->schoolFilter, $this->gradeFilter, $this->voicePartFilter);
 
         return view('livewire.events.reports.participating-candidates', [
-            'rows' => self::filterAndSort($allRows, $this->search, $this->schoolFilter, $this->gradeFilter, $this->voicePartFilter, $this->sortColumn, $this->sortDirection),
+            'schoolGroups' => self::groupRows($filteredRows, $this->sortDirection),
             'schoolOptions' => $allRows->pluck('candidate.school.name')->filter()->unique()->sort()->values(),
             'gradeOptions' => $allRows->pluck('grade')->filter(fn ($g) => $g !== null)->unique()->sort()->values(),
             'availableVoiceParts' => $this->version->availableVoiceParts(),
@@ -174,7 +174,7 @@ class ParticipatingCandidates extends Component
     {
         $query = Candidate::where('version_id', $version->id)
             ->where('status', CandidateStatus::Registered->value)
-            ->with(['student.user', 'teacher.user.phones', 'school', 'voicePart']);
+            ->with(['student.user', 'student.schools', 'teacher.user.phones', 'school', 'voicePart']);
 
         if ($countyIds !== null) {
             $query->whereHas('school', fn ($q) => $q->whereIn('county_id', $countyIds));
@@ -190,7 +190,7 @@ class ParticipatingCandidates extends Component
      * @param  Collection<int, mixed>  $rows
      * @return Collection<int, mixed>
      */
-    public static function filterAndSort(Collection $rows, string $search, string $schoolFilter, string $gradeFilter, string $voicePartFilter, string $sortColumn, string $sortDirection): Collection
+    public static function filterRows(Collection $rows, string $search, string $schoolFilter, string $gradeFilter, string $voicePartFilter): Collection
     {
         $search = mb_strtolower(trim($search));
 
@@ -217,17 +217,96 @@ class ParticipatingCandidates extends Component
             $rows = $rows->filter(fn (array $row): bool => (string) $row['candidate']->voice_part_id === $voicePartFilter);
         }
 
-        $sortValue = fn (array $row): string => match ($sortColumn) {
-            'school' => mb_strtolower($row['candidate']->school->name ?? ''),
-            'teacher' => mb_strtolower($row['candidate']->teacher->user->name),
-            default => mb_strtolower($row['candidate']->student->user->name),
+        return $rows->values();
+    }
+
+    /**
+     * Groups candidates by school, then by teacher within that school —
+     * each shown once as a section header rather than repeated per row —
+     * always alphabetical at both levels. $sortDirection only controls the
+     * order of candidates within each teacher's group.
+     *
+     * Each row of the returned collection is
+     * array{school: ?School, teacherGroups: Collection<int, array{teacher: ?Teacher, candidates: Collection<int, mixed>}>}.
+     *
+     * @param  Collection<int, mixed>  $rows
+     * @return Collection<int, mixed>
+     */
+    public static function groupRows(Collection $rows, string $sortDirection): Collection
+    {
+        $schoolSortValue = function (Collection $schoolRows): string {
+            $school = self::schoolOf($schoolRows->first());
+
+            return $school !== null ? mb_strtolower($school->name) : '';
         };
 
-        $rows = $sortDirection === 'desc'
-            ? $rows->sortByDesc($sortValue)
-            : $rows->sortBy($sortValue);
+        $teacherSortValue = function (Collection $teacherRows): string {
+            $teacher = self::teacherOf($teacherRows->first());
 
-        return $rows->values();
+            return $teacher !== null ? mb_strtolower($teacher->user->name) : '';
+        };
+
+        return $rows->groupBy(fn (array $row): int => self::candidateOf($row)->school_id)
+            ->sortBy($schoolSortValue)
+            ->map(fn (Collection $schoolRows): array => self::buildSchoolGroup($schoolRows, $sortDirection, $teacherSortValue))
+            ->values();
+    }
+
+    /**
+     * Narrows a `mixed` baseRows()/filterRows() row to its Candidate —
+     * Collection<TValue> is invariant in PHPStan, so declaring precise
+     * nested array-shape generics on the row collections themselves
+     * cascades into false "expects X, X given" mismatches; these small
+     * helpers narrow at each boundary with a fixed declared return type
+     * instead, which PHPStan trusts without re-deriving it through nested
+     * closures.
+     */
+    private static function candidateOf(mixed $row): Candidate
+    {
+        return $row['candidate'];
+    }
+
+    private static function schoolOf(mixed $row): ?School
+    {
+        return $row === null ? null : self::candidateOf($row)->school;
+    }
+
+    private static function teacherOf(mixed $row): ?Teacher
+    {
+        return $row === null ? null : self::candidateOf($row)->teacher;
+    }
+
+    /**
+     * @param  Collection<int, mixed>  $schoolRows
+     */
+    private static function buildSchoolGroup(Collection $schoolRows, string $sortDirection, callable $teacherSortValue): array
+    {
+        $teacherGroups = $schoolRows->groupBy(fn (array $row): int => self::candidateOf($row)->teacher_id)
+            ->sortBy($teacherSortValue)
+            ->map(fn (Collection $teacherRows): array => self::buildTeacherGroup($teacherRows, $sortDirection))
+            ->values();
+
+        return [
+            'school' => self::schoolOf($schoolRows->first()),
+            'teacherGroups' => $teacherGroups,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, mixed>  $teacherRows
+     */
+    private static function buildTeacherGroup(Collection $teacherRows, string $sortDirection): array
+    {
+        $candidateNameValue = fn (array $row): string => mb_strtolower(self::candidateOf($row)->student->user->name);
+
+        $candidates = $sortDirection === 'desc'
+            ? $teacherRows->sortByDesc($candidateNameValue)
+            : $teacherRows->sortBy($candidateNameValue);
+
+        return [
+            'teacher' => self::teacherOf($teacherRows->first()),
+            'candidates' => $candidates->values(),
+        ];
     }
 
     private function scopedCandidate(int $candidateId): Candidate

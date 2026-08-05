@@ -42,6 +42,15 @@
                     </div>
                 </flux:card>
             @endforeach
+
+            <flux:card size="sm" class="bg-zinc-100 dark:bg-zinc-700">
+                <flux:heading size="base">Totals</flux:heading>
+                <div class="mt-2 space-y-1 text-sm">
+                    <div>Obligated teachers: {{ $totals['obligatedTeacherCount'] }}</div>
+                    <div>Participating teachers: {{ $totals['participatingTeacherCount'] }}</div>
+                    <div>Candidates: {{ $totals['candidateCount'] }}</div>
+                </div>
+            </flux:card>
         </div>
 
         <div class="hidden lg:block">
@@ -64,6 +73,29 @@
                             <flux:table.cell>{{ $row['managerName'] ?? '—' }}</flux:table.cell>
                         </flux:table.row>
                     @endforeach
+
+                    {{-- Shading/padding is applied to inner divs, not the cells
+                         themselves — Flux's first:ps-0/last:pe-0 cell rules
+                         zero the outer/inner edge padding on the first and
+                         last cell of a row, which fights a background or
+                         padding applied directly to the <td>. --}}
+                    <flux:table.row :key="'totals'">
+                        <flux:table.cell>
+                            <div class="-my-3 -mr-3 bg-zinc-100 py-3 pr-3 pl-3 font-semibold dark:bg-zinc-700">Totals</div>
+                        </flux:table.cell>
+                        <flux:table.cell>
+                            <div class="-m-3 bg-zinc-100 p-3 font-semibold dark:bg-zinc-700">{{ $totals['obligatedTeacherCount'] }}</div>
+                        </flux:table.cell>
+                        <flux:table.cell>
+                            <div class="-m-3 bg-zinc-100 p-3 font-semibold dark:bg-zinc-700">{{ $totals['participatingTeacherCount'] }}</div>
+                        </flux:table.cell>
+                        <flux:table.cell>
+                            <div class="-m-3 bg-zinc-100 p-3 font-semibold dark:bg-zinc-700">{{ $totals['candidateCount'] }}</div>
+                        </flux:table.cell>
+                        <flux:table.cell>
+                            <div class="-my-3 -ml-3 bg-zinc-100 py-3 pr-3 pl-3 dark:bg-zinc-700"></div>
+                        </flux:table.cell>
+                    </flux:table.row>
                 </flux:table.rows>
             </flux:table>
         </div>

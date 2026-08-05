@@ -70,12 +70,11 @@
                         <div>
                             <flux:heading size="base">{{ $row['school']->name ?? '—' }}</flux:heading>
                             <flux:text size="sm" class="text-zinc-500">{{ $row['teacher']->user->name }}</flux:text>
+                            <x-reports.teacher-contact-lines :teacher="$row['teacher']" />
                         </div>
                         <flux:badge color="{{ $badge['color'] }}" size="sm">{{ $badge['label'] }}</flux:badge>
                     </div>
                     <div class="space-y-1 text-sm mb-3">
-                        <div>{{ $row['teacher']->user->email }}</div>
-                        <div class="text-zinc-500">{{ $row['phones'] }}</div>
                         <div class="text-zinc-500">{{ $row['count'] }} registered — due ${{ number_format($row['dueCents'] / 100, 2) }}, paid ${{ number_format($row['paidCents'] / 100, 2) }}</div>
                     </div>
                     <div class="flex items-center gap-3">
@@ -100,12 +99,11 @@
                 <flux:table.columns>
                     <flux:table.column sortable :sorted="$sortColumn === 'school'" :direction="$sortDirection" wire:click="sortBy('school')">School</flux:table.column>
                     <flux:table.column sortable :sorted="$sortColumn === 'teacher'" :direction="$sortDirection" wire:click="sortBy('teacher')">Teacher</flux:table.column>
-                    <flux:table.column>Contact</flux:table.column>
                     <flux:table.column>Packet</flux:table.column>
-                    <flux:table.column>Registered</flux:table.column>
-                    <flux:table.column>Due</flux:table.column>
+                    <flux:table.column sortable :sorted="$sortColumn === 'count'" :direction="$sortDirection" wire:click="sortBy('count')">Registered</flux:table.column>
+                    <flux:table.column sortable :sorted="$sortColumn === 'due'" :direction="$sortDirection" wire:click="sortBy('due')">Due</flux:table.column>
                     <flux:table.column>Paid</flux:table.column>
-                    <flux:table.column>Balance</flux:table.column>
+                    <flux:table.column sortable :sorted="$sortColumn === 'balance'" :direction="$sortDirection" wire:click="sortBy('balance')">Balance</flux:table.column>
                     <flux:table.column></flux:table.column>
                 </flux:table.columns>
 
@@ -114,10 +112,9 @@
                         @php $badge = $balanceBadge($row['balanceCents']); @endphp
                         <flux:table.row :key="$row['key']">
                             <flux:table.cell class="font-medium">{{ $row['school']->name ?? '—' }}</flux:table.cell>
-                            <flux:table.cell>{{ $row['teacher']->user->name }}</flux:table.cell>
                             <flux:table.cell>
-                                <div>{{ $row['teacher']->user->email }}</div>
-                                <div class="text-zinc-500">{{ $row['phones'] }}</div>
+                                <div>{{ $row['teacher']->user->name }}</div>
+                                <x-reports.teacher-contact-lines :teacher="$row['teacher']" class="mt-0.5" />
                             </flux:table.cell>
                             <flux:table.cell>
                                 <flux:checkbox

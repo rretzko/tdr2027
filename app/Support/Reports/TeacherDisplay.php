@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Support\Reports;
 
+use App\Enums\PhoneType;
 use App\Models\Membership;
+use App\Models\Phone;
 use App\Models\School;
 use App\Models\Teacher;
 use App\Models\Version;
+use App\Support\PhoneNormalizer;
 use Carbon\Carbon;
 
 /**
@@ -42,17 +45,37 @@ final class TeacherDisplay
     /**
      * "Teacher phone numbers" — the account's cell_phone (the field actually
      * populated at Teacher registration) plus any additional phones() rows
-     * (home/work), displayed raw/unformatted to match this codebase's
-     * existing precedent (CandidateDetail shows emergency-contact phones the
-     * same way, with no formatting applied).
+     * (home/work), each rendered via PhoneNormalizer::format() so every
+     * report displays a consistent "(201) 755-4083" style, never raw digits.
      */
     public static function phoneNumbers(Teacher $teacher): string
     {
-        $numbers = collect([$teacher->user->cell_phone])
+        $numbers = collect([PhoneNormalizer::format($teacher->user->cell_phone)])
             ->filter()
-            ->merge($teacher->user->phones->pluck('raw_number'));
+            ->merge($teacher->user->phones->map(fn (Phone $phone): string => $phone->formatted)->filter());
 
         return $numbers->isEmpty() ? '—' : $numbers->implode(', ');
+    }
+
+    /**
+     * The teacher's cell phone, formatted for display — first of the two
+     * lines shown under a teacher's name (email, cell, work — see §5.10
+     * report layout convention).
+     */
+    public static function cellPhoneFormatted(Teacher $teacher): ?string
+    {
+        return PhoneNormalizer::format($teacher->user->cell_phone);
+    }
+
+    /**
+     * The teacher's work phone (a `phones` row, PhoneType::Work), formatted
+     * for display — the last line shown under a teacher's name.
+     */
+    public static function workPhoneFormatted(Teacher $teacher): ?string
+    {
+        $phone = $teacher->user->phones->first(fn (Phone $phone): bool => $phone->getRawOriginal('type') === PhoneType::Work->value);
+
+        return $phone?->formatted;
     }
 
     /**

@@ -226,6 +226,37 @@ test('packetFilter outstanding shows only schools without a received packet', fu
         ->assertDontSee($receivedSchool->name);
 });
 
+test('sorting by Registered, Due, and Balance orders rows by their underlying values', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+
+    ['school' => $schoolFew] = makeParticipatingSchoolPair($version, registeredCount: 1);
+    ['school' => $schoolMany, 'teacher' => $teacherMany] = makeParticipatingSchoolPair($version, registeredCount: 3);
+
+    TeacherPayment::create([
+        'version_id' => $version->id,
+        'school_id' => $schoolMany->id,
+        'teacher_id' => $teacherMany->id,
+        'payment_type' => 'check',
+        'amount' => 6000,
+        'recorded_by_user_id' => $founder->id,
+    ]);
+
+    $component = Livewire::actingAs($founder)
+        ->test(ParticipatingSchools::class, ['version' => $version])
+        ->call('sortBy', 'count');
+
+    $component->assertSeeInOrder([$schoolFew->name, $schoolMany->name]);
+
+    $component->call('sortBy', 'due');
+    $component->assertSeeInOrder([$schoolFew->name, $schoolMany->name]);
+
+    $component->call('sortBy', 'balance');
+    $component->assertSeeInOrder([$schoolMany->name, $schoolFew->name]);
+});
+
 test('PDF export returns a PDF for an authorized user', function () {
     $founder = makeFounder();
     actingAs($founder);

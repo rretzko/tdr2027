@@ -16,7 +16,6 @@
                 <tr>
                     <th>School</th>
                     <th>Teacher</th>
-                    <th>Contact</th>
                     <th>Packet</th>
                     <th>Registered</th>
                     <th>Due</th>
@@ -28,8 +27,10 @@
                 @foreach ($rows as $row)
                     <tr>
                         <td>{{ $row['school']->name ?? '—' }}</td>
-                        <td>{{ $row['teacher']->user->name }}</td>
-                        <td>{{ $row['teacher']->user->email }}<br>{{ $row['phones'] }}</td>
+                        <td>
+                            {{ $row['teacher']->user->name }}
+                            @include('pdf.reports.partials.teacher-contact-lines', ['teacher' => $row['teacher']])
+                        </td>
                         <td>{{ $row['packet']?->isReceived() ? 'Received' : 'Outstanding' }}</td>
                         <td>{{ $row['count'] }}</td>
                         <td>${{ number_format($row['dueCents'] / 100, 2) }}</td>

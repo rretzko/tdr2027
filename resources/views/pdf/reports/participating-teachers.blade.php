@@ -15,8 +15,6 @@
             <thead>
                 <tr>
                     <th>Teacher</th>
-                    <th>Phone(s)</th>
-                    <th>Email</th>
                     <th>School</th>
                     <th>Registered</th>
                 </tr>
@@ -24,9 +22,10 @@
             <tbody>
                 @foreach ($rows as $row)
                     <tr>
-                        <td>{{ $row['teacher']->user->name }}</td>
-                        <td>{{ $row['phones'] }}</td>
-                        <td>{{ $row['teacher']->user->email }}</td>
+                        <td>
+                            {{ $row['teacher']->user->name }}
+                            @include('pdf.reports.partials.teacher-contact-lines', ['teacher' => $row['teacher']])
+                        </td>
                         <td>{{ $row['school']->name ?? '—' }}</td>
                         <td>{{ $row['count'] }}</td>
                     </tr>

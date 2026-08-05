@@ -11,7 +11,6 @@ use App\Models\School;
 use App\Models\Version;
 use App\Models\VoicePart;
 use App\Services\VersionRoleAssignmentService;
-use App\Support\Reports\TeacherDisplay;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -105,7 +104,6 @@ class CandidateCounts extends Component
                 return [
                     'school' => $first->school,
                     'teacher' => $first->teacher,
-                    'phones' => TeacherDisplay::phoneNumbers($first->teacher),
                     'countsByVoicePart' => $voiceParts->mapWithKeys(fn (VoicePart $vp): array => [$vp->id => $counts->get($vp->id, 0)])->all(),
                     'total' => $group->count(),
                 ];

@@ -48,4 +48,24 @@
         color: #666;
         font-style: italic;
     }
+
+    .contact-detail {
+        margin-left: 10px;
+        font-size: 9px;
+        color: #666;
+    }
+
+    .group-header-school {
+        background-color: #f2f2f2;
+        font-weight: bold;
+    }
+
+    .group-header-teacher {
+        background-color: #fafafa;
+        padding-left: 20px;
+    }
+
+    .candidate-name {
+        padding-left: 36px;
+    }
 </style>

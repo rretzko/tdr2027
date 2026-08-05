@@ -9,6 +9,7 @@ use App\Livewire\Events\Reports\CandidateCounts;
 use App\Models\Version;
 use App\Services\VersionRoleAssignmentService;
 use App\Support\Reports\CsvExport;
+use App\Support\Reports\TeacherDisplay;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -32,7 +33,7 @@ class CandidateCountsExportController extends Controller
         );
 
         if ($format === 'csv') {
-            $headers = ['School', 'Teacher', ...$voiceParts->pluck('name')->all(), 'Total'];
+            $headers = ['School', 'Teacher', 'Email', 'Phone', ...$voiceParts->pluck('abbr')->all(), 'Total'];
 
             return CsvExport::stream(
                 "candidate-counts-{$version->id}.csv",
@@ -40,6 +41,8 @@ class CandidateCountsExportController extends Controller
                 $rows->map(fn (array $row): array => [
                     $row['school']->name ?? '',
                     $row['teacher']->user->name,
+                    $row['teacher']->user->email,
+                    TeacherDisplay::phoneNumbers($row['teacher']),
                     ...$voiceParts->map(fn ($vp) => $row['countsByVoicePart'][$vp->id])->all(),
                     $row['total'],
                 ]),

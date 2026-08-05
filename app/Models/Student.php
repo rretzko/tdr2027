@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Collection;
 
 #[Fillable(['user_id', 'height', 'birthday', 'shirt_size', 'instrument_id', 'voice_part_id', 'home_school_id'])]
 class Student extends Model
@@ -123,6 +124,13 @@ class Student extends Model
      */
     public function getCurrentSchoolAttribute(): ?School
     {
+        if ($this->relationLoaded('schools')) {
+            /** @var Collection<int, School&object{pivot: SchoolStudent}> $schools */
+            $schools = $this->schools;
+
+            return $schools->first(fn ($school): bool => (bool) $school->pivot->is_active);
+        }
+
         return $this->schools()->wherePivot('is_active', true)->first();
     }
 

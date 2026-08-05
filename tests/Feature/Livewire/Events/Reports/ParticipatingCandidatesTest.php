@@ -19,6 +19,8 @@ use App\Models\Version;
 use App\Models\VoicePart;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 use function Pest\Laravel\actingAs;
@@ -74,6 +76,92 @@ test('lists a registered candidate', function () {
         ->test(ParticipatingCandidates::class, ['version' => $version])
         ->assertOk()
         ->assertSee($candidate->student->user->name);
+});
+
+test('school and teacher are rendered once per group, not repeated per candidate row', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    $voicePart = makeAvailableVoicePart($version);
+
+    $school = School::factory()->create(['name' => 'Riverside Chorale Academy']);
+    $teacher = Teacher::factory()->create();
+    $teacher->user->update(['first_name' => 'Priya', 'last_name' => 'Patel']);
+
+    Candidate::factory()->registered()->count(3)->create([
+        'version_id' => $version->id,
+        'school_id' => $school->id,
+        'teacher_id' => $teacher->id,
+        'voice_part_id' => $voicePart->id,
+    ]);
+
+    $html = Livewire::actingAs($founder)
+        ->test(ParticipatingCandidates::class, ['version' => $version])
+        ->html();
+
+    // The page legitimately mentions the school/teacher name more than once
+    // overall (the school filter dropdown, and the separate cards-vs-table
+    // responsive layouts) — isolate the desktop table itself, where a
+    // per-row repeat would be the actual regression.
+    $tableSection = Str::before(Str::after($html, 'class="hidden lg:block"'), 'candidate-edit-form');
+
+    expect(substr_count($tableSection, 'Riverside Chorale Academy'))->toBe(1);
+    expect(substr_count($tableSection, 'Priya Patel'))->toBe(1);
+});
+
+test('default listing groups candidates by school, then teacher, then lists them alphabetically', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    $voicePart = makeAvailableVoicePart($version);
+
+    $schoolAlpha = School::factory()->create(['name' => 'Alpha High School']);
+    $schoolZephyr = School::factory()->create(['name' => 'Zephyr High School']);
+
+    $teacherBaker = Teacher::factory()->create();
+    $teacherBaker->user->update(['first_name' => 'Bob', 'last_name' => 'Baker']);
+
+    $teacherAdams = Teacher::factory()->create();
+    $teacherAdams->user->update(['first_name' => 'Alex', 'last_name' => 'Adams']);
+
+    $teacherYoung = Teacher::factory()->create();
+    $teacherYoung->user->update(['first_name' => 'Yara', 'last_name' => 'Young']);
+
+    // In School Alpha, alone — should sort first regardless of candidate name.
+    $candidateCarl = Candidate::factory()->registered()->create([
+        'version_id' => $version->id,
+        'school_id' => $schoolAlpha->id,
+        'teacher_id' => $teacherBaker->id,
+        'voice_part_id' => $voicePart->id,
+    ]);
+    $candidateCarl->student->user->update(['first_name' => 'Zed', 'last_name' => 'Zephyrson']);
+
+    // Both in School Zephyr — Adams' candidate should sort before Young's
+    // candidate even though "Marcus" > "Amy" alphabetically, since teacher
+    // grouping outranks candidate name.
+    $candidateUnderYoung = Candidate::factory()->registered()->create([
+        'version_id' => $version->id,
+        'school_id' => $schoolZephyr->id,
+        'teacher_id' => $teacherYoung->id,
+        'voice_part_id' => $voicePart->id,
+    ]);
+    $candidateUnderYoung->student->user->update(['first_name' => 'Amy', 'last_name' => 'Amherst']);
+
+    $candidateUnderAdams = Candidate::factory()->registered()->create([
+        'version_id' => $version->id,
+        'school_id' => $schoolZephyr->id,
+        'teacher_id' => $teacherAdams->id,
+        'voice_part_id' => $voicePart->id,
+    ]);
+    $candidateUnderAdams->student->user->update(['first_name' => 'Marcus', 'last_name' => 'Marlowe']);
+
+    Livewire::actingAs($founder)
+        ->test(ParticipatingCandidates::class, ['version' => $version])
+        ->assertSeeInOrder([
+            $candidateCarl->student->user->name,
+            $candidateUnderAdams->student->user->name,
+            $candidateUnderYoung->student->user->name,
+        ]);
 });
 
 test('a Co-Registration Manager only sees candidates within their assigned county', function () {
@@ -202,6 +290,31 @@ test('edit aborts with 404 for a candidate outside the acting user\'s county sco
 
     expect(fn () => $component->call('edit', $candidateInB->id))
         ->toThrow(ModelNotFoundException::class);
+});
+
+test('baseRows query count stays flat as candidate count grows (grade lookup N+1 regression)', function () {
+    actingAs(makeFounder());
+    $version = Version::factory()->create();
+
+    makeParticipatingCandidate($version);
+
+    DB::enableQueryLog();
+    ParticipatingCandidates::baseRows($version, null);
+    $oneCandidateQueryCount = count(DB::getQueryLog());
+    DB::disableQueryLog();
+    DB::flushQueryLog();
+
+    makeParticipatingCandidate($version);
+    makeParticipatingCandidate($version);
+    makeParticipatingCandidate($version);
+    makeParticipatingCandidate($version);
+
+    DB::enableQueryLog();
+    ParticipatingCandidates::baseRows($version, null);
+    $fiveCandidateQueryCount = count(DB::getQueryLog());
+    DB::disableQueryLog();
+
+    expect($fiveCandidateQueryCount)->toBe($oneCandidateQueryCount);
 });
 
 test('PDF export returns a PDF for an authorized user', function () {

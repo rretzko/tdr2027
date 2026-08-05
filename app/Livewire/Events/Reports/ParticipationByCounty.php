@@ -34,8 +34,11 @@ class ParticipationByCounty extends Component
 
     public function render(VersionRoleAssignmentService $roles): View
     {
+        $rows = self::baseRows($this->version, $this->reportCountyIds, $roles);
+
         return view('livewire.events.reports.participation-by-county', [
-            'rows' => self::baseRows($this->version, $this->reportCountyIds, $roles),
+            'rows' => $rows,
+            'totals' => self::totals($this->version, $rows),
         ]);
     }
 
@@ -112,5 +115,38 @@ class ParticipationByCounty extends Component
                 'managerName' => $manager?->user->name ?? ($registrationManagerNames !== '' ? $registrationManagerNames : null),
             ];
         });
+    }
+
+    /**
+     * Version-wide totals across the counties currently in view. Candidates
+     * belong to exactly one school/county, so summing candidateCount is
+     * exact; obligated/participating teacher counts are NOT summed from the
+     * per-county rows, since a teacher active at schools in more than one
+     * county would be double-counted that way — each is recomputed as its
+     * own distinct-across-all-counties query instead.
+     *
+     * @param  Collection<int, mixed>  $rows
+     * @return array{obligatedTeacherCount: int, participatingTeacherCount: int, candidateCount: int}
+     */
+    public static function totals(Version $version, Collection $rows): array
+    {
+        $countyIds = $rows->pluck('county.id')->all();
+
+        return [
+            'obligatedTeacherCount' => VersionInvitation::where('version_id', $version->id)
+                ->whereHas('obligationResponse', fn ($q) => $q->where('decision', ObligationDecision::Accepted->value))
+                ->whereHas('teacher.schools', function ($q) use ($countyIds): void {
+                    $q->whereIn('schools.county_id', $countyIds)
+                        ->where('school_teacher.is_active', true)
+                        ->whereNotNull('school_teacher.verified_at');
+                })
+                ->count(),
+            'participatingTeacherCount' => Candidate::where('version_id', $version->id)
+                ->where('status', CandidateStatus::Registered->value)
+                ->whereHas('school', fn ($q) => $q->whereIn('county_id', $countyIds))
+                ->distinct('teacher_id')
+                ->count('teacher_id'),
+            'candidateCount' => (int) $rows->sum('candidateCount'),
+        ];
     }
 }

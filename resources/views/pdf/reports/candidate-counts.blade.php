@@ -10,7 +10,7 @@
 
     <p>
         @foreach ($voiceParts as $voicePart)
-            {{ $voicePart->name }}: {{ $summary[$voicePart->id] }}&nbsp;&nbsp;
+            {{ $voicePart->abbr }}: {{ $summary[$voicePart->id] }}&nbsp;&nbsp;
         @endforeach
         <strong>Total: {{ array_sum($summary) }}</strong>
     </p>
@@ -23,9 +23,8 @@
                 <tr>
                     <th>School</th>
                     <th>Teacher</th>
-                    <th>Phone(s)</th>
                     @foreach ($voiceParts as $voicePart)
-                        <th>{{ $voicePart->name }}</th>
+                        <th>{{ $voicePart->abbr }}</th>
                     @endforeach
                     <th>Total</th>
                 </tr>
@@ -34,14 +33,24 @@
                 @foreach ($rows as $row)
                     <tr>
                         <td>{{ $row['school']->name ?? '—' }}</td>
-                        <td>{{ $row['teacher']->user->name }}</td>
-                        <td>{{ $row['phones'] }}</td>
+                        <td>
+                            {{ $row['teacher']->user->name }}
+                            @include('pdf.reports.partials.teacher-contact-lines', ['teacher' => $row['teacher']])
+                        </td>
                         @foreach ($voiceParts as $voicePart)
                             <td>{{ $row['countsByVoicePart'][$voicePart->id] }}</td>
                         @endforeach
                         <td>{{ $row['total'] }}</td>
                     </tr>
                 @endforeach
+                <tr>
+                    <td class="group-header-school">Totals</td>
+                    <td class="group-header-school"></td>
+                    @foreach ($voiceParts as $voicePart)
+                        <td class="group-header-school">{{ $summary[$voicePart->id] }}</td>
+                    @endforeach
+                    <td class="group-header-school">{{ array_sum($summary) }}</td>
+                </tr>
             </tbody>
         </table>
     @endif
