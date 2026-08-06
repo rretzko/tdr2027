@@ -10,9 +10,11 @@ environments:
         database: mfr-prod
         scheduler: true
         build:
-            - 'composer install --no-dev'
+            - 'composer install --no-dev --optimize-autoloader'
             - 'php artisan event:cache'
             - 'php artisan config:cache'
+            - 'php artisan route:cache'
+            - 'php artisan view:cache'
             - 'npm ci && npm run build && rm -rf node_modules'
     staging:
         memory: 1024
