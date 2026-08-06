@@ -52,6 +52,8 @@
             </flux:callout.text>
         </flux:callout>
     @else
+        <flux:pagination :paginator="$candidatesPaginator" />
+
         {{-- Cards below lg:, table at lg:+ --}}
         <div class="lg:hidden space-y-6">
             @foreach ($schoolGroups as $schoolGroup)
@@ -76,9 +78,7 @@
                                             </div>
                                             <div class="text-sm text-zinc-500 mb-3">Grade {{ $row['grade'] ?? '—' }}</div>
                                             <div class="flex items-center gap-2">
-                                                <flux:modal.trigger name="candidate-edit-form">
-                                                    <flux:button size="sm" variant="outline" wire:click="edit({{ $candidate->id }})">Edit</flux:button>
-                                                </flux:modal.trigger>
+                                                <flux:button size="sm" variant="outline" wire:click="edit({{ $candidate->id }})">Edit</flux:button>
                                                 <flux:spacer />
                                                 <flux:dropdown>
                                                     <flux:button size="sm" variant="danger">Remove</flux:button>
@@ -145,9 +145,7 @@
                                     <flux:table.cell><flux:badge color="zinc" size="sm">{{ $candidate->voicePart->name }}</flux:badge></flux:table.cell>
                                     <flux:table.cell>
                                         <div class="flex items-center gap-2">
-                                            <flux:modal.trigger name="candidate-edit-form">
-                                                <flux:button size="sm" variant="outline" wire:click="edit({{ $candidate->id }})">Edit</flux:button>
-                                            </flux:modal.trigger>
+                                            <flux:button size="sm" variant="outline" wire:click="edit({{ $candidate->id }})">Edit</flux:button>
                                             <flux:dropdown>
                                                 <flux:button size="sm" variant="danger">Remove</flux:button>
                                                 <flux:menu>
@@ -168,6 +166,8 @@
                 </flux:table.rows>
             </flux:table>
         </div>
+
+        <flux:pagination :paginator="$candidatesPaginator" />
     @endif
 
     <flux:modal name="candidate-edit-form" class="md:w-[32rem]">

@@ -49,6 +49,8 @@
             </flux:callout.text>
         </flux:callout>
     @else
+        <flux:pagination :paginator="$rowsPaginator" />
+
         @php
             $balanceBadge = function (int $cents) {
                 if ($cents > 0) {
@@ -140,6 +142,8 @@
                 </flux:table.rows>
             </flux:table>
         </div>
+
+        <flux:pagination :paginator="$rowsPaginator" />
     @endif
 
     <flux:modal name="payment-form" class="md:w-96">

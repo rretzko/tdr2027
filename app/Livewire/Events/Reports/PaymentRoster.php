@@ -9,16 +9,28 @@ use App\Models\CandidatePayment;
 use App\Models\TeacherPayment;
 use App\Models\Version;
 use App\Services\VersionRoleAssignmentService;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 #[Layout('components.layouts.app')]
 class PaymentRoster extends Component
 {
     use ScopesReports;
+    use WithPagination;
+
+    /**
+     * Payment rows per page — rendering every row at once (in duplicate,
+     * for the mobile-card and desktop-table layouts) is what made
+     * ParticipatingCandidates take 20+ seconds to respond on large
+     * rosters; this report has the same shape (one row per payment, no
+     * natural cap), so it gets the same treatment defensively.
+     */
+    private const PER_PAGE = 25;
 
     public Version $version;
 
@@ -50,14 +62,44 @@ class PaymentRoster extends Component
             $this->sortColumn = $column;
             $this->sortDirection = 'asc';
         }
+
+        $this->resetPage();
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedSchoolFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedPaymentTypeFilter(): void
+    {
+        $this->resetPage();
     }
 
     public function render(): View
     {
         $allRows = self::baseRows($this->version, $this->reportCountyIds);
+        $filteredRows = self::filterAndSort($allRows, $this->search, $this->schoolFilter, $this->paymentTypeFilter, $this->sortColumn, $this->sortDirection);
+
+        $page = $this->getPage();
+        $pageRows = $filteredRows->slice(($page - 1) * self::PER_PAGE, self::PER_PAGE);
+
+        $paginator = new LengthAwarePaginator(
+            $pageRows,
+            $filteredRows->count(),
+            self::PER_PAGE,
+            $page,
+            ['path' => LengthAwarePaginator::resolveCurrentPath(), 'pageName' => 'page'],
+        );
 
         return view('livewire.events.reports.payment-roster', [
-            'rows' => self::filterAndSort($allRows, $this->search, $this->schoolFilter, $this->paymentTypeFilter, $this->sortColumn, $this->sortDirection),
+            'rows' => $pageRows,
+            'rowsPaginator' => $paginator,
             'schoolOptions' => $allRows->pluck('schoolName')->filter()->unique()->sort()->values(),
         ]);
     }

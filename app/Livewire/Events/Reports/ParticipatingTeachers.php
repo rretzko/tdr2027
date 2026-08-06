@@ -10,16 +10,26 @@ use App\Models\Candidate;
 use App\Models\School;
 use App\Models\Version;
 use App\Services\VersionRoleAssignmentService;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 #[Layout('components.layouts.app')]
 class ParticipatingTeachers extends Component
 {
     use ScopesReports;
+    use WithPagination;
+
+    /**
+     * Teacher rows per page — rendering every row at once (in duplicate,
+     * for the mobile-card and desktop-table layouts) made this report
+     * take several seconds to respond on large rosters.
+     */
+    private const PER_PAGE = 25;
 
     public Version $version;
 
@@ -45,12 +55,33 @@ class ParticipatingTeachers extends Component
             $this->sortColumn = $column;
             $this->sortDirection = 'asc';
         }
+
+        $this->resetPage();
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
     }
 
     public function render(): View
     {
+        $allRows = self::filterAndSort(self::baseRows($this->version, $this->reportCountyIds), $this->search, $this->sortColumn, $this->sortDirection);
+
+        $page = $this->getPage();
+        $pageRows = $allRows->slice(($page - 1) * self::PER_PAGE, self::PER_PAGE);
+
+        $paginator = new LengthAwarePaginator(
+            $pageRows,
+            $allRows->count(),
+            self::PER_PAGE,
+            $page,
+            ['path' => LengthAwarePaginator::resolveCurrentPath(), 'pageName' => 'page'],
+        );
+
         return view('livewire.events.reports.participating-teachers', [
-            'rows' => self::filterAndSort(self::baseRows($this->version, $this->reportCountyIds), $this->search, $this->sortColumn, $this->sortDirection),
+            'rows' => $pageRows,
+            'rowsPaginator' => $paginator,
         ]);
     }
 

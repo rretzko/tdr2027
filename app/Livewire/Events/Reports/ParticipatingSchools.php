@@ -16,6 +16,7 @@ use App\Models\Version;
 use App\Models\VersionTeacherPacket;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
@@ -24,11 +25,20 @@ use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 #[Layout('components.layouts.app')]
 class ParticipatingSchools extends Component
 {
     use ScopesReports;
+    use WithPagination;
+
+    /**
+     * School/teacher rows per page — rendering every row at once (in
+     * duplicate, for the mobile-card and desktop-table layouts) made this
+     * report take several seconds to respond on large rosters.
+     */
+    private const PER_PAGE = 25;
 
     public Version $version;
 
@@ -72,6 +82,23 @@ class ParticipatingSchools extends Component
             $this->sortColumn = $column;
             $this->sortDirection = 'asc';
         }
+
+        $this->resetPage();
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedPacketFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedBalanceFilter(): void
+    {
+        $this->resetPage();
     }
 
     public function togglePacket(int $schoolId, int $teacherId): void
@@ -167,10 +194,22 @@ class ParticipatingSchools extends Component
 
     public function render(): View
     {
-        $rows = self::filterAndSort(self::baseRows($this->version, $this->reportCountyIds), $this->search, $this->packetFilter, $this->balanceFilter, $this->sortColumn, $this->sortDirection);
+        $allRows = self::filterAndSort(self::baseRows($this->version, $this->reportCountyIds), $this->search, $this->packetFilter, $this->balanceFilter, $this->sortColumn, $this->sortDirection);
+
+        $page = $this->getPage();
+        $pageRows = $allRows->slice(($page - 1) * self::PER_PAGE, self::PER_PAGE);
+
+        $paginator = new LengthAwarePaginator(
+            $pageRows,
+            $allRows->count(),
+            self::PER_PAGE,
+            $page,
+            ['path' => LengthAwarePaginator::resolveCurrentPath(), 'pageName' => 'page'],
+        );
 
         return view('livewire.events.reports.participating-schools', [
-            'rows' => $rows,
+            'rows' => $pageRows,
+            'rowsPaginator' => $paginator,
         ]);
     }
 

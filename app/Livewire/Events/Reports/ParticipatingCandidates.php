@@ -14,17 +14,28 @@ use App\Models\Teacher;
 use App\Models\Version;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 #[Layout('components.layouts.app')]
 class ParticipatingCandidates extends Component
 {
     use ScopesReports;
+    use WithPagination;
+
+    /**
+     * Candidate rows per page — the report has no natural row-count cap
+     * otherwise, and rendering every candidate at once (in duplicate, for
+     * the mobile-card and desktop-table layouts) is what made this page
+     * take 20+ seconds to respond on large rosters.
+     */
+    private const PER_PAGE = 25;
 
     public Version $version;
 
@@ -76,6 +87,27 @@ class ParticipatingCandidates extends Component
     public function toggleSort(): void
     {
         $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
+        $this->resetPage();
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedSchoolFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedGradeFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedVoicePartFilter(): void
+    {
+        $this->resetPage();
     }
 
     public function edit(int $candidateId): void
@@ -95,6 +127,7 @@ class ParticipatingCandidates extends Component
             ->map(fn ($contact): array => ['id' => $contact->id, 'name' => $contact->name])
             ->all();
         $this->resetErrorBag();
+        $this->modal('candidate-edit-form')->show();
     }
 
     public function save(): void
@@ -157,13 +190,44 @@ class ParticipatingCandidates extends Component
     {
         $allRows = self::baseRows($this->version, $this->reportCountyIds);
         $filteredRows = self::filterRows($allRows, $this->search, $this->schoolFilter, $this->gradeFilter, $this->voicePartFilter);
+        $orderedRows = self::flattenGroups(self::groupRows($filteredRows, $this->sortDirection));
+
+        $page = $this->getPage();
+        $pageRows = $orderedRows->slice(($page - 1) * self::PER_PAGE, self::PER_PAGE)->values();
+
+        $paginator = new LengthAwarePaginator(
+            $pageRows,
+            $orderedRows->count(),
+            self::PER_PAGE,
+            $page,
+            ['path' => LengthAwarePaginator::resolveCurrentPath(), 'pageName' => 'page'],
+        );
 
         return view('livewire.events.reports.participating-candidates', [
-            'schoolGroups' => self::groupRows($filteredRows, $this->sortDirection),
+            'schoolGroups' => self::groupRows($pageRows, $this->sortDirection),
+            'candidatesPaginator' => $paginator,
             'schoolOptions' => $allRows->pluck('candidate.school.name')->filter()->unique()->sort()->values(),
             'gradeOptions' => $allRows->pluck('grade')->filter(fn ($g) => $g !== null)->unique()->sort()->values(),
             'availableVoiceParts' => $this->version->availableVoiceParts(),
         ]);
+    }
+
+    /**
+     * Flattens the grouped school→teacher→candidate structure back into a
+     * flat list of candidate rows in the same order groupRows() displays
+     * them — lets render() paginate a fixed-size page of rows without
+     * losing the alphabetical school/teacher ordering (or the
+     * $sortDirection candidate ordering within each teacher).
+     *
+     * @param  Collection<int, mixed>  $schoolGroups
+     * @return Collection<int, mixed>
+     */
+    private static function flattenGroups(Collection $schoolGroups): Collection
+    {
+        return $schoolGroups
+            ->flatMap(fn (array $schoolGroup): Collection => $schoolGroup['teacherGroups'])
+            ->flatMap(fn (array $teacherGroup): Collection => $teacherGroup['candidates'])
+            ->values();
     }
 
     /**

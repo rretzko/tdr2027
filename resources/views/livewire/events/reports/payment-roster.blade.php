@@ -46,6 +46,8 @@
             </flux:callout.text>
         </flux:callout>
     @else
+        <flux:pagination :paginator="$rowsPaginator" />
+
         {{-- Cards below lg:, table at lg:+ --}}
         <div class="lg:hidden space-y-3">
             @foreach ($rows as $row)
@@ -99,5 +101,7 @@
                 </flux:table.rows>
             </flux:table>
         </div>
+
+        <flux:pagination :paginator="$rowsPaginator" />
     @endif
 </div>
