@@ -44,7 +44,10 @@
                 <flux:card size="sm">
                     <div class="flex items-start justify-between gap-3 mb-2">
                         <flux:heading size="base" class="truncate">{{ $room->name }}</flux:heading>
-                        <flux:badge color="zinc" size="sm">Tolerance: {{ $room->tolerance ?? '—' }}</flux:badge>
+                        <div class="flex flex-wrap justify-end gap-1">
+                            <flux:badge color="zinc" size="sm">Tolerance: {{ $room->tolerance ?? '—' }}</flux:badge>
+                            <flux:badge color="green" size="sm">Candidates: {{ $roomCandidateCounts[$room->id] ?? 0 }}</flux:badge>
+                        </div>
                     </div>
 
                     <div class="flex flex-wrap gap-1 mb-2">
@@ -100,11 +103,12 @@
                 <flux:table.columns>
                     <flux:table.column></flux:table.column>
                     <flux:table.column>Name</flux:table.column>
-                    <flux:table.column>Tolerance</flux:table.column>
-                    <flux:table.column>Score Categories</flux:table.column>
+                    <flux:table.column align="center">Tolerance</flux:table.column>
+                    <flux:table.column align="center">Score Categories</flux:table.column>
                     <flux:table.column>Voice Parts</flux:table.column>
                     <flux:table.column>Judges</flux:table.column>
-                    <flux:table.column>Order</flux:table.column>
+                    <flux:table.column align="center">Candidates</flux:table.column>
+                    <flux:table.column align="center">Order</flux:table.column>
                     <flux:table.column></flux:table.column>
                 </flux:table.columns>
 
@@ -129,9 +133,9 @@
                             <flux:table.cell>
                                 <div class="font-medium">{{ $room->name }}</div>
                             </flux:table.cell>
-                            <flux:table.cell>{{ $room->tolerance ?? '—' }}</flux:table.cell>
-                            <flux:table.cell>
-                                <div class="flex flex-wrap gap-1 max-w-[220px]">
+                            <flux:table.cell align="center">{{ $room->tolerance ?? '—' }}</flux:table.cell>
+                            <flux:table.cell align="center">
+                                <div class="flex flex-wrap justify-center gap-1 max-w-[220px] mx-auto">
                                     @forelse ($room->scoreCategories as $category)
                                         <flux:badge color="blue" size="sm">{{ $category->description }}</flux:badge>
                                     @empty
@@ -157,7 +161,8 @@
                                     @endforelse
                                 </div>
                             </flux:table.cell>
-                            <flux:table.cell>{{ $room->order_by }}</flux:table.cell>
+                            <flux:table.cell align="center">{{ $roomCandidateCounts[$room->id] ?? 0 }}</flux:table.cell>
+                            <flux:table.cell align="center">{{ $room->order_by }}</flux:table.cell>
                             <flux:table.cell>
                                 <div class="flex items-center gap-2">
                                     <flux:button

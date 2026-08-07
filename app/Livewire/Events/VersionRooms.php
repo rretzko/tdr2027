@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Livewire\Events;
 
+use App\Enums\CandidateStatus;
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
+use App\Models\Candidate;
 use App\Models\RoomJudge;
 use App\Models\User;
 use App\Models\Version;
@@ -268,11 +270,23 @@ class VersionRooms extends Component
             $this->orderInputs[$room->id] ??= $room->order_by;
         }
 
+        $candidatesByVoicePart = Candidate::query()
+            ->where('version_id', $this->version->id)
+            ->where('status', CandidateStatus::Registered->value)
+            ->selectRaw('voice_part_id, count(*) as total')
+            ->groupBy('voice_part_id')
+            ->pluck('total', 'voice_part_id');
+
+        $roomCandidateCounts = $rooms->mapWithKeys(fn (VersionRoom $room): array => [
+            $room->id => $room->voiceParts->sum(fn ($voicePart): int => (int) $candidatesByVoicePart->get($voicePart->id, 0)),
+        ]);
+
         return view('livewire.events.version-rooms', [
             'rooms' => $rooms,
             'availableScoreCategories' => $this->version->availableScoreCategories(),
             'availableVoiceParts' => $this->version->availableVoiceParts(),
             'judgeTypeOptions' => JudgeType::cases(),
+            'roomCandidateCounts' => $roomCandidateCounts,
         ]);
     }
 }
