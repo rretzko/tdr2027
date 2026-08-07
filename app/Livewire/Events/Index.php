@@ -107,7 +107,7 @@ class Index extends Component
     {
         $user = Auth::user();
 
-        $events = Event::with('organization')
+        $events = Event::with(['organization', 'versions'])
             ->when(
                 ! $user->isFounder(),
                 fn ($query) => $query->whereIn('id', $service->eventIdsVisibleTo($user)),
@@ -115,8 +115,18 @@ class Index extends Component
             ->orderBy('name')
             ->get();
 
+        $adjudicatableVersions = $events->mapWithKeys(
+            fn (Event $event) => [$event->id => $service->adjudicatableVersionFor($user, $event)],
+        );
+
+        $hasVersionRole = $events->mapWithKeys(
+            fn (Event $event) => [$event->id => $service->holdsAnyVersionScopedRoleForEvent($user, $event)],
+        );
+
         return view('livewire.events.index', [
             'events' => $events,
+            'adjudicatableVersions' => $adjudicatableVersions,
+            'hasVersionRole' => $hasVersionRole,
             'organizations' => Organization::orderBy('name')->get(),
             'statuses' => EventStatus::cases(),
             'frequencies' => Frequency::cases(),

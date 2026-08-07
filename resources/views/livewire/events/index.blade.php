@@ -34,10 +34,18 @@
                             <flux:badge color="red" size="sm">Closed</flux:badge>
                         @endif
 
+                        @if ($adjudicatableVersions[$event->id] ?? null)
+                            <flux:badge :href="route('events.versions.adjudicate', $adjudicatableVersions[$event->id])" wire:navigate color="teal" size="sm">
+                                Adjudicate
+                            </flux:badge>
+                        @endif
+
                         <div class="flex gap-2">
-                            <flux:button size="sm" :href="route('events.show', $event)" wire:navigate>
-                                Versions
-                            </flux:button>
+                            @if ($isFounder || ($hasVersionRole[$event->id] ?? false))
+                                <flux:button size="sm" :href="route('events.show', $event)" wire:navigate>
+                                    Versions
+                                </flux:button>
+                            @endif
                             @if ($isFounder)
                                 <flux:modal.trigger name="edit-event">
                                     <flux:button size="sm" variant="ghost" icon="pencil" wire:click="edit({{ $event->id }})" />
@@ -60,6 +68,7 @@
             <flux:table.column>Auditions</flux:table.column>
             <flux:table.column>Ensembles</flux:table.column>
             <flux:table.column>Status</flux:table.column>
+            <flux:table.column>Adjudicate</flux:table.column>
             <flux:table.column></flux:table.column>
         </flux:table.columns>
 
@@ -89,10 +98,19 @@
                         @endif
                     </flux:table.cell>
                     <flux:table.cell>
+                        @if ($adjudicatableVersions[$event->id] ?? null)
+                            <flux:badge :href="route('events.versions.adjudicate', $adjudicatableVersions[$event->id])" wire:navigate color="teal" size="sm">
+                                Adjudicate
+                            </flux:badge>
+                        @endif
+                    </flux:table.cell>
+                    <flux:table.cell>
                         <div class="flex gap-2 justify-end">
-                            <flux:button size="sm" :href="route('events.show', $event)" wire:navigate>
-                                Versions
-                            </flux:button>
+                            @if ($isFounder || ($hasVersionRole[$event->id] ?? false))
+                                <flux:button size="sm" :href="route('events.show', $event)" wire:navigate>
+                                    Versions
+                                </flux:button>
+                            @endif
                             @if ($isFounder)
                                 <flux:modal.trigger name="edit-event">
                                     <flux:button size="sm" variant="ghost" icon="pencil" wire:click="edit({{ $event->id }})" />
@@ -103,7 +121,7 @@
                 </flux:table.row>
             @empty
                 <flux:table.row>
-                    <flux:table.cell colspan="7" class="text-center text-zinc-500 py-6">
+                    <flux:table.cell colspan="8" class="text-center text-zinc-500 py-6">
                         No events yet. Add one to get started.
                     </flux:table.cell>
                 </flux:table.row>

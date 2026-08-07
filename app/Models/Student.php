@@ -144,4 +144,20 @@ class Student extends Model
 
         return ClassOfCalculator::gradeFromClassOf((int) $school->pivot->class_of, $school->senior_year);
     }
+
+    /**
+     * Enrolled anywhere as of today — an active school_student link whose
+     * class_of hasn't yet reached that school's current senior_year (see
+     * the same is_active + class_of >= senior_year idiom in
+     * TeacherStudentTransferService and ReplacedTeacherStudentTransfer).
+     * senior_year is a date-dependent accessor, not a column, so this can't
+     * be pushed into SQL.
+     */
+    public function isCurrentlyEnrolled(): bool
+    {
+        /** @var Collection<int, School&object{pivot: SchoolStudent}> $schools */
+        $schools = $this->schools()->wherePivot('is_active', true)->get();
+
+        return $schools->contains(fn ($school): bool => (int) $school->pivot->class_of >= $school->senior_year);
+    }
 }

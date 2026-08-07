@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\EventStatus;
+use App\Enums\VersionDateType;
 use App\Models\CoRegistrationManagerCounty;
 use App\Models\Event;
+use App\Models\RoomJudge;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionDate;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Support\Config;
@@ -52,6 +56,17 @@ final class VersionRoleAssignmentService
         'Rehearsal Manager',
     ];
 
+    /**
+     * Memoized per user id — adjudicatableVersionFor() calls canAdjudicate()
+     * once per sibling Version of an Event, and canAdjudicate() calls
+     * judgeVersionIds() every time; without memoizing, looping Events on the
+     * index page would re-run the same RoomJudge query repeatedly within one
+     * request.
+     *
+     * @var array<int, Collection<int, int>>
+     */
+    private array $judgeVersionIdsByUser = [];
+
     public function __construct(private readonly VersionRoleService $versionRoles) {}
 
     /**
@@ -79,7 +94,20 @@ final class VersionRoleAssignmentService
 
     public function canViewEvent(User $user, Event $event): bool
     {
-        return $this->canManageEvent($user, $event) || $this->holdsAnyVersionScopedRoleForEvent($user, $event);
+        return $this->canManageEvent($user, $event)
+            || $this->holdsAnyVersionScopedRoleForEvent($user, $event)
+            || $this->isJudgeForEvent($user, $event);
+    }
+
+    /**
+     * A RoomJudge assignment on any Version of the Event grants view-only
+     * visibility — judges are not one of the six Spatie
+     * VERSION_SCOPED_ROLES, so they'd otherwise be invisible to every method
+     * in this class (see event-version-orientation.md §5.9).
+     */
+    public function isJudgeForEvent(User $user, Event $event): bool
+    {
+        return $event->versions()->whereIn('id', $this->judgeVersionIds($user))->exists();
     }
 
     /**
@@ -248,13 +276,58 @@ final class VersionRoleAssignmentService
      */
     public function eventIdsVisibleTo(User $user): array
     {
-        $versionIds = $this->matchingVersionIds($user, self::VERSION_SCOPED_ROLES);
+        $versionIds = $this->matchingVersionIds($user, self::VERSION_SCOPED_ROLES)
+            ->merge($this->judgeVersionIds($user))
+            ->unique();
 
         if ($versionIds->isEmpty()) {
             return [];
         }
 
         return Version::whereIn('id', $versionIds)->pluck('event_id')->unique()->values()->all();
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function judgeEventIds(User $user): array
+    {
+        $versionIds = $this->judgeVersionIds($user);
+
+        if ($versionIds->isEmpty()) {
+            return [];
+        }
+
+        return Version::whereIn('id', $versionIds)->pluck('event_id')->unique()->values()->all();
+    }
+
+    /**
+     * Whether $user may open the Adjudication page for this specific
+     * Version: the Version must be active, $user must hold a RoomJudge
+     * assignment on *this* Version (not merely a sibling one — unlike
+     * isJudgeForEvent()'s event-wide leniency, the adjudication window is
+     * per-Version), now() must fall inside that Version's
+     * date_type=adjudication window, and $user must not currently be an
+     * enrolled Student (a candidate shouldn't adjudicate their own
+     * competition, even if erroneously also assigned as a RoomJudge).
+     */
+    public function canAdjudicate(User $user, Version $version): bool
+    {
+        return $version->getRawOriginal('status') === EventStatus::Active->value
+            && $this->judgeVersionIds($user)->contains($version->id)
+            && $this->isWithinAdjudicationWindow($version)
+            && ! $this->isCurrentStudent($user);
+    }
+
+    /**
+     * The single Version of $event that $user may currently adjudicate, or
+     * null if none qualify. Assumes at most one qualifying Version per
+     * Event at a time; if more than one somehow qualifies, the first match
+     * wins.
+     */
+    public function adjudicatableVersionFor(User $user, Event $event): ?Version
+    {
+        return $event->versions->first(fn (Version $version): bool => $this->canAdjudicate($user, $version));
     }
 
     public function assignRole(User $actingUser, Version $version, User $targetUser, string $roleName): void
@@ -348,6 +421,28 @@ final class VersionRoleAssignmentService
     private function holdsRoleForEvent(User $user, Event $event, array $roleNames): bool
     {
         return $this->matchingVersionIds($user, $roleNames, $event)->isNotEmpty();
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
+    private function judgeVersionIds(User $user): Collection
+    {
+        return $this->judgeVersionIdsByUser[$user->id] ??= RoomJudge::where('user_id', $user->id)->pluck('version_id')->unique();
+    }
+
+    private function isCurrentStudent(User $user): bool
+    {
+        return $user->student !== null && $user->student->isCurrentlyEnrolled();
+    }
+
+    private function isWithinAdjudicationWindow(Version $version): bool
+    {
+        return VersionDate::where('version_id', $version->id)
+            ->where('date_type', VersionDateType::Adjudication)
+            ->where('start_at', '<=', now())
+            ->where(fn ($q) => $q->whereNull('end_at')->orWhere('end_at', '>=', now()))
+            ->exists();
     }
 
     /**

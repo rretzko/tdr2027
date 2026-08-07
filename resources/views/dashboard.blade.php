@@ -95,7 +95,8 @@
             </a>
 
             @php
-                $canAccessEvents = app(\App\Services\VersionRoleAssignmentService::class)->canAccessEventsSection(auth()->user());
+                $roleAssignmentService = app(\App\Services\VersionRoleAssignmentService::class);
+                $canAccessEvents = $roleAssignmentService->canAccessEventsSection(auth()->user());
             @endphp
 
             @if ($canAccessEvents)
@@ -105,7 +106,13 @@
 
                         @php
                             $organizationIds = $teacher->teacherSupervisors()->pluck('organization_id');
-                            $openEvents = \App\Models\Event::where('status', 'active')->whereIn('organization_id', $organizationIds)->get();
+                            $judgeEventIds = $roleAssignmentService->judgeEventIds(auth()->user());
+                            $openEvents = \App\Models\Event::where('status', 'active')
+                                ->where(function ($query) use ($organizationIds, $judgeEventIds) {
+                                    $query->whereIn('organization_id', $organizationIds)
+                                        ->orWhereIn('id', $judgeEventIds);
+                                })
+                                ->get();
                         @endphp
 
                         @if ($openEvents->isNotEmpty())

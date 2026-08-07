@@ -5,8 +5,12 @@ declare(strict_types=1);
 use App\Models\CoRegistrationManagerCounty;
 use App\Models\County;
 use App\Models\Event;
+use App\Models\RoomJudge;
+use App\Models\School;
+use App\Models\Student;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionDate;
 use App\Services\VersionRoleAssignmentService;
 use App\Services\VersionRoleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -541,6 +545,196 @@ test('revokeCoRegistrationManager aborts with 403 when the acting user cannot ma
 
     expect(fn () => $service->revokeCoRegistrationManager($unauthorizedActor, $version, $targetUser))
         ->toThrow(HttpException::class);
+});
+
+test('canViewEvent is true for a RoomJudge assignment on any Version of the Event, though it holds no Spatie role at all', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id]);
+
+    RoomJudge::factory()->create(['version_id' => $version->id, 'user_id' => $user->id]);
+
+    expect($service->canViewEvent($user, $event))->toBeTrue();
+    expect($service->canManageEvent($user, $event))->toBeFalse();
+});
+
+test('isJudgeForEvent is false for a user with no RoomJudge assignment on any Version of the Event', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    Version::factory()->create(['event_id' => $event->id]);
+
+    expect($service->isJudgeForEvent($user, $event))->toBeFalse();
+});
+
+test('eventIdsVisibleTo and canAccessEventsSection include Events reached only via a RoomJudge assignment', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id]);
+
+    RoomJudge::factory()->create(['version_id' => $version->id, 'user_id' => $user->id]);
+
+    expect($service->eventIdsVisibleTo($user))->toBe([$event->id]);
+    expect($service->canAccessEventsSection($user))->toBeTrue();
+});
+
+test('judgeEventIds returns only Events reached via a RoomJudge assignment for that user', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $judgedEvent = Event::factory()->create();
+    $unrelatedEvent = Event::factory()->create();
+    $judgedVersion = Version::factory()->create(['event_id' => $judgedEvent->id]);
+    Version::factory()->create(['event_id' => $unrelatedEvent->id]);
+
+    RoomJudge::factory()->create(['version_id' => $judgedVersion->id, 'user_id' => $user->id]);
+
+    expect($service->judgeEventIds($user))->toBe([$judgedEvent->id]);
+});
+
+test('judgeEventIds returns an empty array for a user with no RoomJudge assignments', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+
+    expect($service->judgeEventIds($user))->toBe([]);
+});
+
+function makeAdjudicatableVersion(User $user, Event $event): Version
+{
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+    RoomJudge::factory()->create(['version_id' => $version->id, 'user_id' => $user->id]);
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => 'adjudication',
+        'start_at' => now()->subDay(),
+        'end_at' => now()->addDay(),
+    ]);
+
+    return $version;
+}
+
+test('canAdjudicate is true when active, judged on this Version, and within the adjudication window', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $version = makeAdjudicatableVersion($user, $event);
+
+    expect($service->canAdjudicate($user, $version))->toBeTrue();
+});
+
+test('canAdjudicate is false when the Version is not active', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $version = makeAdjudicatableVersion($user, $event);
+    $version->update(['status' => 'sandbox']);
+
+    expect($service->canAdjudicate($user, $version))->toBeFalse();
+});
+
+test('canAdjudicate is false when the RoomJudge assignment is on a sibling Version, not this one', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    makeAdjudicatableVersion($user, $event);
+
+    $otherVersion = Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+    VersionDate::create([
+        'version_id' => $otherVersion->id,
+        'date_type' => 'adjudication',
+        'start_at' => now()->subDay(),
+        'end_at' => now()->addDay(),
+    ]);
+
+    expect($service->canAdjudicate($user, $otherVersion))->toBeFalse();
+});
+
+test('canAdjudicate is false with no adjudication VersionDate row at all', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+    RoomJudge::factory()->create(['version_id' => $version->id, 'user_id' => $user->id]);
+
+    expect($service->canAdjudicate($user, $version))->toBeFalse();
+});
+
+test('canAdjudicate is false before the adjudication window starts', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+    RoomJudge::factory()->create(['version_id' => $version->id, 'user_id' => $user->id]);
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => 'adjudication',
+        'start_at' => now()->addDay(),
+        'end_at' => now()->addDays(2),
+    ]);
+
+    expect($service->canAdjudicate($user, $version))->toBeFalse();
+});
+
+test('canAdjudicate is false after the adjudication window ends', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+    RoomJudge::factory()->create(['version_id' => $version->id, 'user_id' => $user->id]);
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => 'adjudication',
+        'start_at' => now()->subDays(2),
+        'end_at' => now()->subDay(),
+    ]);
+
+    expect($service->canAdjudicate($user, $version))->toBeFalse();
+});
+
+test('canAdjudicate is false for an otherwise-qualifying judge who is a currently-enrolled student', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $student = Student::factory()->create(['user_id' => $user->id]);
+    $school = School::factory()->create();
+    $student->schools()->attach($school->id, ['is_active' => true, 'class_of' => $school->senior_year]);
+
+    $event = Event::factory()->create();
+    $version = makeAdjudicatableVersion($user, $event);
+
+    expect($service->canAdjudicate($user, $version))->toBeFalse();
+});
+
+test('canAdjudicate is true for a judge who has a Student record but has already graduated everywhere', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $student = Student::factory()->create(['user_id' => $user->id]);
+    $school = School::factory()->create();
+    $student->schools()->attach($school->id, ['is_active' => true, 'class_of' => $school->senior_year - 1]);
+
+    $event = Event::factory()->create();
+    $version = makeAdjudicatableVersion($user, $event);
+
+    expect($service->canAdjudicate($user, $version))->toBeTrue();
+});
+
+test('adjudicatableVersionFor returns the qualifying Version, ignoring non-qualifying siblings', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    Version::factory()->create(['event_id' => $event->id, 'status' => 'sandbox']);
+    $qualifyingVersion = makeAdjudicatableVersion($user, $event);
+
+    expect($service->adjudicatableVersionFor($user, $event)->id)->toBe($qualifyingVersion->id);
+});
+
+test('adjudicatableVersionFor returns null when no Version of the Event qualifies', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+
+    expect($service->adjudicatableVersionFor($user, $event))->toBeNull();
 });
 
 test('a global role assignment (e.g. Teacher) does not make eventIdsVisibleTo or canViewEvent true', function () {

@@ -5,9 +5,11 @@ declare(strict_types=1);
 use App\Livewire\Events\Index;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Models\RoomJudge;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionDate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -54,6 +56,63 @@ test('a non-Founder with no version-scoped roles sees no Events', function () {
     Livewire::actingAs($user)
         ->test(Index::class)
         ->assertDontSee('Some Event');
+});
+
+test('the Adjudicate badge appears and links to the right route for a qualifying judge', function () {
+    $user = makeIndexTestUser();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+    RoomJudge::factory()->create(['version_id' => $version->id, 'user_id' => $user->id]);
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => 'adjudication',
+        'start_at' => now()->subDay(),
+        'end_at' => now()->addDay(),
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('Adjudicate')
+        ->assertSeeHtml(route('events.versions.adjudicate', $version));
+});
+
+test('the Adjudicate badge is absent when the judge is assigned but the adjudication window has not opened yet', function () {
+    $user = makeIndexTestUser();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+    RoomJudge::factory()->create(['version_id' => $version->id, 'user_id' => $user->id]);
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => 'adjudication',
+        'start_at' => now()->addDay(),
+        'end_at' => now()->addDays(2),
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertDontSeeHtml(route('events.versions.adjudicate', $version));
+});
+
+test('the Versions button is hidden for a user whose only standing on the Event is a RoomJudge assignment', function () {
+    $user = makeIndexTestUser();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id]);
+    RoomJudge::factory()->create(['version_id' => $version->id, 'user_id' => $user->id]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertDontSeeHtml(route('events.show', $event));
+});
+
+test('the Versions button appears for a user holding a version-scoped role on the Event', function () {
+    $user = makeIndexTestUser();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $version, 'Tab Room Manager');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSeeHtml(route('events.show', $event));
 });
 
 test('add aborts with 403 for a non-Founder', function () {

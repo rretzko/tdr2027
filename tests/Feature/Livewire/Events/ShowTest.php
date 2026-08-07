@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Livewire\Events\Show;
 use App\Models\Ensemble;
 use App\Models\Event;
+use App\Models\RoomJudge;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
@@ -57,6 +58,18 @@ test('mount allows a Registration-Manager-only holder to view the Event', functi
     $event = Event::factory()->create();
     $version = Version::factory()->create(['event_id' => $event->id]);
     grantVersionRole($user, $version, 'Registration Manager');
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['event' => $event])
+        ->assertOk()
+        ->assertViewHas('canManageEvent', false);
+});
+
+test('mount allows a RoomJudge-only holder to view the Event, though they hold no Spatie role at all', function () {
+    $user = makeShowTestUser();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id]);
+    RoomJudge::factory()->create(['version_id' => $version->id, 'user_id' => $user->id]);
 
     Livewire::actingAs($user)
         ->test(Show::class, ['event' => $event])

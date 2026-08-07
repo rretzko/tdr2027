@@ -6,7 +6,9 @@ namespace App\Models;
 
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
+use Database\Factories\RoomJudgeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -17,6 +19,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['version_id', 'room_id', 'user_id', 'judge_type', 'status'])]
 class RoomJudge extends Model
 {
+    /** @use HasFactory<RoomJudgeFactory> */
+    use HasFactory;
+
     /**
      * @return array<string, string>
      */

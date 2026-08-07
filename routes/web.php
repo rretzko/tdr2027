@@ -20,6 +20,7 @@ use App\Livewire\Auth\SocialPhoneCheck;
 use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
 use App\Livewire\Auth\TeacherRegister;
+use App\Livewire\Events\Adjudicate;
 use App\Livewire\Events\CreateEvent;
 use App\Livewire\Events\Index as EventsIndex;
 use App\Livewire\Events\Reports\AdjudicationBackup;
@@ -165,6 +166,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/rooms', VersionRooms::class)->name('events.versions.rooms');
         Route::get('/events/versions/{version}/rooms/roster.pdf', VersionRoomRosterPdfController::class)->name('events.versions.rooms.roster-pdf');
         Route::get('/events/versions/{version}/scoring-rubric', VersionScoringRubric::class)->name('events.versions.scoring-rubric');
+        Route::get('/events/versions/{version}/adjudicate', Adjudicate::class)->name('events.versions.adjudicate');
 
         // Web Registration Manager Module (event-version-orientation.md §5.11).
         Route::get('/events/versions/{version}/web-registration', WebRegistration::class)->name('events.versions.web-registration');

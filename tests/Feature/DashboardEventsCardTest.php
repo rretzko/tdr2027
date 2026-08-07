@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Pivots\TeacherSupervisor;
+use App\Models\RoomJudge;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
@@ -71,4 +72,22 @@ test('the dashboard does not show events from organizations the teacher is not l
         ->assertOk()
         ->assertDontSeeText('Unrelated Event')
         ->assertSeeText('No open events.');
+});
+
+test('the dashboard lists an active event the teacher is judging, even without an organization link or Spatie role', function () {
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+    Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
+
+    // Deliberately no TeacherSupervisor link and no grantVersionRole() call —
+    // judge visibility must not depend on either.
+    $organization = Organization::factory()->create();
+    $judgedEvent = Event::factory()->active()->create(['organization_id' => $organization->id, 'name' => 'Regional Finals']);
+    $judgedVersion = Version::factory()->create(['event_id' => $judgedEvent->id]);
+    RoomJudge::factory()->create(['version_id' => $judgedVersion->id, 'user_id' => $user->id]);
+
+    actingAs($user)->get(route('dashboard'))
+        ->assertOk()
+        ->assertSeeText('Regional Finals')
+        ->assertDontSeeText('No open events.');
 });
