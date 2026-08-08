@@ -46,6 +46,8 @@ class DatabaseSeeder extends Seeder
             RoomVoicePartSeeder::class,
             CandidateSeeder::class,
             RecordingSeeder::class,
+            ScoreSeeder::class,
+            AuditionResultSeeder::class,
         ]);
 
         User::factory()->create([

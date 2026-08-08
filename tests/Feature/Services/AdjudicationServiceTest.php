@@ -175,6 +175,138 @@ test('candidateTolerances flags a candidate whose judge totals exceed the room t
     expect($result[$candidate->id])->toBeFalse();
 });
 
+test('candidateTolerances, candidateStatuses, candidateTotals, and scoresForCandidate ignore another room\'s judges scoring the same candidate', function () {
+    // Regression test: a Candidate can be adjudicated in more than one Room
+    // in the same Version (e.g. separate Scales/Solo rooms, each with its
+    // own judge trio and rubric). Every Score aggregate must scope to the
+    // Room's own judges, or a wildly different score from an unrelated
+    // Room's judge corrupts this Room's tolerance/status/total for the same
+    // candidate id.
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+
+    $roomA = makeAdjudicationRoom($version, tolerance: 2);
+    $roomB = makeAdjudicationRoom($version, tolerance: 2);
+
+    $voicePart = VoicePart::factory()->create();
+    $roomA->voiceParts()->attach($voicePart->id);
+
+    $categoryA = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Scales', 'order_by' => 1]);
+    $factorA = makeScoreFactor($version, $categoryA, ['description' => 'A', 'abbreviation' => 'A']);
+    $roomA->scoreCategories()->attach($categoryA->id);
+
+    $categoryB = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Solo', 'order_by' => 2]);
+    $factorB = makeScoreFactor($version, $categoryB, ['description' => 'B', 'abbreviation' => 'B']);
+    $roomB->scoreCategories()->attach($categoryB->id);
+
+    $judgeA1 = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $roomA->id, 'judge_type' => JudgeType::HeadJudge]);
+    $judgeA2 = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $roomA->id, 'judge_type' => JudgeType::Judge2]);
+    $judgeB1 = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $roomB->id, 'judge_type' => JudgeType::HeadJudge]);
+
+    $candidate = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+
+    // Room A: two judges, close together (diff = 1), within its tolerance of 2.
+    $service->saveScores($judgeA1, $candidate, $version, [$factorA->id => 4]);
+    $service->saveScores($judgeA2, $candidate, $version, [$factorA->id => 5]);
+
+    // Room B: an unrelated judge scores the SAME candidate far outside Room
+    // A's range. Pre-fix, candidateTolerances($roomA, ...) pulled in this
+    // score too (query scoped only by version_id + candidate_id), making the
+    // spread 100 - 4 = 96 > tolerance 2 and wrongly flagging Room A as
+    // out-of-tolerance because of a room it has nothing to do with.
+    $service->saveScores($judgeB1, $candidate, $version, [$factorB->id => 100]);
+
+    $candidateIds = collect([$candidate])->pluck('id');
+
+    expect($service->candidateTolerances($roomA, $candidateIds)[$candidate->id])->toBeTrue();
+    expect($service->candidateStatuses($roomA, $candidateIds)[$candidate->id])->toBe('completed');
+    expect($service->candidateTotals($roomA, $candidateIds)[$candidate->id])->toBe(9); // 4 + 5, not +1 from Room B
+    expect($service->scoresForCandidate($roomA, $candidate)->keys()->all())->toEqualCanonicalizing([$judgeA1->id, $judgeA2->id]);
+});
+
+test('candidateTotals sums every judge weighted by each factor multiplier', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+    $room = makeAdjudicationRoom($version);
+    $voicePart = VoicePart::factory()->create();
+    $room->voiceParts()->attach($voicePart->id);
+
+    $category = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Scales', 'order_by' => 1]);
+    $factorA = makeScoreFactor($version, $category, ['description' => 'A', 'abbreviation' => 'A', 'multiplier' => 1]);
+    $factorB = makeScoreFactor($version, $category, ['description' => 'B', 'abbreviation' => 'B', 'order_by' => 2, 'multiplier' => 2]);
+    $room->scoreCategories()->attach($category->id);
+
+    $judgeA = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $room->id, 'judge_type' => JudgeType::HeadJudge]);
+    $judgeB = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $room->id, 'judge_type' => JudgeType::Judge2]);
+
+    $candidate = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+
+    // judgeA: A=4, B=3 -> 4*1 + 3*2 = 10
+    $service->saveScores($judgeA, $candidate, $version, [$factorA->id => 4, $factorB->id => 3]);
+    // judgeB: A=2, B=1 -> 2*1 + 1*2 = 4
+    $service->saveScores($judgeB, $candidate, $version, [$factorA->id => 2, $factorB->id => 1]);
+
+    $totals = $service->candidateTotals($room, collect([$candidate])->pluck('id'));
+
+    expect($totals[$candidate->id])->toBe(14);
+});
+
+test('candidateTotals is zero for a candidate with no scores yet', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+    $room = makeAdjudicationRoom($version);
+    $candidate = Candidate::factory()->registered()->create(['version_id' => $version->id]);
+
+    $totals = $service->candidateTotals($room, collect([$candidate])->pluck('id'));
+
+    expect($totals[$candidate->id])->toBe(0);
+});
+
+test('roomProgress rolls candidateStatuses up into per-room bucket counts', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+    $room = makeAdjudicationRoom($version);
+    $voicePart = VoicePart::factory()->create();
+    $room->voiceParts()->attach($voicePart->id);
+
+    $category = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Scales', 'order_by' => 1]);
+    $factor = makeScoreFactor($version, $category);
+    $room->scoreCategories()->attach($category->id);
+
+    $judge = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $room->id, 'judge_type' => JudgeType::HeadJudge]);
+
+    $none = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+    $completed = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+
+    $service->saveScores($judge, $completed, $version, [$factor->id => 4]);
+
+    $progress = $service->roomProgress($room);
+
+    expect($progress)->toBe(['completed' => 1, 'partial' => 0, 'none' => 1, 'error' => 0]);
+});
+
+test('versionProgress rolls up roomProgress across every room in the version', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+
+    $roomA = makeAdjudicationRoom($version);
+    $roomB = makeAdjudicationRoom($version);
+
+    $voicePartA = VoicePart::factory()->create();
+    $voicePartB = VoicePart::factory()->create();
+    $roomA->voiceParts()->attach($voicePartA->id);
+    $roomB->voiceParts()->attach($voicePartB->id);
+
+    Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePartA->id]);
+    Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePartB->id]);
+
+    $progress = $service->versionProgress($version);
+
+    expect($progress)->toHaveCount(2);
+    expect($progress->pluck('room.id')->all())->toEqualCanonicalizing([$roomA->id, $roomB->id]);
+    expect($progress->firstWhere('room.id', $roomA->id))->toMatchArray(['none' => 1, 'completed' => 0, 'partial' => 0, 'error' => 0]);
+});
+
 test('judgeCompletionFor is true only once the specific judge has scored every factor for a candidate', function () {
     $service = app(AdjudicationService::class);
     $version = Version::factory()->create();
