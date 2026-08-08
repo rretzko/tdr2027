@@ -86,8 +86,8 @@
                         'bg-zinc-900 text-white' => $statuses[$candidate->id] === 'error',
                     ])
                 >
-                    <span @class(['w-3 shrink-0 text-center font-bold', 'text-red-200' => true, 'invisible' => $tolerances[$candidate->id] ?? true]) title="Out of tolerance">*</span>
-                    <span class="flex-1 text-center">{{ $candidate->id }}</span>
+                    <span @class(['w-3 shrink-0 text-center font-bold text-red-500', 'invisible' => $tolerances[$candidate->id] ?? true]) title="Out of tolerance">*</span>
+                    <span @class(['flex-1 text-center', 'text-red-500 font-bold' => ! ($tolerances[$candidate->id] ?? true)])>{{ $candidate->id }}</span>
                     <span @class(['w-3 shrink-0 flex justify-center', 'invisible' => ! ($judgeCompletion[$candidate->id] ?? false)])>
                         <flux:icon.check variant="micro" />
                     </span>

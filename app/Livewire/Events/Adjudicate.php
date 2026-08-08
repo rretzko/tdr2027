@@ -156,7 +156,7 @@ class Adjudicate extends Component
             && $adjudication->existingScoresFor($this->roomJudge, $selectedCandidate) !== [];
 
         $roomScores = $judgeHasScoredSelected
-            ? $adjudication->scoresForCandidate($this->version, $selectedCandidate)
+            ? $adjudication->scoresForCandidate($room, $selectedCandidate)
             : collect();
 
         $adjudicationWindow = VersionDate::where('version_id', $this->version->id)

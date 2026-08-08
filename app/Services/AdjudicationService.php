@@ -60,6 +60,21 @@ final class AdjudicationService
     }
 
     /**
+     * A Candidate can be adjudicated in more than one Room in the same
+     * Version (e.g. separate Scales/Solo/Quintet rooms, each with its own
+     * judge trio) — scores has no room_id column, so every aggregate that
+     * reads it must scope explicitly to this Room's own judges via this
+     * helper, never just version_id + candidate_id, or it silently pulls in
+     * another Room's unrelated judges/scores for the same Candidate.
+     *
+     * @return Collection<int, int>
+     */
+    private function roomJudgeIds(VersionRoom $room): Collection
+    {
+        return RoomJudge::where('room_id', $room->id)->pluck('id');
+    }
+
+    /**
      * A Candidate's approved recordings, matched to the Room's rubric by
      * comparing Recording::file_type to score_categories.description
      * case-insensitively — file_type *is* the score category for this data
@@ -127,10 +142,12 @@ final class AdjudicationService
             return [];
         }
 
-        $max = RoomJudge::where('room_id', $room->id)->count() * $this->factorCount($room);
+        $judgeIds = $this->roomJudgeIds($room);
+        $max = $judgeIds->count() * $this->factorCount($room);
 
         $counts = Score::where('version_id', $room->version_id)
             ->whereIn('candidate_id', $candidateIds)
+            ->whereIn('judge_id', $judgeIds)
             ->select('candidate_id', DB::raw('count(*) as cnt'))
             ->groupBy('candidate_id')
             ->pluck('cnt', 'candidate_id');
@@ -167,6 +184,7 @@ final class AdjudicationService
 
         $totalsByCandidate = Score::where('version_id', $room->version_id)
             ->whereIn('candidate_id', $candidateIds)
+            ->whereIn('judge_id', $this->roomJudgeIds($room))
             ->select('candidate_id', 'judge_id', DB::raw('sum(score) as total'))
             ->groupBy('candidate_id', 'judge_id')
             ->get()
@@ -185,6 +203,83 @@ final class AdjudicationService
 
             return [$candidateId => ($totals->max() - $totals->min()) <= $tolerance];
         })->all();
+    }
+
+    /**
+     * Weighted grand total across every judge who has scored so far,
+     * honoring each factor's multiplier — the same weighting the
+     * Adjudicate view's client-side Alpine preview already applies to a
+     * single judge's in-progress selections, now available server-side
+     * across all judges. Computed live via a single grouped aggregate
+     * query, the same pattern as candidateStatuses()/candidateTolerances()
+     * — not a stored running counter, since Score::updateOrCreate() makes
+     * every recomputation cheap and correct even after a judge revises a
+     * prior save. This is the number Tab Room progress views read while
+     * adjudication is still open; AuditionResult freezes it once, at
+     * Version close.
+     *
+     * @param  Collection<int, int>  $candidateIds
+     * @return array<int, int>
+     */
+    public function candidateTotals(VersionRoom $room, Collection $candidateIds): array
+    {
+        if ($candidateIds->isEmpty()) {
+            return [];
+        }
+
+        $multipliers = $this->roomRubric($room)
+            ->flatMap(fn (ScoreCategory $category): Collection => $category->scoreFactors)
+            ->pluck('multiplier', 'id');
+
+        $factorSumsByCandidate = Score::where('version_id', $room->version_id)
+            ->whereIn('candidate_id', $candidateIds)
+            ->whereIn('judge_id', $this->roomJudgeIds($room))
+            ->select('candidate_id', 'score_factor_id', DB::raw('sum(score) as factor_sum'))
+            ->groupBy('candidate_id', 'score_factor_id')
+            ->get()
+            ->groupBy('candidate_id');
+
+        return $candidateIds->mapWithKeys(function (int $candidateId) use ($factorSumsByCandidate, $multipliers): array {
+            $total = $factorSumsByCandidate->get($candidateId, collect())
+                ->sum(fn ($row): int => (int) $row->factor_sum * (int) ($multipliers[$row->score_factor_id] ?? 1));
+
+            return [$candidateId => (int) $total];
+        })->all();
+    }
+
+    /**
+     * Room-level rollup of candidateStatuses() — status-bucket counts
+     * across every Candidate assigned to this Room, one level up from the
+     * per-candidate roster the Adjudicate page shows. Feeds Tab Room's
+     * per-room progress view.
+     *
+     * @return array{completed: int, partial: int, none: int, error: int}
+     */
+    public function roomProgress(VersionRoom $room): array
+    {
+        $candidateIds = $this->candidatesForRoom($room)->pluck('id');
+        $statuses = $this->candidateStatuses($room, $candidateIds);
+
+        $counts = ['completed' => 0, 'partial' => 0, 'none' => 0, 'error' => 0];
+
+        foreach ($statuses as $status) {
+            $counts[$status]++;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Per-room progress across every Room configured for a Version — Tab
+     * Room's version-wide rollup, one level up from roomProgress().
+     *
+     * @return Collection<int, array{room: VersionRoom, completed: int, partial: int, none: int, error: int}>
+     */
+    public function versionProgress(Version $version): Collection
+    {
+        return VersionRoom::where('version_id', $version->id)
+            ->get()
+            ->map(fn (VersionRoom $room): array => ['room' => $room, ...$this->roomProgress($room)]);
     }
 
     /**
@@ -229,12 +324,17 @@ final class AdjudicationService
     }
 
     /**
+     * Scoped to this Room's own judges — a Candidate can be adjudicated in
+     * more than one Room (see roomJudgeIds()), so this must never fall back
+     * to just version_id + candidate_id.
+     *
      * @return Collection<int|string, EloquentCollection<int, Score>>
      */
-    public function scoresForCandidate(Version $version, Candidate $candidate): Collection
+    public function scoresForCandidate(VersionRoom $room, Candidate $candidate): Collection
     {
-        return Score::where('version_id', $version->id)
+        return Score::where('version_id', $room->version_id)
             ->where('candidate_id', $candidate->id)
+            ->whereIn('judge_id', $this->roomJudgeIds($room))
             ->get()
             ->groupBy('judge_id');
     }
