@@ -6,6 +6,7 @@ use App\Models\AuditionResult;
 use App\Models\Candidate;
 use App\Models\User;
 use App\Models\Version;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 use function Pest\Laravel\actingAs;
@@ -60,7 +61,7 @@ test('a candidate can have at most one audition result', function () {
         'voice_part_order_by' => 1,
         'score_count' => 18,
         'total' => 90,
-    ]))->toThrow(\Illuminate\Database\QueryException::class);
+    ]))->toThrow(QueryException::class);
 });
 
 test('deleting a candidate cascades to delete its audition result', function () {

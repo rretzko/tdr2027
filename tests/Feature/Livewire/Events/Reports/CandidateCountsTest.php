@@ -207,8 +207,13 @@ test('CSV export includes Email and Phone columns and abbr-based voice-part head
     expect($content)->toContain($teacher->user->email);
     expect($content)->toContain('Phone');
     expect($content)->toContain('(555) 123-4567');
-    expect($headerLine)->toContain($voicePart->abbr);
-    expect($headerLine)->not->toContain($voicePart->name);
+    // Asserted as an exact header line, not a substring search for
+    // $voicePart->name — that was flaky, since VoicePartFactory's name is a
+    // random fake()->word() that can itself be (or be a substring of) one of
+    // the fixed column labels below (e.g. "a" inside "School"/"Teacher"),
+    // failing the "not contain the name" check for reasons having nothing to
+    // do with whether the header actually used the abbreviation.
+    expect($headerLine)->toBe("School,Teacher,Email,Phone,{$voicePart->abbr},Total");
 });
 
 test('export aborts with 403 for a user with no relevant role', function () {
