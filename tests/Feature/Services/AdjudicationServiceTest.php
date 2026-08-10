@@ -9,6 +9,7 @@ use App\Models\RoomJudge;
 use App\Models\Score;
 use App\Models\ScoreCategory;
 use App\Models\ScoreFactor;
+use App\Models\Student;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionRoom;
@@ -173,6 +174,39 @@ test('candidateTolerances flags a candidate whose judge totals exceed the room t
     $result = $service->candidateTolerances($room, collect([$candidate])->pluck('id'));
 
     expect($result[$candidate->id])->toBeFalse();
+});
+
+test('roomHasOutOfToleranceCandidate is true only when a candidate in that room breaks its tolerance', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+    $voicePart = VoicePart::factory()->create();
+
+    $category = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Scales', 'order_by' => 1]);
+    $factor = makeScoreFactor($version, $category);
+
+    $inToleranceRoom = makeAdjudicationRoom($version, tolerance: 2);
+    $inToleranceRoom->voiceParts()->attach($voicePart->id);
+    $inToleranceRoom->scoreCategories()->attach($category->id);
+    $judgeA1 = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $inToleranceRoom->id, 'judge_type' => JudgeType::HeadJudge]);
+    $judgeA2 = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $inToleranceRoom->id, 'judge_type' => JudgeType::Judge2]);
+    $inToleranceCandidate = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+    $service->saveScores($judgeA1, $inToleranceCandidate, $version, [$factor->id => 4]);
+    $service->saveScores($judgeA2, $inToleranceCandidate, $version, [$factor->id => 5]);
+
+    $outOfToleranceRoom = makeAdjudicationRoom($version, tolerance: 2);
+    $outOfToleranceRoom->voiceParts()->attach($voicePart->id);
+    $outOfToleranceRoom->scoreCategories()->attach($category->id);
+    $judgeB1 = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $outOfToleranceRoom->id, 'judge_type' => JudgeType::HeadJudge]);
+    $judgeB2 = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $outOfToleranceRoom->id, 'judge_type' => JudgeType::Judge2]);
+    $outOfToleranceCandidate = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+    $service->saveScores($judgeB1, $outOfToleranceCandidate, $version, [$factor->id => 5]);
+    $service->saveScores($judgeB2, $outOfToleranceCandidate, $version, [$factor->id => 1]);
+
+    $emptyRoom = makeAdjudicationRoom($version, tolerance: 2);
+
+    expect($service->roomHasOutOfToleranceCandidate($inToleranceRoom))->toBeFalse();
+    expect($service->roomHasOutOfToleranceCandidate($outOfToleranceRoom))->toBeTrue();
+    expect($service->roomHasOutOfToleranceCandidate($emptyRoom))->toBeFalse();
 });
 
 test('candidateTolerances, candidateStatuses, candidateTotals, and scoresForCandidate ignore another room\'s judges scoring the same candidate', function () {
@@ -437,4 +471,199 @@ test('recordingsForCandidate returns only approved recordings matching the room 
     $recordings = $service->recordingsForCandidate($room, $candidate);
 
     expect($recordings->pluck('id')->all())->toBe([$scales->id, $solo->id]);
+});
+
+test('saveScores stamps overridden_by_user_id and overridden_at only when a Tab Room override is passed', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+    $room = makeAdjudicationRoom($version);
+    $voicePart = VoicePart::factory()->create();
+    $room->voiceParts()->attach($voicePart->id);
+
+    $category = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Scales', 'order_by' => 1]);
+    $factor = makeScoreFactor($version, $category);
+    $room->scoreCategories()->attach($category->id);
+
+    $judge = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $room->id, 'judge_type' => JudgeType::HeadJudge]);
+    $candidate = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+
+    $service->saveScores($judge, $candidate, $version, [$factor->id => 3]);
+    $row = Score::where('judge_id', $judge->id)->where('candidate_id', $candidate->id)->first();
+    expect($row->overridden_by_user_id)->toBeNull();
+    expect($row->overridden_at)->toBeNull();
+
+    $tabRoomManager = User::factory()->create();
+    $service->saveScores($judge, $candidate, $version, [$factor->id => 5], overriddenByUserId: $tabRoomManager->id);
+    $row->refresh();
+    expect($row->overridden_by_user_id)->toBe($tabRoomManager->id);
+    expect($row->overridden_at)->not->toBeNull();
+    expect($row->score)->toBe(5);
+});
+
+test('findCandidate matches by exact candidates.id, scoped to Registered status in this Version', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+    $registered = Candidate::factory()->registered()->create(['version_id' => $version->id]);
+    $pending = Candidate::factory()->create(['version_id' => $version->id]); // not Registered
+
+    $found = $service->findCandidate($version, (string) $registered->id, null);
+    expect($found['candidate']->id)->toBe($registered->id);
+    expect($found['matches'])->toBeEmpty();
+
+    $notFound = $service->findCandidate($version, (string) $pending->id, null);
+    expect($notFound['candidate'])->toBeNull();
+    expect($notFound['matches'])->toBeEmpty();
+});
+
+test('findCandidate matches a single last-name hit directly, and returns a pick-list for multiple hits', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+
+    $soloUser = User::factory()->create(['last_name' => 'Danner']);
+    $soloStudent = Student::factory()->create(['user_id' => $soloUser->id]);
+    $solo = Candidate::factory()->registered()->create(['version_id' => $version->id, 'student_id' => $soloStudent->id]);
+
+    $dupUserA = User::factory()->create(['last_name' => 'Smith']);
+    $dupStudentA = Student::factory()->create(['user_id' => $dupUserA->id]);
+    $dupA = Candidate::factory()->registered()->create(['version_id' => $version->id, 'student_id' => $dupStudentA->id]);
+
+    $dupUserB = User::factory()->create(['last_name' => 'Smith']);
+    $dupStudentB = Student::factory()->create(['user_id' => $dupUserB->id]);
+    $dupB = Candidate::factory()->registered()->create(['version_id' => $version->id, 'student_id' => $dupStudentB->id]);
+
+    $single = $service->findCandidate($version, null, 'Danner');
+    expect($single['candidate']->id)->toBe($solo->id);
+
+    $multiple = $service->findCandidate($version, null, 'Smith');
+    expect($multiple['candidate'])->toBeNull();
+    expect($multiple['matches']->pluck('id')->all())->toEqualCanonicalizing([$dupA->id, $dupB->id]);
+});
+
+test('roomsForCandidate returns every Room whose voice parts include the candidate\'s, and none that don\'t', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+    $voicePart = VoicePart::factory()->create();
+    $otherVoicePart = VoicePart::factory()->create();
+
+    $scalesRoom = makeAdjudicationRoom($version);
+    $scalesRoom->voiceParts()->attach($voicePart->id);
+
+    $soloRoom = makeAdjudicationRoom($version);
+    $soloRoom->voiceParts()->attach($voicePart->id);
+
+    $unrelatedRoom = makeAdjudicationRoom($version);
+    $unrelatedRoom->voiceParts()->attach($otherVoicePart->id);
+
+    $candidate = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+
+    $rooms = $service->roomsForCandidate($candidate)->pluck('id')->all();
+
+    expect($rooms)->toEqualCanonicalizing([$scalesRoom->id, $soloRoom->id]);
+});
+
+test('changeVoicePart removes every Score for the candidate across every Room, and only non-relevant Recordings', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+
+    $oldVoicePart = VoicePart::factory()->create();
+    $newVoicePart = VoicePart::factory()->create();
+
+    $oldRoom = makeAdjudicationRoom($version);
+    $oldRoom->voiceParts()->attach($oldVoicePart->id);
+    $oldCategory = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Scales', 'order_by' => 1]);
+    $oldFactor = makeScoreFactor($version, $oldCategory, ['description' => 'Old', 'abbreviation' => 'OLD']);
+    $oldRoom->scoreCategories()->attach($oldCategory->id);
+
+    $newRoom = makeAdjudicationRoom($version);
+    $newRoom->voiceParts()->attach($newVoicePart->id);
+    $newCategory = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Solo', 'order_by' => 2]);
+    $newRoom->scoreCategories()->attach($newCategory->id);
+
+    $judge = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $oldRoom->id, 'judge_type' => JudgeType::HeadJudge]);
+    $candidate = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $oldVoicePart->id]);
+
+    $service->saveScores($judge, $candidate, $version, [$oldFactor->id => 4]);
+
+    $approver = User::factory()->create();
+    $relevantRecording = Recording::create([
+        'version_id' => $version->id,
+        'candidate_id' => $candidate->id,
+        'file_type' => 'Solo', // matches the new voice part's Room rubric — kept
+        'uploaded_by' => $approver->id,
+        'approved_at' => now(),
+        'approved_by' => $approver->id,
+        'url' => 'recordings/solo.mp3',
+    ]);
+    $nonRelevantRecording = Recording::create([
+        'version_id' => $version->id,
+        'candidate_id' => $candidate->id,
+        'file_type' => 'Scales', // only matches the OLD voice part's Room — removed
+        'uploaded_by' => $approver->id,
+        'approved_at' => now(),
+        'approved_by' => $approver->id,
+        'url' => 'recordings/scales.mp3',
+    ]);
+
+    $service->changeVoicePart($candidate, $newVoicePart);
+
+    expect(Score::where('candidate_id', $candidate->id)->count())->toBe(0);
+    expect(Recording::find($relevantRecording->id))->not->toBeNull();
+    expect(Recording::find($nonRelevantRecording->id))->toBeNull();
+    expect($candidate->fresh()->voice_part_id)->toBe($newVoicePart->id);
+});
+
+test('judgeScoreSummaryForCandidate reports entered count, factor count, and total per judge', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+    $room = makeAdjudicationRoom($version);
+    $voicePart = VoicePart::factory()->create();
+    $room->voiceParts()->attach($voicePart->id);
+
+    $category = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Scales', 'order_by' => 1]);
+    $factorA = makeScoreFactor($version, $category, ['description' => 'A', 'abbreviation' => 'A']);
+    $factorB = makeScoreFactor($version, $category, ['description' => 'B', 'abbreviation' => 'B', 'order_by' => 2]);
+    $room->scoreCategories()->attach($category->id);
+
+    $scoredJudge = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $room->id, 'judge_type' => JudgeType::HeadJudge]);
+    $unscoredJudge = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $room->id, 'judge_type' => JudgeType::Judge2]);
+    $candidate = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+
+    $service->saveScores($scoredJudge, $candidate, $version, [$factorA->id => 4, $factorB->id => 3]);
+
+    $summary = $service->judgeScoreSummaryForCandidate($room, $candidate)->keyBy(fn ($row) => $row['judge']->id);
+
+    expect($summary[$scoredJudge->id]['enteredCount'])->toBe(2);
+    expect($summary[$scoredJudge->id]['factorCount'])->toBe(2);
+    expect($summary[$scoredJudge->id]['total'])->toBe(7);
+    expect($summary[$unscoredJudge->id]['enteredCount'])->toBe(0);
+    expect($summary[$unscoredJudge->id]['total'])->toBe(0);
+});
+
+test('candidateJudgeBreakdown matches judgeScoreSummaryForCandidate for the same room/candidate, aggregated across many candidates', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+    $room = makeAdjudicationRoom($version);
+    $voicePart = VoicePart::factory()->create();
+    $room->voiceParts()->attach($voicePart->id);
+
+    $category = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Scales', 'order_by' => 1]);
+    $factor = makeScoreFactor($version, $category);
+    $room->scoreCategories()->attach($category->id);
+
+    $judge = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $room->id, 'judge_type' => JudgeType::HeadJudge]);
+
+    $scored = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+    $unscored = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+
+    $service->saveScores($judge, $scored, $version, [$factor->id => 5]);
+
+    $breakdown = $service->candidateJudgeBreakdown($room, collect([$scored, $unscored])->pluck('id'));
+
+    $scoredRow = $breakdown[$scored->id]->firstWhere('judge.id', $judge->id);
+    expect($scoredRow['enteredCount'])->toBe(1);
+    expect($scoredRow['total'])->toBe(5);
+
+    $unscoredRow = $breakdown[$unscored->id]->firstWhere('judge.id', $judge->id);
+    expect($unscoredRow['enteredCount'])->toBe(0);
+    expect($unscoredRow['total'])->toBe(0);
 });

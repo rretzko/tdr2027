@@ -12,8 +12,10 @@ use App\Models\RoomJudge;
 use App\Models\Score;
 use App\Models\ScoreCategory;
 use App\Models\ScoreFactor;
+use App\Models\Student;
 use App\Models\Version;
 use App\Models\VersionRoom;
+use App\Models\VoicePart;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -206,6 +208,19 @@ final class AdjudicationService
     }
 
     /**
+     * Whether any Candidate assigned to this Room is currently out of
+     * tolerance — a coarser, Room-level boolean over candidateTolerances()'s
+     * per-candidate map, for a Room-level indicator (e.g. Tab Room's Rooms
+     * selector asterisk).
+     */
+    public function roomHasOutOfToleranceCandidate(VersionRoom $room): bool
+    {
+        $candidateIds = $this->candidatesForRoom($room)->pluck('id');
+
+        return in_array(false, $this->candidateTolerances($room, $candidateIds), true);
+    }
+
+    /**
      * Weighted grand total across every judge who has scored so far,
      * honoring each factor's multiplier — the same weighting the
      * Adjudicate view's client-side Alpine preview already applies to a
@@ -356,7 +371,7 @@ final class AdjudicationService
     /**
      * @param  array<int, int>  $scoresByFactorId
      */
-    public function saveScores(RoomJudge $judge, Candidate $candidate, Version $version, array $scoresByFactorId): void
+    public function saveScores(RoomJudge $judge, Candidate $candidate, Version $version, array $scoresByFactorId, ?int $overriddenByUserId = null): void
     {
         $room = $judge->room;
         $judgeOrderBy = $this->judgeTypeRank($judge->getRawOriginal('judge_type')) + 1;
@@ -384,10 +399,176 @@ final class AdjudicationService
                         'voice_part_id' => $candidate->voice_part_id,
                         'voice_part_order_by' => $candidate->voicePart->sort_order,
                         'score' => $scoresByFactorId[$factor->id],
+                        'overridden_by_user_id' => $overriddenByUserId,
+                        'overridden_at' => $overriddenByUserId !== null ? now() : null,
                     ],
                 );
             }
         }
+    }
+
+    /**
+     * Candidate lookup for the Tab Room Add/Edit Scores search box — by
+     * exact candidates.id, or by student last name. Only ever matches
+     * status=Registered candidates in this Version, per Tab Room Module.docx.
+     *
+     * @return array{candidate: ?Candidate, matches: Collection<int, Candidate>}
+     */
+    public function findCandidate(Version $version, ?string $candidateId, ?string $lastName): array
+    {
+        if ($candidateId !== null && $candidateId !== '') {
+            $candidate = Candidate::where('version_id', $version->id)
+                ->where('id', $candidateId)
+                ->where('status', CandidateStatus::Registered)
+                ->first();
+
+            return ['candidate' => $candidate, 'matches' => collect()];
+        }
+
+        if ($lastName === null || $lastName === '') {
+            return ['candidate' => null, 'matches' => collect()];
+        }
+
+        $studentIds = Student::whereHas('user', fn ($query) => $query->where('last_name', 'like', "{$lastName}%"))
+            ->pluck('id');
+
+        $matches = Candidate::where('version_id', $version->id)
+            ->whereIn('student_id', $studentIds)
+            ->where('status', CandidateStatus::Registered)
+            ->with(['student.user', 'voicePart'])
+            ->get();
+
+        if ($matches->count() === 1) {
+            return ['candidate' => $matches->first(), 'matches' => collect()];
+        }
+
+        return ['candidate' => null, 'matches' => $matches];
+    }
+
+    /**
+     * Every Room a Candidate is adjudicated in — a Candidate can span more
+     * than one Room in the same Version (e.g. separate Scales/Solo/Quintet
+     * Rooms), same membership rule as candidatesForRoom() applied in reverse.
+     *
+     * @return Collection<int, VersionRoom>
+     */
+    public function roomsForCandidate(Candidate $candidate): Collection
+    {
+        return VersionRoom::where('version_id', $candidate->version_id)
+            ->whereHas('voiceParts', fn ($query) => $query->where('voice_parts.id', $candidate->voice_part_id))
+            ->get();
+    }
+
+    /**
+     * The Tab Room Manager's destructive voice-part change (Tab Room
+     * Module.docx): "Changing voice parts after auditions have started will
+     * remove ALL previously entered scores and any non-relevant recordings
+     * for this candidate." Removes every Score for this Candidate across
+     * every Room (not just the Room currently being viewed), then removes
+     * any Recording whose file_type no longer matches a score category
+     * reachable from the *new* voice part's Rooms — the inverse of the
+     * matching rule in recordingsForCandidate().
+     */
+    public function changeVoicePart(Candidate $candidate, VoicePart $newVoicePart): void
+    {
+        DB::transaction(function () use ($candidate, $newVoicePart): void {
+            Score::where('version_id', $candidate->version_id)
+                ->where('candidate_id', $candidate->id)
+                ->delete();
+
+            $newRooms = VersionRoom::where('version_id', $candidate->version_id)
+                ->whereHas('voiceParts', fn ($query) => $query->where('voice_parts.id', $newVoicePart->id))
+                ->get();
+
+            $relevantCategoryNames = $newRooms
+                ->flatMap(fn (VersionRoom $room): Collection => $this->roomRubric($room))
+                ->map(fn (ScoreCategory $category): string => strtolower(trim($category->description)))
+                ->unique();
+
+            Recording::where('version_id', $candidate->version_id)
+                ->where('candidate_id', $candidate->id)
+                ->get()
+                ->each(function (Recording $recording) use ($relevantCategoryNames): void {
+                    if (! $relevantCategoryNames->contains(strtolower(trim($recording->file_type)))) {
+                        $recording->delete();
+                    }
+                });
+
+            $candidate->update(['voice_part_id' => $newVoicePart->id]);
+        });
+    }
+
+    /**
+     * Per-judge score summary for a single Candidate in a Room — factors
+     * entered vs. the Room's full factor count, and that judge's own total.
+     * Feeds Add/Edit Scores' Judge Summary Table, where only one Candidate
+     * is ever on screen at a time. For a whole Room's worth of Candidates
+     * (Adjudication Tracking's tooltip), use candidateJudgeBreakdown()
+     * instead — this one query-per-candidate shape would be an N+1 there.
+     *
+     * @return Collection<int, array{judge: RoomJudge, enteredCount: int, factorCount: int, total: int}>
+     */
+    public function judgeScoreSummaryForCandidate(VersionRoom $room, Candidate $candidate): Collection
+    {
+        $factorCount = $this->factorCount($room);
+        $scoresByJudge = $this->scoresForCandidate($room, $candidate);
+
+        return $this->roomJudgesOrdered($room)->map(function (RoomJudge $judge) use ($scoresByJudge, $factorCount): array {
+            $judgeScores = $scoresByJudge->get($judge->id, collect());
+
+            return [
+                'judge' => $judge,
+                'enteredCount' => $judgeScores->count(),
+                'factorCount' => $factorCount,
+                'total' => (int) $judgeScores->sum('score'),
+            ];
+        });
+    }
+
+    /**
+     * The same per-judge breakdown as judgeScoreSummaryForCandidate(), for
+     * every Candidate in $candidateIds at once — one aggregate query, not a
+     * per-candidate loop (same convention as candidateStatuses()/
+     * candidateTolerances()). Feeds Adjudication Tracking's per-candidate
+     * hover tooltip (candidate name, teacher @ school, and each judge's
+     * score count possible/entered + total, per Tab Room Module.docx).
+     *
+     * @param  Collection<int, int>  $candidateIds
+     * @return array<int, Collection<int, array{judge: RoomJudge, enteredCount: int, factorCount: int, total: int}>>
+     */
+    public function candidateJudgeBreakdown(VersionRoom $room, Collection $candidateIds): array
+    {
+        if ($candidateIds->isEmpty()) {
+            return [];
+        }
+
+        $judges = $this->roomJudgesOrdered($room);
+        $factorCount = $this->factorCount($room);
+
+        $rowsByCandidate = Score::where('version_id', $room->version_id)
+            ->whereIn('candidate_id', $candidateIds)
+            ->whereIn('judge_id', $judges->pluck('id'))
+            ->select('candidate_id', 'judge_id', DB::raw('count(*) as cnt'), DB::raw('sum(score) as total'))
+            ->groupBy('candidate_id', 'judge_id')
+            ->get()
+            ->groupBy('candidate_id');
+
+        return $candidateIds->mapWithKeys(function (int $candidateId) use ($rowsByCandidate, $judges, $factorCount): array {
+            $byJudge = $rowsByCandidate->get($candidateId, collect())->keyBy('judge_id');
+
+            $breakdown = $judges->map(function (RoomJudge $judge) use ($byJudge, $factorCount): array {
+                $row = $byJudge->get($judge->id);
+
+                return [
+                    'judge' => $judge,
+                    'enteredCount' => $row !== null ? (int) $row->cnt : 0,
+                    'factorCount' => $factorCount,
+                    'total' => $row !== null ? (int) $row->total : 0,
+                ];
+            });
+
+            return [$candidateId => $breakdown];
+        })->all();
     }
 
     private function judgeTypeRank(string $judgeType): int

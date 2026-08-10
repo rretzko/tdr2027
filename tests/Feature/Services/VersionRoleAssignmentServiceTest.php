@@ -244,6 +244,41 @@ test('canManageReports is false for an unrelated version-scoped role (e.g. Tab R
     expect($service->canManageReports($user, $version))->toBeFalse();
 });
 
+test('canManageTabRoom is true for Tab Room Manager held specifically on that Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Tab Room Manager');
+
+    expect($service->canManageTabRoom($user, $version))->toBeTrue();
+});
+
+test('canManageTabRoom is true for Founder and via the Event Manager sibling-version fallback', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $event = Event::factory()->create();
+    $versionA = Version::factory()->create(['event_id' => $event->id]);
+    $versionB = Version::factory()->create(['event_id' => $event->id]);
+
+    expect($service->canManageTabRoom($founder, $versionA))->toBeTrue();
+
+    $eventManager = User::factory()->create();
+    grantVersionRole($eventManager, $versionA, 'Event Manager');
+
+    expect($service->canManageTabRoom($eventManager, $versionB))->toBeTrue();
+});
+
+test('canManageTabRoom is false for an unrelated version-scoped role (e.g. Registration Manager)', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($user, $version, 'Registration Manager');
+
+    expect($service->canManageTabRoom($user, $version))->toBeFalse();
+});
+
 test('reportCountyIds is null (unrestricted) for Founder and for an Event-wide Event Manager', function () {
     $service = app(VersionRoleAssignmentService::class);
     $founder = makeFounder();

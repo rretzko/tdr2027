@@ -23,6 +23,7 @@ return [
         'events.index' => 'Events',
         'settings.profile' => 'Profile Settings',
         'settings.password' => 'Password Settings',
+        'events.versions.tab-room.tracking' => 'Adjudication Tracking',
     ],
 
 ];

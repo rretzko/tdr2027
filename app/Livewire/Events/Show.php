@@ -118,7 +118,10 @@ class Show extends Component
         }
 
         Flux::toast("{$version->name} has been created.");
-        $this->dispatch('close-modal', name: 'add-version');
+        // Flux's <flux:modal> Alpine component listens for a document-level
+        // "modal-close" event carrying {name}, not "close-modal" — see
+        // handleClose() in vendor/livewire/flux-pro/dist/flux.js.
+        $this->dispatch('modal-close', name: 'add-version');
     }
 
     private function latestVersion(): ?Version
@@ -175,7 +178,10 @@ class Show extends Component
             Flux::toast("{$ensemble->name} has been updated.");
         }
 
-        $this->dispatch('close-modal', name: 'edit-ensemble');
+        // Flux's <flux:modal> Alpine component listens for a document-level
+        // "modal-close" event carrying {name}, not "close-modal" — see
+        // handleClose() in vendor/livewire/flux-pro/dist/flux.js.
+        $this->dispatch('modal-close', name: 'edit-ensemble');
         $this->editingEnsembleId = null;
     }
 
@@ -240,6 +246,12 @@ class Show extends Component
             // since canManageReports() is its own named method.
             'versionReportsAccess' => $versions->mapWithKeys(
                 fn (Version $version): array => [$version->id => $service->canManageReports(Auth::user(), $version)],
+            ),
+            // Tab Room Module: Event Manager, or "Tab Room Manager" held
+            // specifically on this Version — its own gate, see
+            // VersionRoleAssignmentService::canManageTabRoom().
+            'versionTabRoomAccess' => $versions->mapWithKeys(
+                fn (Version $version): array => [$version->id => $service->canManageTabRoom(Auth::user(), $version)],
             ),
             // Web Registration Manager Module (§5.11): Event Manager, or
             // "Web Registration Manager" held specifically on this Version —

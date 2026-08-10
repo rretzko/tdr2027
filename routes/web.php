@@ -34,6 +34,9 @@ use App\Livewire\Events\Reports\ParticipationByCounty;
 use App\Livewire\Events\Reports\PaymentRoster;
 use App\Livewire\Events\Reports\RegistrationCards;
 use App\Livewire\Events\Show as EventsShow;
+use App\Livewire\Events\TabRoom\AddEditScores as TabRoomAddEditScores;
+use App\Livewire\Events\TabRoom\AdjudicationTracking as TabRoomAdjudicationTracking;
+use App\Livewire\Events\TabRoom\Index as TabRoomIndex;
 use App\Livewire\Events\VersionCoRegistrationManagers;
 use App\Livewire\Events\VersionEdit;
 use App\Livewire\Events\VersionInvitations;
@@ -167,6 +170,13 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/rooms/roster.pdf', VersionRoomRosterPdfController::class)->name('events.versions.rooms.roster-pdf');
         Route::get('/events/versions/{version}/scoring-rubric', VersionScoringRubric::class)->name('events.versions.scoring-rubric');
         Route::get('/events/versions/{version}/adjudicate', Adjudicate::class)->name('events.versions.adjudicate');
+
+        // Tab Room Module (Tab Room Module.docx). Phase 1: Add/Edit Scores +
+        // Adjudication Tracking. Ensemble Cut-offs, Reports, and Close
+        // Audition land in later phases.
+        Route::get('/events/versions/{version}/tab-room', TabRoomIndex::class)->name('events.versions.tab-room.index');
+        Route::get('/events/versions/{version}/tab-room/scores', TabRoomAddEditScores::class)->name('events.versions.tab-room.scores');
+        Route::get('/events/versions/{version}/tab-room/tracking', TabRoomAdjudicationTracking::class)->name('events.versions.tab-room.tracking');
 
         // Web Registration Manager Module (event-version-orientation.md §5.11).
         Route::get('/events/versions/{version}/web-registration', WebRegistration::class)->name('events.versions.web-registration');

@@ -192,6 +192,30 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Access to the Tab Room Module (Add/Edit Scores, Adjudication Tracking,
+     * Ensemble Cut-offs, Reports, Close Audition — Tab Room Module.docx):
+     * Founder or Event-wide Event Manager, or "Tab Room Manager" held
+     * specifically on this Version. Deliberately its own gate rather than
+     * folded into canManageAuditionEnvironment() above — a Registration/
+     * Co-Registration Manager has no business overriding judge scores or
+     * closing an audition, and a Tab Room Manager has no business in the
+     * Rooms/Scoring Rubric configuration screens.
+     */
+    public function canManageTabRoom(User $user, Version $version): bool
+    {
+        return $this->canManageEvent($user, $version->event)
+            || $this->versionRoles->withVersion(
+                $version,
+                function () use ($user): bool {
+                    // See canManageAuditionEnvironment() above — same stale-relation-cache hazard.
+                    $user->unsetRelation('roles');
+
+                    return $user->hasRole('Tab Room Manager');
+                },
+            );
+    }
+
+    /**
      * Access to the Web Registration Manager Module (impersonate an invited
      * teacher, transfer students between teachers — §5.11 of
      * event-version-orientation.md): Founder or Event-wide Event Manager, or

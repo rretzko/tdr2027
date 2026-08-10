@@ -100,7 +100,10 @@ class Index extends Component
             Flux::toast("{$label} has been updated.");
         }
 
-        $this->dispatch('close-modal', name: 'edit-event');
+        // Flux's <flux:modal> Alpine component listens for a document-level
+        // "modal-close" event carrying {name}, not "close-modal" — see
+        // handleClose() in vendor/livewire/flux-pro/dist/flux.js.
+        $this->dispatch('modal-close', name: 'edit-event');
     }
 
     public function render(VersionRoleAssignmentService $service): View
