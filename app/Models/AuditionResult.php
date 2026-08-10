@@ -10,14 +10,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * A frozen, one-row-per-candidate snapshot of a candidate's tallied
- * audition score, written once at Version close — not a live running
- * total. While adjudication is open (and through any Tab Room
- * override), the comparable total is computed on demand by
- * AdjudicationService::candidateTotals(), the same live-aggregate
- * pattern already used for candidateStatuses()/candidateTolerances();
- * this table only exists so cut-offs (§7.4), results PDFs, and
- * rehearsal exports (§7.6-§7.7) have a stable number that can't drift
- * if a Score row is touched after the fact. Deliberately excludes the
+ * audition score. Originally scoped as "written once at Version close" —
+ * revised once Ensemble Cut-offs (§7.4-§7.5) was built: it's actually
+ * written per-candidate at cut-off-application time (EnsembleCutoffService::
+ * acceptCandidate()/rejectCandidate()), since that's the moment a
+ * candidate's total needs to be frozen for the assignment decision, not
+ * Version close. Before a candidate is resolved by a cutoff, the
+ * comparable total is computed on demand by AdjudicationService::
+ * candidateTotals() (or EnsembleCutoffService::voicePartTotals() for the
+ * multi-Room sum), the same live-aggregate pattern already used for
+ * candidateStatuses()/candidateTolerances(); this table exists so results
+ * PDFs and rehearsal exports (§7.6-§7.7) have a stable number that can't
+ * drift if a Score row is touched after the fact. Deliberately excludes the
  * legacy `accepted`/`acceptance_abbr` columns — ensemble-assignment
  * outcome belongs on Candidate's own status enum + accepted_ensemble_id
  * (Candidate already has accepted/not_accepted states), not duplicated

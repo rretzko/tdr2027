@@ -25,7 +25,13 @@ use Illuminate\Support\Facades\DB;
  * Candidate<->Room membership is derived live from voice part — no manual
  * assignment table exists or is planned; a Candidate belongs to a Room iff
  * its voice_part_id is among that Room's configured voiceParts() and its
- * status is Registered (see Adjudication Structure.docx).
+ * status is one of CandidateStatus::roomTrackingStates() (see Adjudication
+ * Structure.docx). Widened from "status is Registered" once Ensemble
+ * Cut-offs (EnsembleCutoffService) started transitioning candidates to
+ * accepted/not_accepted/no_show/incomplete directly from Registered — a
+ * Registered-only scope silently dropped a Candidate from their Room's
+ * roster and progress the instant a cutoff was applied for their Voice
+ * Part, which broke Adjudication Tracking's post-cutoff visibility.
  */
 final class AdjudicationService
 {
@@ -38,7 +44,7 @@ final class AdjudicationService
 
         return Candidate::where('version_id', $room->version_id)
             ->whereIn('voice_part_id', $voicePartIds)
-            ->where('status', CandidateStatus::Registered)
+            ->whereIn('status', CandidateStatus::roomTrackingStates())
             ->with('voicePart')
             ->get()
             // Single-callback tuple form, not the multi-criteria array form —
@@ -457,6 +463,23 @@ final class AdjudicationService
         return VersionRoom::where('version_id', $candidate->version_id)
             ->whereHas('voiceParts', fn ($query) => $query->where('voice_parts.id', $candidate->voice_part_id))
             ->get();
+    }
+
+    /**
+     * A single Candidate's grand total across every Room they're
+     * adjudicated in (Scales/Solo/Quintet each a separate Room) — the
+     * number Ensemble Cut-offs ranks and compares against a cutoff score.
+     * For ranking many candidates in the same VoicePart at once, use
+     * EnsembleCutoffService::voicePartTotals() instead — it batches the
+     * same per-Room candidateTotals() calls across every candidate rather
+     * than looping this method, which would be a query-per-candidate N+1.
+     */
+    public function versionCandidateTotal(Candidate $candidate): int
+    {
+        $candidateIds = collect([$candidate])->pluck('id');
+
+        return $this->roomsForCandidate($candidate)
+            ->sum(fn (VersionRoom $room): int => $this->candidateTotals($room, $candidateIds)[$candidate->id] ?? 0);
     }
 
     /**

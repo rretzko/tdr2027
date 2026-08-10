@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\CandidateStatus;
 use App\Enums\JudgeType;
 use App\Models\Candidate;
 use App\Models\Recording;
@@ -73,6 +74,33 @@ test('candidatesForRoom orders candidates by voice part sort_order then candidat
     expect($ordered)->toHaveCount(3);
     expect(array_slice($ordered, 0, 2))->toEqualCanonicalizing($expectedSopranoPair);
     expect($ordered[2])->toBe($alto->id);
+});
+
+test('candidatesForRoom keeps a candidate visible after Ensemble Cut-offs resolves them, but not after they withdraw', function () {
+    // Regression: candidatesForRoom() originally scoped to status=Registered
+    // only. Once EnsembleCutoffService transitions a candidate straight
+    // from Registered to accepted/not_accepted/no_show/incomplete, a
+    // Registered-only scope silently dropped them from Adjudication
+    // Tracking's roster and progress the instant a cutoff was applied for
+    // their Voice Part. roomTrackingStates() must include all four
+    // resolved outcomes, while still excluding genuinely-departed
+    // candidates (withdrew/declined/removed).
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+    $room = makeAdjudicationRoom($version);
+    $voicePart = VoicePart::factory()->create();
+    $room->voiceParts()->attach($voicePart->id);
+
+    $accepted = Candidate::factory()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'status' => CandidateStatus::Accepted]);
+    $notAccepted = Candidate::factory()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'status' => CandidateStatus::NotAccepted]);
+    $noShow = Candidate::factory()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'status' => CandidateStatus::NoShow]);
+    $incomplete = Candidate::factory()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'status' => CandidateStatus::Incomplete]);
+    $withdrew = Candidate::factory()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'status' => CandidateStatus::Withdrew]);
+
+    $ids = $service->candidatesForRoom($room)->pluck('id')->all();
+
+    expect($ids)->toEqualCanonicalizing([$accepted->id, $notAccepted->id, $noShow->id, $incomplete->id]);
+    expect($ids)->not->toContain($withdrew->id);
 });
 
 test('candidateStatuses buckets none, partial, completed, and error correctly', function () {
@@ -294,6 +322,33 @@ test('candidateTotals is zero for a candidate with no scores yet', function () {
     $totals = $service->candidateTotals($room, collect([$candidate])->pluck('id'));
 
     expect($totals[$candidate->id])->toBe(0);
+});
+
+test('versionCandidateTotal sums candidateTotals across every Room the candidate is adjudicated in', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+    $voicePart = VoicePart::factory()->create();
+
+    $scalesRoom = makeAdjudicationRoom($version);
+    $scalesRoom->voiceParts()->attach($voicePart->id);
+    $scalesCategory = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Scales', 'order_by' => 1]);
+    $scalesFactor = makeScoreFactor($version, $scalesCategory, ['description' => 'Scales Tone', 'abbreviation' => 'ST']);
+    $scalesRoom->scoreCategories()->attach($scalesCategory->id);
+    $scalesJudge = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $scalesRoom->id, 'judge_type' => JudgeType::HeadJudge]);
+
+    $soloRoom = makeAdjudicationRoom($version);
+    $soloRoom->voiceParts()->attach($voicePart->id);
+    $soloCategory = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Solo', 'order_by' => 2]);
+    $soloFactor = makeScoreFactor($version, $soloCategory, ['description' => 'Solo Tone', 'abbreviation' => 'SO']);
+    $soloRoom->scoreCategories()->attach($soloCategory->id);
+    $soloJudge = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $soloRoom->id, 'judge_type' => JudgeType::HeadJudge]);
+
+    $candidate = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+
+    $service->saveScores($scalesJudge, $candidate, $version, [$scalesFactor->id => 4]);
+    $service->saveScores($soloJudge, $candidate, $version, [$soloFactor->id => 3]);
+
+    expect($service->versionCandidateTotal($candidate))->toBe(7);
 });
 
 test('roomProgress rolls candidateStatuses up into per-room bucket counts', function () {

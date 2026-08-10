@@ -43,6 +43,23 @@ enum CandidateStatus: string
         return [self::Eligible, self::Pending, self::Registered];
     }
 
+    /**
+     * Every state a Candidate can be in while still meaningfully "in" a
+     * Room's roster for Tab Room tracking purposes: still awaiting a
+     * decision (Registered), or already resolved by Ensemble Cut-offs
+     * (NoShow/Incomplete/Accepted/NotAccepted). Used by
+     * AdjudicationService::candidatesForRoom() so a Room's roster and
+     * progress don't silently lose a Candidate the moment a cutoff is
+     * applied for their Voice Part — see EnsembleCutoffService, which
+     * writes exactly these four resolved states.
+     *
+     * @return list<self>
+     */
+    public static function roomTrackingStates(): array
+    {
+        return [self::Registered, self::NoShow, self::Incomplete, self::Accepted, self::NotAccepted];
+    }
+
     public function isActive(): bool
     {
         return in_array($this, [self::Eligible, self::Pending, self::Registered], true);

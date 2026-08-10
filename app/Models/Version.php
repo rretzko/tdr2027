@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Enums\ApplicationType;
 use App\Enums\AuditionType;
+use App\Enums\CutoffStrategy;
 use App\Enums\EventStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
@@ -28,7 +29,7 @@ use Illuminate\Support\Collection;
     'height', 'home_address', 'judge_count',
     'max_registrants', 'max_upper_voice_registrants',
     'pitch_file_visibility', 'release_confidential_results',
-    'score_order', 'shirt_size', 'teacher_cell', 'upload_type',
+    'score_order', 'cutoff_strategy', 'shirt_size', 'teacher_cell', 'upload_type',
 ])]
 class Version extends Model
 {
@@ -46,6 +47,7 @@ class Version extends Model
             'audition_type' => AuditionType::class,
             'pitch_file_visibility' => PitchFileVisibility::class,
             'score_order' => ScoreOrder::class,
+            'cutoff_strategy' => CutoffStrategy::class,
             'upload_type' => UploadType::class,
             'birthday' => 'boolean',
             'emergency_contact_name' => 'boolean',

@@ -24,6 +24,7 @@ return [
         'settings.profile' => 'Profile Settings',
         'settings.password' => 'Password Settings',
         'events.versions.tab-room.tracking' => 'Adjudication Tracking',
+        'events.versions.tab-room.cutoffs' => 'Ensemble Cut-offs',
     ],
 
 ];

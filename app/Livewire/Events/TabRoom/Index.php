@@ -32,6 +32,8 @@ class Index extends Component
 
     public function render(): View
     {
-        return view('livewire.events.tab-room.index');
+        return view('livewire.events.tab-room.index', [
+            'hasCutoffStrategy' => $this->version->getRawOriginal('cutoff_strategy') !== null,
+        ]);
     }
 }

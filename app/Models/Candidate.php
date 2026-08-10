@@ -18,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'student_id', 'version_id', 'school_id', 'teacher_id',
-    'voice_part_id', 'status', 'program_name', 'emergency_contact_id',
+    'voice_part_id', 'accepted_ensemble_id', 'status', 'program_name', 'emergency_contact_id',
     'application_certified_at', 'application_certified_by_user_id',
     'application_candidate_signed_at', 'application_parent_signed_at',
 ])]
@@ -83,6 +83,17 @@ class Candidate extends Model
     public function voicePart(): BelongsTo
     {
         return $this->belongsTo(VoicePart::class);
+    }
+
+    /**
+     * The Ensemble this candidate was assigned to by Ensemble Cut-offs —
+     * null until accepted (or if not_accepted).
+     *
+     * @return BelongsTo<Ensemble, $this>
+     */
+    public function acceptedEnsemble(): BelongsTo
+    {
+        return $this->belongsTo(Ensemble::class, 'accepted_ensemble_id');
     }
 
     /**

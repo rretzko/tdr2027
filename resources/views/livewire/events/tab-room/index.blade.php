@@ -16,7 +16,7 @@
             $modules = [
                 ['route' => 'events.versions.tab-room.scores', 'name' => 'Add/Edit Scores', 'description' => 'Review and create/update judge scores for a candidate.', 'available' => true],
                 ['route' => 'events.versions.tab-room.tracking', 'name' => 'Adjudication Tracking', 'description' => "Track each Room's judging progress.", 'available' => true],
-                ['route' => null, 'name' => 'Ensemble Cut-offs', 'description' => 'Set cut-off scores and assign candidates to Ensembles.', 'available' => false],
+                ['route' => 'events.versions.tab-room.cutoffs', 'name' => 'Ensemble Cut-offs', 'description' => $hasCutoffStrategy ? 'Set cut-off scores and assign candidates to Ensembles.' : 'Configure a Cut-off Strategy on this Version first (Edit → General).', 'available' => $hasCutoffStrategy],
                 ['route' => null, 'name' => 'Reports', 'description' => 'Audition scores, participation, and seniority reports.', 'available' => false],
                 ['route' => null, 'name' => 'Close Audition', 'description' => 'Close the audition and release results to teachers.', 'available' => false],
             ];

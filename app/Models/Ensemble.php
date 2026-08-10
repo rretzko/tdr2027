@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['event_id', 'name', 'short_name', 'abbreviation'])]
+#[Fillable(['event_id', 'name', 'short_name', 'abbreviation', 'color'])]
 class Ensemble extends Model
 {
     /** @use HasFactory<EnsembleFactory> */

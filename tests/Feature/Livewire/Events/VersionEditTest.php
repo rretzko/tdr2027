@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Enums\ApplicationType;
 use App\Enums\AuditionType;
+use App\Enums\CandidateStatus;
+use App\Enums\CutoffStrategy;
 use App\Enums\EventStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
@@ -12,8 +14,10 @@ use App\Enums\VersionApplicationStatus;
 use App\Enums\VersionDateType;
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Events\VersionEdit;
+use App\Models\Candidate;
 use App\Models\County;
 use App\Models\Ensemble;
+use App\Models\EnsembleHistory;
 use App\Models\Event;
 use App\Models\Teacher;
 use App\Models\User;
@@ -25,10 +29,13 @@ use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
 use App\Models\VersionObligation;
 use App\Models\VersionUploadFile;
+use App\Models\VoicePart;
 use App\Services\VersionRoleAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+
+use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
@@ -70,6 +77,90 @@ test('saveGeneral updates the Version record', function () {
 
     expect($version->fresh()->name)->toBe('New Name');
     expect($version->fresh()->status)->toBe(EventStatus::Active);
+});
+
+test('saveGeneral persists cutoff_strategy, and treats a blank selection as null', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('status', EventStatus::Active->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('audition_type', AuditionType::Remote->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('cutoff_strategy', CutoffStrategy::AlternatingEnsembleAssignment->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    expect($version->fresh()->cutoff_strategy)->toBe(CutoffStrategy::AlternatingEnsembleAssignment);
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('status', EventStatus::Active->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('audition_type', AuditionType::Remote->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('cutoff_strategy', '')
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    expect($version->fresh()->cutoff_strategy)->toBeNull();
+});
+
+test('saveGeneral snapshots Ensemble Cut-offs\' current counts into EnsembleHistory whenever status is saved as Closed', function () {
+    // "Close Version processing" — Tab Room Module.docx's own Close
+    // Audition button is described as closing "the audition and version"
+    // as one action, and today the only place a Version's status is set
+    // is this General Status field, so the History snapshot belongs here,
+    // not behind a separate, missable button on Ensemble Cut-offs.
+    $user = makeVersionEditUser();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active', 'senior_class_of' => 2026]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    $ensemble = Ensemble::factory()->create(['event_id' => $event->id]);
+    $voicePart = VoicePart::factory()->create();
+    actingAs($user); // CandidateObserver logs status history against the acting user.
+    Candidate::factory()->create([
+        'version_id' => $version->id,
+        'voice_part_id' => $voicePart->id,
+        'status' => CandidateStatus::Accepted,
+        'accepted_ensemble_id' => $ensemble->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('status', EventStatus::Active->value) // not yet closed — no snapshot
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('audition_type', AuditionType::Remote->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    expect(EnsembleHistory::where('ensemble_id', $ensemble->id)->where('season_year', 2026)->exists())->toBeFalse();
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('status', EventStatus::Closed->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('audition_type', AuditionType::Remote->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    $row = EnsembleHistory::where('ensemble_id', $ensemble->id)->where('voice_part_id', $voicePart->id)->where('season_year', 2026)->first();
+    expect($row)->not->toBeNull();
+    expect($row->accepted_count)->toBe(1);
 });
 
 test('Audition Slot shows for in_person and hides for remote, toggling live', function () {

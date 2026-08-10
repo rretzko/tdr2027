@@ -6,6 +6,7 @@ namespace App\Livewire\Events;
 
 use App\Enums\ApplicationType;
 use App\Enums\AuditionType;
+use App\Enums\CutoffStrategy;
 use App\Enums\EventStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
@@ -23,6 +24,8 @@ use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
 use App\Models\VersionObligation;
 use App\Models\VersionUploadFile;
+use App\Services\EnsembleCutoffService;
+use App\Services\EnsembleHistoryService;
 use App\Services\VersionRoleAssignmentService;
 use App\Support\CandidateApplicationData;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -70,6 +73,8 @@ class VersionEdit extends Component
     public string $judge_count = '1';
 
     public string $score_order = '';
+
+    public string $cutoff_strategy = '';
 
     public string $pitch_file_visibility = '';
 
@@ -178,6 +183,7 @@ class VersionEdit extends Component
         $this->upload_type = $version->getRawOriginal('upload_type');
         $this->judge_count = (string) $version->judge_count;
         $this->score_order = $version->getRawOriginal('score_order');
+        $this->cutoff_strategy = $version->getRawOriginal('cutoff_strategy') ?? '';
         $this->pitch_file_visibility = $version->getRawOriginal('pitch_file_visibility');
         $this->max_registrants = $version->max_registrants !== null ? (string) $version->max_registrants : '';
         $this->max_upper_voice_registrants = $version->max_upper_voice_registrants !== null ? (string) $version->max_upper_voice_registrants : '';
@@ -249,7 +255,7 @@ class VersionEdit extends Component
         $this->obligation_response_count = $obligation !== null ? $obligation->responses()->count() : 0;
     }
 
-    public function saveGeneral(): void
+    public function saveGeneral(EnsembleHistoryService $history, EnsembleCutoffService $cutoffs): void
     {
         $validated = $this->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -264,6 +270,7 @@ class VersionEdit extends Component
             'upload_type' => ['required', 'string', 'in:'.implode(',', array_column(UploadType::cases(), 'value'))],
             'judge_count' => ['required', 'integer', 'min:1', 'max:20'],
             'score_order' => ['required', 'string', 'in:'.implode(',', array_column(ScoreOrder::cases(), 'value'))],
+            'cutoff_strategy' => ['nullable', 'string', 'in:'.implode(',', array_column(CutoffStrategy::cases(), 'value'))],
             'pitch_file_visibility' => ['required', 'string', 'in:'.implode(',', array_column(PitchFileVisibility::cases(), 'value'))],
             'max_registrants' => ['nullable', 'integer', 'min:0'],
             'max_upper_voice_registrants' => ['nullable', 'integer', 'min:0'],
@@ -280,10 +287,22 @@ class VersionEdit extends Component
             'upload_type' => $validated['upload_type'],
             'judge_count' => (int) $validated['judge_count'],
             'score_order' => $validated['score_order'],
+            'cutoff_strategy' => ($validated['cutoff_strategy'] ?? '') ?: null,
             'pitch_file_visibility' => $validated['pitch_file_visibility'],
             'max_registrants' => ($validated['max_registrants'] ?? '') !== '' && (int) $validated['max_registrants'] !== 0 ? (int) $validated['max_registrants'] : null,
             'max_upper_voice_registrants' => ($validated['max_upper_voice_registrants'] ?? '') !== '' ? (int) $validated['max_upper_voice_registrants'] : null,
         ]);
+
+        // Closing a Version is "Close Version processing" (Tab Room Module.docx's
+        // Close Audition: "close the audition and version" is one action) —
+        // snapshotting Ensemble Cut-offs' current counts into EnsembleHistory
+        // belongs here, not behind a separate, easy-to-miss button. Runs on
+        // every save that results in Closed, not just the first transition
+        // into it, so a reopen-correct-reclose cycle re-snapshots the
+        // corrected totals rather than leaving the stale first pass.
+        if ($validated['status'] === EventStatus::Closed->value) {
+            $history->recordCurrentSeason($this->version, $cutoffs);
+        }
 
         Flux::toast("{$this->version->name} general settings saved.");
     }
@@ -703,6 +722,7 @@ class VersionEdit extends Component
             'applicationTypes' => ApplicationType::cases(),
             'uploadTypes' => UploadType::cases(),
             'scoreOrders' => ScoreOrder::cases(),
+            'cutoffStrategies' => CutoffStrategy::cases(),
             'pitchVisibilities' => PitchFileVisibility::cases(),
             'dateTypes' => VersionDateType::cases(),
             'counties' => County::orderBy('name')->get(),

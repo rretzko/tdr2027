@@ -161,6 +161,18 @@
                     </flux:field>
 
                     <flux:field>
+                        <flux:label>Cut-off Strategy</flux:label>
+                        <flux:select wire:model="cutoff_strategy">
+                            <flux:select.option value="">— none —</flux:select.option>
+                            @foreach ($cutoffStrategies as $cs)
+                                <flux:select.option value="{{ $cs->value }}">{{ $cs->label() }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                        <flux:description>How Ensemble Cut-offs assigns candidates to Ensembles. Required before the Tab Room's Ensemble Cut-offs sub-module can be used.</flux:description>
+                        <flux:error name="cutoff_strategy" />
+                    </flux:field>
+
+                    <flux:field>
                         <flux:label>Pitch File Visibility</flux:label>
                         <flux:select wire:model="pitch_file_visibility">
                             @foreach ($pitchVisibilities as $pv)
