@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'student_id', 'version_id', 'school_id', 'teacher_id',
@@ -118,6 +119,18 @@ class Candidate extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(CandidatePayment::class);
+    }
+
+    /**
+     * The frozen score tally written at cut-off-decision time
+     * (EnsembleCutoffService::acceptCandidate()/rejectCandidate()) — null
+     * until this Candidate has been resolved by Ensemble Cut-offs.
+     *
+     * @return HasOne<AuditionResult, $this>
+     */
+    public function auditionResult(): HasOne
+    {
+        return $this->hasOne(AuditionResult::class);
     }
 
     /**

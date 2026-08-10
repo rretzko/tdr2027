@@ -22,9 +22,13 @@
 
     @if ($candidates->isEmpty())
         <flux:callout variant="info" icon="information-circle">
-            <flux:callout.text>No registered candidates for this event.</flux:callout.text>
+            <flux:callout.text>No audition results for this event yet.</flux:callout.text>
         </flux:callout>
     @else
+        @php
+            $accepted = fn ($candidate) => $candidate->getRawOriginal('status') === 'accepted';
+        @endphp
+
         {{-- Cards below md:, table at md:+ --}}
         <div class="md:hidden space-y-3">
             @foreach ($candidates as $index => $candidate)
@@ -38,15 +42,19 @@
                     <div class="mt-3 grid grid-cols-3 gap-2 text-center">
                         <div>
                             <flux:text size="sm" class="text-zinc-500">Score</flux:text>
-                            <flux:text>—</flux:text>
+                            <flux:text>{{ $candidate->auditionResult?->total ?? '—' }}</flux:text>
                         </div>
                         <div>
-                            <flux:text size="sm" class="text-zinc-500">Accepted</flux:text>
-                            <flux:text>—</flux:text>
+                            <flux:text size="sm" class="text-zinc-500">Result</flux:text>
+                            @if ($accepted($candidate))
+                                <flux:badge size="sm" color="green">Accepted</flux:badge>
+                            @else
+                                <flux:badge size="sm" color="zinc">{{ $candidate->status->label() }}</flux:badge>
+                            @endif
                         </div>
                         <div>
                             <flux:text size="sm" class="text-zinc-500">Ensemble</flux:text>
-                            <flux:text>—</flux:text>
+                            <flux:text>{{ $candidate->acceptedEnsemble?->name ?? '—' }}</flux:text>
                         </div>
                     </div>
                 </flux:card>
@@ -59,7 +67,7 @@
                 <flux:table.column>Name</flux:table.column>
                 <flux:table.column align="center">Voice Part</flux:table.column>
                 <flux:table.column align="center">Score</flux:table.column>
-                <flux:table.column align="center">Accepted</flux:table.column>
+                <flux:table.column align="center">Result</flux:table.column>
                 <flux:table.column align="center">Ensemble</flux:table.column>
             </flux:table.columns>
 
@@ -69,9 +77,15 @@
                         <flux:table.cell class="tabular-nums text-zinc-500">{{ $index + 1 }}</flux:table.cell>
                         <flux:table.cell class="font-medium">{{ $candidate->student->user->sort_name }}</flux:table.cell>
                         <flux:table.cell align="center">{{ $candidate->voicePart?->abbr ?? '—' }}</flux:table.cell>
-                        <flux:table.cell align="center">—</flux:table.cell>
-                        <flux:table.cell align="center">—</flux:table.cell>
-                        <flux:table.cell align="center">—</flux:table.cell>
+                        <flux:table.cell align="center" class="tabular-nums">{{ $candidate->auditionResult?->total ?? '—' }}</flux:table.cell>
+                        <flux:table.cell align="center">
+                            @if ($accepted($candidate))
+                                <flux:badge size="sm" color="green">Accepted</flux:badge>
+                            @else
+                                <flux:badge size="sm" color="zinc">{{ $candidate->status->label() }}</flux:badge>
+                            @endif
+                        </flux:table.cell>
+                        <flux:table.cell align="center">{{ $candidate->acceptedEnsemble?->name ?? '—' }}</flux:table.cell>
                     </flux:table.row>
                 @endforeach
             </flux:table.rows>

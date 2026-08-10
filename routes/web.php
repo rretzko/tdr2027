@@ -36,6 +36,7 @@ use App\Livewire\Events\Reports\RegistrationCards;
 use App\Livewire\Events\Show as EventsShow;
 use App\Livewire\Events\TabRoom\AddEditScores as TabRoomAddEditScores;
 use App\Livewire\Events\TabRoom\AdjudicationTracking as TabRoomAdjudicationTracking;
+use App\Livewire\Events\TabRoom\CloseAudition as TabRoomCloseAudition;
 use App\Livewire\Events\TabRoom\EnsembleCutoffs as TabRoomEnsembleCutoffs;
 use App\Livewire\Events\TabRoom\Index as TabRoomIndex;
 use App\Livewire\Events\VersionCoRegistrationManagers;
@@ -179,6 +180,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/tab-room/scores', TabRoomAddEditScores::class)->name('events.versions.tab-room.scores');
         Route::get('/events/versions/{version}/tab-room/tracking', TabRoomAdjudicationTracking::class)->name('events.versions.tab-room.tracking');
         Route::get('/events/versions/{version}/tab-room/cutoffs', TabRoomEnsembleCutoffs::class)->name('events.versions.tab-room.cutoffs');
+        Route::get('/events/versions/{version}/tab-room/close', TabRoomCloseAudition::class)->name('events.versions.tab-room.close');
 
         // Web Registration Manager Module (event-version-orientation.md §5.11).
         Route::get('/events/versions/{version}/web-registration', WebRegistration::class)->name('events.versions.web-registration');

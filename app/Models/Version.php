@@ -29,7 +29,7 @@ use Illuminate\Support\Collection;
     'height', 'home_address', 'judge_count',
     'max_registrants', 'max_upper_voice_registrants',
     'pitch_file_visibility', 'release_confidential_results',
-    'score_order', 'cutoff_strategy', 'shirt_size', 'teacher_cell', 'upload_type',
+    'score_order', 'cutoff_strategy', 'results_released_at', 'shirt_size', 'teacher_cell', 'upload_type',
 ])]
 class Version extends Model
 {
@@ -48,6 +48,7 @@ class Version extends Model
             'pitch_file_visibility' => PitchFileVisibility::class,
             'score_order' => ScoreOrder::class,
             'cutoff_strategy' => CutoffStrategy::class,
+            'results_released_at' => 'datetime',
             'upload_type' => UploadType::class,
             'birthday' => 'boolean',
             'emergency_contact_name' => 'boolean',
