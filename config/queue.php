@@ -40,7 +40,14 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // 900s, not Laravel's 90s default — must stay comfortably above
+            // every queued job's own $timeout (currently just
+            // GenerateCombinedScoresPdfJob's 600s), or a still-legitimately-
+            // running job's reservation expires and gets double-picked-up by
+            // another worker poll, exceeding max tries before it ever
+            // finishes (confirmed production incident 2026-08-11 at the
+            // 90s default). Raise both together if a slower job is added.
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 900),
             'after_commit' => false,
         ],
 

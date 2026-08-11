@@ -15,6 +15,7 @@ use App\Models\Version;
 use App\Models\VersionRoom;
 use App\Models\VoicePart;
 use App\Services\CutoffStrategies\CutoffStrategyContract;
+use App\Support\Reports\TabRoomReportCache;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -26,6 +27,16 @@ use Illuminate\Support\Facades\DB;
  * strategy needs: ranking, completion classification, and the actual
  * Candidate/AuditionResult writes (see CutoffStrategyContract's docblock for
  * why accept/reject are split from finalize).
+ *
+ * The three public orchestration methods that can change a cutoff decision
+ * (applyCutoff(), applyEnsembleCutoff(), finalizeVoicePart()) each call
+ * TabRoomReportCache::forget() once they're done — the Tab Room Reports
+ * sub-module (TabRoomReportService) caches its output on the assumption
+ * that a report is static until one of these methods runs, so any new write
+ * path here that changes Candidate.status/accepted_ensemble_id needs the
+ * same call, not just acceptCandidate()/rejectCandidate() individually
+ * (those run in a loop inside a transaction; forgetting once at the end
+ * avoids redundant per-candidate invalidation).
  */
 final class EnsembleCutoffService
 {
@@ -267,6 +278,8 @@ final class EnsembleCutoffService
                 $this->rejectCandidate($row['candidate'], $row['total'], $row['scoreCount']);
             }
         }
+
+        TabRoomReportCache::forget($version);
     }
 
     /**
@@ -302,6 +315,8 @@ final class EnsembleCutoffService
                 }
             }
         });
+
+        TabRoomReportCache::forget($version);
     }
 
     /**
@@ -337,6 +352,8 @@ final class EnsembleCutoffService
                 }
             }
         });
+
+        TabRoomReportCache::forget($version);
     }
 
     /**

@@ -216,6 +216,21 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Access to the Tab Room Reports sub-module (Audition Scores, Combined
+     * Audition Scores confidential/public, Ensemble Participation, Student
+     * Seniority — Tab Room Module.docx): the exact same gate as
+     * canManageTabRoom() above. Kept as its own named method — rather than
+     * call sites reusing canManageTabRoom() directly — so the two can
+     * diverge later without a misleading method name, mirroring how
+     * canManageReports() sits next to canManageAuditionEnvironment(); today
+     * they resolve identically.
+     */
+    public function canManageTabRoomReports(User $user, Version $version): bool
+    {
+        return $this->canManageTabRoom($user, $version);
+    }
+
+    /**
      * Access to the Web Registration Manager Module (impersonate an invited
      * teacher, transfer students between teachers — §5.11 of
      * event-version-orientation.md): Founder or Event-wide Event Manager, or

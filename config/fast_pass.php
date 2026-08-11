@@ -26,6 +26,7 @@ return [
         'events.versions.tab-room.tracking' => 'Adjudication Tracking',
         'events.versions.tab-room.cutoffs' => 'Ensemble Cut-offs',
         'events.versions.tab-room.close' => 'Close Audition',
+        'events.versions.tab-room.reports.index' => 'Tab Room Reports',
     ],
 
 ];

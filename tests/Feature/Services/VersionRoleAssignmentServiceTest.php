@@ -279,6 +279,19 @@ test('canManageTabRoom is false for an unrelated version-scoped role (e.g. Regis
     expect($service->canManageTabRoom($user, $version))->toBeFalse();
 });
 
+test('canManageTabRoomReports resolves identically to canManageTabRoom', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $tabRoomManager = User::factory()->create();
+    $registrationManager = User::factory()->create();
+    $version = Version::factory()->create();
+
+    grantVersionRole($tabRoomManager, $version, 'Tab Room Manager');
+    grantVersionRole($registrationManager, $version, 'Registration Manager');
+
+    expect($service->canManageTabRoomReports($tabRoomManager, $version))->toBeTrue();
+    expect($service->canManageTabRoomReports($registrationManager, $version))->toBeFalse();
+});
+
 test('reportCountyIds is null (unrestricted) for Founder and for an Event-wide Event Manager', function () {
     $service = app(VersionRoleAssignmentService::class);
     $founder = makeFounder();

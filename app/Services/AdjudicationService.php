@@ -16,6 +16,7 @@ use App\Models\Student;
 use App\Models\Version;
 use App\Models\VersionRoom;
 use App\Models\VoicePart;
+use App\Support\Reports\TabRoomReportCache;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -379,6 +380,8 @@ final class AdjudicationService
      */
     public function saveScores(RoomJudge $judge, Candidate $candidate, Version $version, array $scoresByFactorId, ?int $overriddenByUserId = null): void
     {
+        TabRoomReportCache::forget($version);
+
         $room = $judge->room;
         $judgeOrderBy = $this->judgeTypeRank($judge->getRawOriginal('judge_type')) + 1;
 

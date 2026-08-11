@@ -68,4 +68,43 @@
     .candidate-name {
         padding-left: 36px;
     }
+
+    /* Readability box around every other Score Category's column span (Tab Room score-matrix reports). */
+    .box-top {
+        border-top: 2px solid #888;
+    }
+
+    .box-bottom {
+        border-bottom: 2px solid #888;
+    }
+
+    .box-left {
+        border-left: 2px solid #888;
+    }
+
+    .box-right {
+        border-right: 2px solid #888;
+    }
+
+    /* Nested, always-on readability box around each judge_type section, lighter than the Score Category box above. */
+    .judge-box-top {
+        border-top: 1px solid #bbb;
+    }
+
+    .judge-box-bottom {
+        border-bottom: 1px solid #bbb;
+    }
+
+    .judge-box-left {
+        border-left: 1px solid #bbb;
+    }
+
+    .judge-box-right {
+        border-right: 1px solid #bbb;
+    }
+
+    /* Alternating tint on every even-numbered Score Category's column span. */
+    .category-shade {
+        background-color: #f2f2f2;
+    }
 </style>

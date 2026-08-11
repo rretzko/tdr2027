@@ -11,6 +11,10 @@ use App\Http\Controllers\Reports\ParticipatingTeachersPdfController;
 use App\Http\Controllers\Reports\ParticipationByCountyExportController;
 use App\Http\Controllers\Reports\PaymentRosterPdfController;
 use App\Http\Controllers\Reports\RegistrationCardsPdfController;
+use App\Http\Controllers\Reports\TabRoom\AuditionScoresPdfController;
+use App\Http\Controllers\Reports\TabRoom\CombinedAuditionScoresExportController;
+use App\Http\Controllers\Reports\TabRoom\EnsembleParticipationExportController;
+use App\Http\Controllers\Reports\TabRoom\StudentSeniorityExportController;
 use App\Http\Controllers\SchoolEmailVerificationController;
 use App\Http\Controllers\StopImpersonatingController;
 use App\Http\Controllers\StudentClaimController;
@@ -39,6 +43,12 @@ use App\Livewire\Events\TabRoom\AdjudicationTracking as TabRoomAdjudicationTrack
 use App\Livewire\Events\TabRoom\CloseAudition as TabRoomCloseAudition;
 use App\Livewire\Events\TabRoom\EnsembleCutoffs as TabRoomEnsembleCutoffs;
 use App\Livewire\Events\TabRoom\Index as TabRoomIndex;
+use App\Livewire\Events\TabRoom\Reports\AuditionScores as TabRoomAuditionScores;
+use App\Livewire\Events\TabRoom\Reports\CombinedAuditionScoresConfidential;
+use App\Livewire\Events\TabRoom\Reports\CombinedAuditionScoresPublic;
+use App\Livewire\Events\TabRoom\Reports\EnsembleParticipation as TabRoomEnsembleParticipation;
+use App\Livewire\Events\TabRoom\Reports\Index as TabRoomReportsIndex;
+use App\Livewire\Events\TabRoom\Reports\StudentSeniority as TabRoomStudentSeniority;
 use App\Livewire\Events\VersionCoRegistrationManagers;
 use App\Livewire\Events\VersionEdit;
 use App\Livewire\Events\VersionInvitations;
@@ -181,6 +191,17 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/tab-room/tracking', TabRoomAdjudicationTracking::class)->name('events.versions.tab-room.tracking');
         Route::get('/events/versions/{version}/tab-room/cutoffs', TabRoomEnsembleCutoffs::class)->name('events.versions.tab-room.cutoffs');
         Route::get('/events/versions/{version}/tab-room/close', TabRoomCloseAudition::class)->name('events.versions.tab-room.close');
+        Route::get('/events/versions/{version}/tab-room/reports', TabRoomReportsIndex::class)->name('events.versions.tab-room.reports.index');
+        Route::get('/events/versions/{version}/tab-room/reports/audition-scores', TabRoomAuditionScores::class)->name('events.versions.tab-room.reports.audition-scores');
+        Route::get('/events/versions/{version}/tab-room/reports/audition-scores/export.pdf', AuditionScoresPdfController::class)->name('events.versions.tab-room.reports.audition-scores.pdf');
+        Route::get('/events/versions/{version}/tab-room/reports/combined-scores/confidential', CombinedAuditionScoresConfidential::class)->name('events.versions.tab-room.reports.combined-scores-confidential');
+        Route::get('/events/versions/{version}/tab-room/reports/combined-scores/confidential/export.{format}', CombinedAuditionScoresExportController::class)->whereIn('format', ['pdf', 'csv'])->name('events.versions.tab-room.reports.combined-scores-confidential.export');
+        Route::get('/events/versions/{version}/tab-room/reports/combined-scores/public', CombinedAuditionScoresPublic::class)->name('events.versions.tab-room.reports.combined-scores-public');
+        Route::get('/events/versions/{version}/tab-room/reports/combined-scores/public/export.{format}', CombinedAuditionScoresExportController::class)->whereIn('format', ['pdf', 'csv'])->name('events.versions.tab-room.reports.combined-scores-public.export');
+        Route::get('/events/versions/{version}/tab-room/reports/ensemble-participation', TabRoomEnsembleParticipation::class)->name('events.versions.tab-room.reports.ensemble-participation');
+        Route::get('/events/versions/{version}/tab-room/reports/ensemble-participation/export.{format}', EnsembleParticipationExportController::class)->whereIn('format', ['pdf', 'csv'])->name('events.versions.tab-room.reports.ensemble-participation.export');
+        Route::get('/events/versions/{version}/tab-room/reports/student-seniority', TabRoomStudentSeniority::class)->name('events.versions.tab-room.reports.student-seniority');
+        Route::get('/events/versions/{version}/tab-room/reports/student-seniority/export.{format}', StudentSeniorityExportController::class)->whereIn('format', ['pdf', 'csv'])->name('events.versions.tab-room.reports.student-seniority.export');
 
         // Web Registration Manager Module (event-version-orientation.md §5.11).
         Route::get('/events/versions/{version}/web-registration', WebRegistration::class)->name('events.versions.web-registration');
