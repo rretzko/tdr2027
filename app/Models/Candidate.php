@@ -122,6 +122,14 @@ class Candidate extends Model
     }
 
     /**
+     * @return HasMany<CandidateUploadFile, $this>
+     */
+    public function uploadFiles(): HasMany
+    {
+        return $this->hasMany(CandidateUploadFile::class);
+    }
+
+    /**
      * The frozen score tally written at cut-off-decision time
      * (EnsembleCutoffService::acceptCandidate()/rejectCandidate()) — null
      * until this Candidate has been resolved by Ensemble Cut-offs.

@@ -64,10 +64,10 @@ final class CandidateApplicationData
             schoolName: $candidate->school->name,
             schoolShortName: $candidate->school->short_name,
             teacherFullName: trim("{$teacherUser->first_name} {$teacherUser->last_name}"),
-            teacherCellPhone: $teacherUser->cell_phone ?? '—',
-            studentCellPhone: $studentUser->cell_phone ?? '—',
-            emergencyContactName: $emergencyContact->name ?? '—',
-            emergencyContactPhone: $emergencyContact->preferred_phone ?? '—',
+            teacherCellPhone: PhoneNormalizer::format($teacherUser->cell_phone) ?? '—',
+            studentCellPhone: PhoneNormalizer::format($studentUser->cell_phone) ?? '—',
+            emergencyContactName: $emergencyContact !== null ? $emergencyContact->name : '—',
+            emergencyContactPhone: PhoneNormalizer::format($emergencyContact?->preferred_phone) ?? '—',
             registrationFee: self::formatFee($version->fees?->registration),
             onSiteRegistrationFee: self::formatFee($version->fees?->on_site_registration),
             participationFee: self::formatFee($version->fees?->participation),
@@ -187,8 +187,11 @@ final class CandidateApplicationData
 
     private static function resolveLogoUrl(?string $key): ?string
     {
+        // New objects in this bucket default to private — a plain ->url()
+        // 403s silently (confirmed diagnosing the same issue on Recordings
+        // and Version Pitch Files playback), so this needs a signed URL too.
         return $key !== null && $key !== ''
-            ? Storage::disk('s3')->url($key)
+            ? Storage::disk('s3')->temporaryUrl($key, now()->addMinutes(30))
             : null;
     }
 

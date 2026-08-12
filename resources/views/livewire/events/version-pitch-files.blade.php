@@ -56,6 +56,13 @@
         {{-- Cards below lg:, table at lg:+ --}}
         <div class="lg:hidden space-y-3">
             @foreach ($pitchFiles as $pitchFile)
+                @php
+                    // New objects in this bucket default to private — a plain
+                    // ->url() 403s silently (confirmed diagnosing the same
+                    // issue on Recordings, registrations/candidate-detail),
+                    // so every playback/read link needs a signed URL.
+                    $pitchFileUrl = \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($pitchFile->url, now()->addMinutes(30));
+                @endphp
                 <flux:card size="sm">
                     <div class="flex items-start justify-between gap-3 mb-2">
                         <div class="min-w-0">
@@ -63,7 +70,7 @@
                             <flux:badge color="zinc" size="sm">{{ $pitchFile->voicePart->name }}</flux:badge>
                         </div>
                         @if (strtolower($pitchFile->name) === 'pdf')
-                            <a href="{{ \Illuminate\Support\Facades\Storage::disk('s3')->url($pitchFile->url) }}" target="_blank" rel="noopener" class="shrink-0 text-sm text-blue-600 hover:underline dark:text-blue-400">
+                            <a href="{{ $pitchFileUrl }}" target="_blank" rel="noopener" class="shrink-0 text-sm text-blue-600 hover:underline dark:text-blue-400">
                                 Read
                             </a>
                         @else
@@ -83,8 +90,10 @@
                     @if (strtolower($pitchFile->name) !== 'pdf')
                         <div class="grid transition-[grid-template-rows] duration-200 ease-out mb-2" style="grid-template-rows: 0fr;">
                             <div class="overflow-hidden min-h-0">
-                                <audio controls preload="none" class="w-full">
-                                    <source src="{{ \Illuminate\Support\Facades\Storage::disk('s3')->url($pitchFile->url) }}">
+                                {{-- preload="metadata" (not "none") so the real duration shows
+                                on load instead of a stuck 0:00 / 0:00 until play is pressed. --}}
+                                <audio controls preload="metadata" class="w-full">
+                                    <source src="{{ $pitchFileUrl }}">
                                 </audio>
                             </div>
                         </div>
@@ -136,6 +145,9 @@
 
                 <flux:table.rows>
                     @foreach ($pitchFiles as $pitchFile)
+                        @php
+                            $pitchFileUrl = \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($pitchFile->url, now()->addMinutes(30));
+                        @endphp
                         <flux:table.row
                             :key="$pitchFile->id"
                             draggable="true"
@@ -155,7 +167,7 @@
                             <flux:table.cell>
                                 <div class="font-medium">{{ $pitchFile->name }}</div>
                                 @if (strtolower($pitchFile->name) === 'pdf')
-                                    <a href="{{ \Illuminate\Support\Facades\Storage::disk('s3')->url($pitchFile->url) }}" target="_blank" rel="noopener" class="text-sm text-blue-600 hover:underline dark:text-blue-400">
+                                    <a href="{{ $pitchFileUrl }}" target="_blank" rel="noopener" class="text-sm text-blue-600 hover:underline dark:text-blue-400">
                                         Read
                                     </a>
                                 @else
@@ -171,8 +183,8 @@
                                     >Listen</button>
                                     <div class="grid transition-[grid-template-rows] duration-200 ease-out" style="grid-template-rows: 0fr;">
                                         <div class="overflow-hidden min-h-0 mt-1">
-                                            <audio controls preload="none" class="max-w-[220px]">
-                                                <source src="{{ \Illuminate\Support\Facades\Storage::disk('s3')->url($pitchFile->url) }}">
+                                            <audio controls preload="metadata" class="max-w-[220px]">
+                                                <source src="{{ $pitchFileUrl }}">
                                             </audio>
                                         </div>
                                     </div>

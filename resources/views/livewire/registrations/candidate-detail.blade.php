@@ -41,11 +41,16 @@
         <flux:heading size="sm" class="mb-3">Registration Checklist</flux:heading>
         <div class="flex flex-wrap gap-2">
             @foreach ($checklistDefs as $def)
-                @php $done = ($def['check'])($candidate); @endphp
+                @php
+                    $done = ($def['check'])($candidate);
+                    $partial = ! $done && isset($def['partial']) && ($def['partial'])($candidate);
+                @endphp
                 <span class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium
-                    {{ $done ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400' }}">
+                    {{ $done ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : ($partial ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400') }}">
                     @if ($done)
                         <flux:icon.check-circle variant="micro" />
+                    @elseif ($partial)
+                        <flux:icon.minus-circle variant="micro" />
                     @else
                         <flux:icon.x-circle variant="micro" />
                     @endif
@@ -157,51 +162,165 @@
             <flux:text size="sm">{{ $candidate->program_name ?: 'Not yet set.' }}</flux:text>
         </flux:card>
 
-        {{-- Candidate Application --}}
-        @if ($version->candidateApplication?->isPublished())
+        {{-- Application --}}
+        @if ($application !== null)
             <flux:card>
-                <flux:heading size="sm" class="mb-3">Candidate Application</flux:heading>
+                <div class="flex items-center justify-between mb-3">
+                    <flux:heading size="sm">Application</flux:heading>
+                    <flux:button size="sm" variant="ghost" icon="eye" wire:click="viewApplication">View</flux:button>
+                </div>
 
                 @if ($version->application_type === \App\Enums\ApplicationType::Pdf)
-                    <flux:button
-                        variant="{{ $candidate->application_certified_at !== null ? 'primary' : 'filled' }}"
-                        wire:click="toggleApplicationCertified"
-                        wire:confirm="{{ $candidate->application_certified_at !== null ? 'Undo this certification?' : 'Certify that these signatures are present, complete, and have integrity?' }}"
-                    >
-                        {{ $candidate->application_certified_at !== null ? 'Certified — Undo' : 'Certify Signatures' }}
-                    </flux:button>
-                    @if ($candidate->application_certified_at !== null)
-                        <flux:text size="sm" class="text-zinc-500 mt-2">
-                            Certified by {{ $candidate->applicationCertifiedBy?->name }}
-                            on {{ $candidate->application_certified_at->format('M j, Y g:ia') }}.
-                        </flux:text>
-                    @endif
+                    <flux:badge color="{{ $candidate->application_certified_at !== null ? 'green' : 'amber' }}" size="sm">
+                        {{ $candidate->application_certified_at !== null ? 'Certified' : 'Not Certified' }}
+                    </flux:badge>
                 @else
                     <div class="flex flex-wrap gap-2">
-                        <flux:button
-                            size="sm"
-                            variant="{{ $candidate->application_candidate_signed_at !== null ? 'primary' : 'filled' }}"
-                            wire:click="toggleApplicationCandidateSigned"
-                        >
-                            {{ $candidate->application_candidate_signed_at !== null ? 'Candidate Signed — Undo' : 'Mark Candidate Signed' }}
-                        </flux:button>
-                        <flux:button
-                            size="sm"
-                            variant="{{ $candidate->application_parent_signed_at !== null ? 'primary' : 'filled' }}"
-                            wire:click="toggleApplicationParentSigned"
-                        >
-                            {{ $candidate->application_parent_signed_at !== null ? 'Parent Signed — Undo' : 'Mark Parent Signed' }}
-                        </flux:button>
+                        <flux:badge color="{{ $candidate->application_candidate_signed_at !== null ? 'green' : 'amber' }}" size="sm">
+                            {{ $candidate->application_candidate_signed_at !== null ? 'Candidate Signed' : 'Candidate Not Signed' }}
+                        </flux:badge>
+                        <flux:badge color="{{ $candidate->application_parent_signed_at !== null ? 'green' : 'amber' }}" size="sm">
+                            {{ $candidate->application_parent_signed_at !== null ? 'Parent Signed' : 'Parent Not Signed' }}
+                        </flux:badge>
                     </div>
                 @endif
+            </flux:card>
+        @endif
 
-                <flux:button
-                    class="mt-4"
-                    size="sm" variant="ghost" icon="arrow-down-tray"
-                    :href="route('registrations.candidate.application-pdf', [$version, $candidate])"
-                >
-                    Download PDF{{ $version->application_type === \App\Enums\ApplicationType::EApplication ? ' (optional copy)' : '' }}
-                </flux:button>
+        {{-- Recordings (remote audition only) --}}
+        @if ($uploadSlots->isNotEmpty())
+            <flux:card>
+                <flux:heading size="sm" class="mb-3">Recordings</flux:heading>
+
+                <div class="space-y-4">
+                    @foreach ($uploadSlots as $slot)
+                        @php $upload = $candidateUploads->get($slot->id); @endphp
+                        <div class="border-b border-zinc-100 dark:border-zinc-800 pb-4 last:border-0 last:pb-0">
+                            <div class="flex items-center justify-between gap-3 mb-2">
+                                <div class="font-medium text-sm">{{ $slot->name }}</div>
+                                <div class="flex items-center gap-2">
+                                    @if ($upload !== null && $upload->flagged_at !== null)
+                                        <flux:badge color="red" size="sm" icon="flag">Review Suggested</flux:badge>
+                                    @endif
+                                    @if ($upload === null)
+                                        <flux:badge color="zinc" size="sm">Not Uploaded</flux:badge>
+                                    @elseif ($upload->getRawOriginal('status') === 'approved')
+                                        <flux:badge color="green" size="sm">Approved</flux:badge>
+                                    @else
+                                        <flux:badge color="amber" size="sm">Pending Review</flux:badge>
+                                    @endif
+                                </div>
+                            </div>
+
+                            @if ($upload !== null && $upload->flagged_at !== null)
+                                <flux:callout variant="warning" icon="flag" class="mb-2">
+                                    <flux:callout.text>{{ $upload->flag_reason }}</flux:callout.text>
+                                </flux:callout>
+                            @endif
+
+                            @if ($upload !== null)
+                                @php
+                                    // New objects in this bucket default to private (confirmed
+                                    // via a direct 403 on a plain ->url() while diagnosing
+                                    // "0:00 / 0:00, won't play") — a signed URL is required.
+                                    $recordingUrl = \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($upload->url, now()->addMinutes(30));
+                                @endphp
+                                @if ($upload->original_filename)
+                                    <flux:text size="sm" class="text-zinc-500 mb-1">Uploaded as: {{ $upload->original_filename }}</flux:text>
+                                @endif
+                                <div class="mb-2">
+                                    @if ($version->getRawOriginal('upload_type') === 'video')
+                                        <video controls preload="metadata" class="w-full max-w-sm rounded">
+                                            <source src="{{ $recordingUrl }}">
+                                        </video>
+                                    @else
+                                        {{-- preload="metadata" (not "none") so the real duration
+                                        shows on load instead of a stuck 0:00 / 0:00 until play
+                                        is pressed — fetches just the file's header, not the
+                                        whole recording. --}}
+                                        <audio controls preload="metadata" class="w-full">
+                                            <source src="{{ $recordingUrl }}">
+                                        </audio>
+                                    @endif
+                                </div>
+                            @endif
+
+                            <div class="flex flex-wrap gap-2">
+                                <flux:button size="sm" variant="ghost" icon="arrow-up-tray" wire:click="uploadRecording({{ $slot->id }})">
+                                    {{ $upload !== null ? 'Replace' : 'Upload' }}
+                                </flux:button>
+
+                                @if ($upload !== null && $upload->getRawOriginal('status') === 'pending')
+                                    <flux:button size="sm" variant="ghost" icon="check" wire:click="approveRecording({{ $upload->id }})">
+                                        Approve
+                                    </flux:button>
+                                    <flux:button
+                                        size="sm" variant="ghost" icon="x-mark"
+                                        wire:click="rejectRecording({{ $upload->id }})"
+                                        wire:confirm="Reject and delete this recording? The teacher can upload a replacement afterward."
+                                    >
+                                        Reject
+                                    </flux:button>
+                                @elseif ($upload !== null)
+                                    <flux:button
+                                        size="sm" variant="ghost" icon="x-mark"
+                                        wire:click="rejectRecording({{ $upload->id }})"
+                                        wire:confirm="Remove this approved recording? The teacher can upload a replacement afterward."
+                                    >
+                                        Remove
+                                    </flux:button>
+                                @endif
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </flux:card>
+        @endif
+
+        {{-- Payment (only when this Version has e-payment configured) --}}
+        @if ($epaymentEnabled)
+            <flux:card>
+                <flux:heading size="sm" class="mb-1">Payment</flux:heading>
+                <flux:callout variant="warning" icon="exclamation-triangle" class="mb-3">
+                    <flux:callout.text>
+                        Manual record-keeping only — no live payment processor is connected yet. Recording a payment
+                        here does not charge anyone.
+                    </flux:callout.text>
+                </flux:callout>
+
+                <flux:checkbox
+                    :checked="$epaymentOptedIn"
+                    wire:click="toggleEpaymentOptIn"
+                    label="Enable e-payment for all of your candidates in this Version"
+                    description="This applies to your whole roster, not just {{ $candidate->program_name ?: 'this candidate' }}."
+                    class="mb-4"
+                />
+
+                <div class="flex items-center justify-between mb-2">
+                    <flux:heading size="xs" class="text-zinc-500">Payment History</flux:heading>
+                    <flux:button size="sm" variant="ghost" icon="plus" wire:click="recordPayment">Record Payment</flux:button>
+                </div>
+
+                @if ($candidatePayments->isNotEmpty())
+                    <div class="space-y-2">
+                        @foreach ($candidatePayments as $payment)
+                            <div class="flex items-center justify-between text-sm border-b border-zinc-100 dark:border-zinc-800 pb-2 last:border-0 last:pb-0">
+                                <div>
+                                    <span class="font-medium">${{ number_format($payment->amountInDollars(), 2) }}</span>
+                                    <span class="text-zinc-500"> — {{ $payment->paid_at->format('M j, Y') }}</span>
+                                    @if ($payment->reference_number)
+                                        <div class="text-zinc-500">Ref: {{ $payment->reference_number }}</div>
+                                    @endif
+                                    @if ($payment->comments)
+                                        <div class="text-zinc-500">{{ $payment->comments }}</div>
+                                    @endif
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <flux:text size="sm" class="text-zinc-500">No payments recorded yet.</flux:text>
+                @endif
             </flux:card>
         @endif
 
@@ -370,4 +489,141 @@
             </div>
         </div>
     </flux:modal>
+
+    {{-- View Application modal --}}
+    @if ($applicationDoc !== null)
+        <flux:modal name="view-application" class="w-full max-w-3xl" scroll="body">
+            <div class="space-y-6">
+                <flux:heading>Application</flux:heading>
+
+                <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-4 max-h-[60vh] overflow-y-auto">
+                    @include('candidate-application.document', [
+                        'version' => $version,
+                        'data' => $applicationDoc['data'],
+                        'studentBody' => $applicationDoc['studentBody'],
+                        'parentBody' => $applicationDoc['parentBody'],
+                        'teacherBody' => $applicationDoc['teacherBody'],
+                        'scheduleBody' => $applicationDoc['scheduleBody'],
+                        'policiesBody' => $applicationDoc['policiesBody'],
+                        'showTeacherSection' => $applicationDoc['showTeacherSection'],
+                    ])
+                </div>
+
+                @if ($version->application_type === \App\Enums\ApplicationType::Pdf)
+                    <flux:checkbox
+                        :checked="$candidate->application_certified_at !== null"
+                        wire:click="toggleApplicationCertified"
+                        wire:confirm="{{ $candidate->application_certified_at !== null ? 'Undo this certification?' : 'Certify that these signatures are present, complete, and have integrity?' }}"
+                        label="I certify that the student, parent/guardian, teacher, and principal signatures are present, complete, and have integrity on the physical copy."
+                    />
+                    @if ($candidate->application_certified_at !== null)
+                        <flux:text size="sm" class="text-zinc-500">
+                            Certified by {{ $candidate->applicationCertifiedBy?->name }}
+                            on {{ $candidate->application_certified_at->format('M j, Y g:ia') }}.
+                        </flux:text>
+                    @endif
+                @else
+                    <div class="space-y-3">
+                        <flux:checkbox
+                            :checked="$candidate->application_candidate_signed_at !== null"
+                            wire:click="toggleApplicationCandidateSigned"
+                            label="Candidate has signed"
+                        />
+                        <flux:checkbox
+                            :checked="$candidate->application_parent_signed_at !== null"
+                            wire:click="toggleApplicationParentSigned"
+                            label="Parent/Guardian has signed"
+                        />
+                    </div>
+                @endif
+
+                <div class="flex justify-between items-center">
+                    <flux:button
+                        size="sm" variant="ghost" icon="arrow-down-tray"
+                        :href="route('registrations.candidate.application-pdf', [$version, $candidate])"
+                    >
+                        Download PDF{{ $version->application_type === \App\Enums\ApplicationType::EApplication ? ' (optional copy)' : '' }}
+                    </flux:button>
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Close</flux:button>
+                    </flux:modal.close>
+                </div>
+            </div>
+        </flux:modal>
+    @endif
+
+    {{-- Upload Recording modal --}}
+    @if ($uploadSlots->isNotEmpty())
+        <flux:modal name="upload-recording" class="w-full max-w-md">
+            <div class="space-y-6">
+                <flux:heading>Upload Recording</flux:heading>
+
+                <flux:field>
+                    <flux:label>File</flux:label>
+                    <input
+                        type="file"
+                        wire:model="newRecordingFile"
+                        accept="{{ $version->getRawOriginal('upload_type') === 'video' ? 'video/*' : 'audio/*' }}"
+                        class="block w-full text-sm text-zinc-600 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-zinc-700 hover:file:bg-zinc-200 dark:text-zinc-400 dark:file:bg-zinc-700 dark:file:text-zinc-300"
+                    />
+                    <div wire:loading wire:target="newRecordingFile">
+                        <flux:text size="sm" class="mt-1 text-zinc-400">Uploading…</flux:text>
+                    </div>
+                    <flux:error name="newRecordingFile" />
+                </flux:field>
+
+                <div class="flex justify-end gap-2">
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Cancel</flux:button>
+                    </flux:modal.close>
+                    <flux:button variant="primary" wire:click="saveRecording">Save</flux:button>
+                </div>
+            </div>
+        </flux:modal>
+    @endif
+
+    {{-- Record Payment modal --}}
+    @if ($epaymentEnabled)
+        <flux:modal name="record-payment" class="w-full max-w-md">
+            <div class="space-y-6">
+                <flux:heading>Record Payment</flux:heading>
+                <flux:callout variant="warning" icon="exclamation-triangle">
+                    <flux:callout.text>
+                        This records a manual entry only — it does not process a live payment.
+                    </flux:callout.text>
+                </flux:callout>
+
+                <flux:field>
+                    <flux:label>Amount ($)</flux:label>
+                    <flux:input wire:model="payment_amount" type="number" step="0.01" min="0.01" placeholder="0.00" />
+                    <flux:error name="payment_amount" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>Date Paid</flux:label>
+                    <flux:input wire:model="payment_paid_at" type="date" />
+                    <flux:error name="payment_paid_at" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>Reference Number (optional)</flux:label>
+                    <flux:input wire:model="payment_reference_number" placeholder="e.g. confirmation #" />
+                    <flux:error name="payment_reference_number" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>Comments (optional)</flux:label>
+                    <flux:textarea wire:model="payment_comments" rows="3" />
+                    <flux:error name="payment_comments" />
+                </flux:field>
+
+                <div class="flex justify-end gap-2">
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Cancel</flux:button>
+                    </flux:modal.close>
+                    <flux:button variant="primary" wire:click="savePayment">Save</flux:button>
+                </div>
+            </div>
+        </flux:modal>
+    @endif
 </div>

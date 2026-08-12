@@ -7,25 +7,40 @@ namespace App\Livewire\Registrations;
 use App\Concerns\GuardsAcceptedObligations;
 use App\Concerns\HasCandidateChecklist;
 use App\Enums\ApplicationType;
+use App\Enums\AuditionType;
+use App\Enums\CandidateUploadStatus;
 use App\Enums\EmergencyContactRelationship;
+use App\Enums\PaymentType;
+use App\Enums\UploadType;
 use App\Models\Candidate;
+use App\Models\CandidatePayment;
+use App\Models\CandidateUploadFile;
 use App\Models\EmergencyContact;
+use App\Models\Recording;
 use App\Models\Teacher;
 use App\Models\Version;
+use App\Models\VersionApplication;
 use App\Models\VersionInvitation;
+use App\Models\VersionTeacherEpaymentOptIn;
+use App\Models\VersionUploadFile;
 use App\Services\CandidateService;
+use App\Services\RecordingReviewService;
+use App\Support\CandidateApplicationData;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 #[Layout('components.layouts.app')]
 class CandidateDetail extends Component
 {
     use GuardsAcceptedObligations;
     use HasCandidateChecklist;
+    use WithFileUploads;
 
     public Version $version;
 
@@ -68,6 +83,20 @@ class CandidateDetail extends Component
     public string $ec_home_phone = '';
 
     public string $ec_email = '';
+
+    // Recording upload form
+    public ?int $uploadingVersionUploadFileId = null;
+
+    public $newRecordingFile = null;
+
+    // Payment form
+    public string $payment_amount = '';
+
+    public string $payment_reference_number = '';
+
+    public string $payment_comments = '';
+
+    public string $payment_paid_at = '';
 
     public function mount(Version $version, Candidate $candidate): void
     {
@@ -294,6 +323,11 @@ class CandidateDetail extends Component
         Flux::toast("{$ec->name} saved as emergency contact.");
     }
 
+    public function viewApplication(): void
+    {
+        $this->modal('view-application')->show();
+    }
+
     public function toggleApplicationCertified(CandidateService $candidates): void
     {
         if ($this->version->getRawOriginal('application_type') !== ApplicationType::Pdf->value) {
@@ -347,10 +381,237 @@ class CandidateDetail extends Component
         Flux::toast('Parent signature status updated.');
     }
 
+    public function uploadRecording(int $versionUploadFileId): void
+    {
+        $this->uploadingVersionUploadFileId = $versionUploadFileId;
+        $this->newRecordingFile = null;
+        $this->resetErrorBag('newRecordingFile');
+        $this->modal('upload-recording')->show();
+    }
+
+    public function saveRecording(CandidateService $candidates, RecordingReviewService $review): void
+    {
+        $this->validate([
+            'newRecordingFile' => ['required', 'file', 'mimes:'.$this->allowedRecordingMimes(), 'max:51200'],
+        ]);
+
+        $slot = VersionUploadFile::where('id', $this->uploadingVersionUploadFileId)
+            ->where('version_id', $this->version->id)
+            ->firstOrFail();
+
+        // Read/analyze the file before ->store() moves it, and independent
+        // of anything actually landing in S3 — a rudimentary, non-blocking
+        // assist (filename-vs-slot mismatch + a per-slot duration outlier
+        // check), never an automatic reject.
+        $reviewResult = $review->evaluate($this->newRecordingFile, $slot, $this->version->uploadFiles);
+
+        $existing = CandidateUploadFile::where('candidate_id', $this->candidate->id)
+            ->where('version_upload_file_id', $this->uploadingVersionUploadFileId)
+            ->first();
+
+        $path = $this->newRecordingFile->store("candidateUploads/{$this->candidate->id}", 's3');
+
+        if ($existing !== null) {
+            // A previously-approved file being replaced has a synced
+            // `recordings` row pointing at the now-superseded audio — it
+            // must go too, or a judge could score against stale content.
+            if ($existing->getRawOriginal('status') === CandidateUploadStatus::Approved->value) {
+                $this->removeSyncedRecording($existing);
+            }
+
+            $previousUrl = $existing->url;
+            $existing->update([
+                'url' => $path,
+                'uploaded_by_user_id' => Auth::id(),
+                ...$reviewResult,
+                // A re-upload (including replacing an already-approved file)
+                // reverts to pending — the prior decision no longer applies
+                // to different content.
+                'status' => CandidateUploadStatus::Pending->value,
+                'uploaded_at' => now(),
+                'decided_at' => null,
+                'decided_by_user_id' => null,
+            ]);
+            Storage::disk('s3')->delete($previousUrl);
+        } else {
+            CandidateUploadFile::create([
+                'candidate_id' => $this->candidate->id,
+                'version_upload_file_id' => $this->uploadingVersionUploadFileId,
+                'uploaded_by_user_id' => Auth::id(),
+                'url' => $path,
+                ...$reviewResult,
+                'status' => CandidateUploadStatus::Pending->value,
+                'uploaded_at' => now(),
+            ]);
+        }
+
+        $this->uploadingVersionUploadFileId = null;
+        $this->newRecordingFile = null;
+
+        $candidates->recalculateStatus(
+            $this->candidate->load('uploadFiles')->refresh(),
+            $this->checklistDefs($this->version),
+        );
+
+        $this->modal('upload-recording')->close();
+
+        Flux::toast(
+            $reviewResult['flagged_at'] !== null
+                ? 'Recording uploaded — flagged for your review, see below.'
+                : 'Recording uploaded.',
+            variant: $reviewResult['flagged_at'] !== null ? 'warning' : 'success',
+        );
+    }
+
+    public function approveRecording(int $candidateUploadFileId, CandidateService $candidates): void
+    {
+        $upload = CandidateUploadFile::where('id', $candidateUploadFileId)
+            ->where('candidate_id', $this->candidate->id)
+            ->first();
+
+        abort_if($upload === null, 404);
+
+        $decidedAt = now();
+        $upload->update([
+            'status' => CandidateUploadStatus::Approved->value,
+            'decided_at' => $decidedAt,
+            'decided_by_user_id' => Auth::id(),
+        ]);
+
+        // Sync into `recordings` — the only table the Adjudication/judging
+        // workflow ever reads from — so an approved upload is actually
+        // visible to a judge scoring this Candidate. Only approved uploads
+        // are synced; file_type is matched against score_categories.description
+        // case-insensitively by AdjudicationService::recordingsForCandidate().
+        Recording::updateOrCreate(
+            [
+                'version_id' => $this->candidate->version_id,
+                'candidate_id' => $this->candidate->id,
+                'file_type' => $upload->versionUploadFile->name,
+            ],
+            [
+                'uploaded_by' => $upload->uploaded_by_user_id,
+                'approved_at' => $decidedAt,
+                'approved_by' => Auth::id(),
+                'url' => $upload->url,
+            ],
+        );
+
+        $candidates->recalculateStatus(
+            $this->candidate->load('uploadFiles')->refresh(),
+            $this->checklistDefs($this->version),
+        );
+
+        Flux::toast('Recording approved.');
+    }
+
+    public function rejectRecording(int $candidateUploadFileId, CandidateService $candidates): void
+    {
+        $upload = CandidateUploadFile::where('id', $candidateUploadFileId)
+            ->where('candidate_id', $this->candidate->id)
+            ->first();
+
+        abort_if($upload === null, 404);
+
+        // Covers both "reject a pending upload" and "remove a previously
+        // approved one" — either way, any synced `recordings` row for this
+        // slot must go too.
+        $this->removeSyncedRecording($upload);
+
+        // Rejecting deletes the file outright and re-opens the slot for
+        // another upload — it is never a stored third status.
+        Storage::disk('s3')->delete($upload->url);
+        $upload->delete();
+
+        $candidates->recalculateStatus(
+            $this->candidate->load('uploadFiles')->refresh(),
+            $this->checklistDefs($this->version),
+        );
+
+        Flux::toast('Recording rejected and removed.');
+    }
+
+    private function removeSyncedRecording(CandidateUploadFile $upload): void
+    {
+        Recording::where('version_id', $this->candidate->version_id)
+            ->where('candidate_id', $this->candidate->id)
+            ->where('file_type', $upload->versionUploadFile->name)
+            ->delete();
+    }
+
+    private function allowedRecordingMimes(): string
+    {
+        return match ($this->version->getRawOriginal('upload_type')) {
+            UploadType::Video->value => 'mp4,mov',
+            default => 'mp3,wav,m4a',
+        };
+    }
+
+    /**
+     * Roster-wide, not per-Candidate — toggles whether every Candidate this
+     * teacher manages in this Version may use e-payment, once a real gateway
+     * exists (see VersionTeacherEpaymentOptIn's own docblock).
+     */
+    public function toggleEpaymentOptIn(): void
+    {
+        if ($this->version->epaymentCredential === null) {
+            return;
+        }
+
+        $optIn = VersionTeacherEpaymentOptIn::firstOrNew([
+            'version_id' => $this->version->id,
+            'teacher_id' => $this->teacher()->id,
+        ]);
+        $optIn->opted_in = ! $optIn->opted_in;
+        $optIn->save();
+
+        Flux::toast($optIn->opted_in
+            ? 'E-payment enabled for all of your candidates in this Version.'
+            : 'E-payment disabled for all of your candidates in this Version.');
+    }
+
+    public function recordPayment(): void
+    {
+        $this->payment_amount = '';
+        $this->payment_reference_number = '';
+        $this->payment_comments = '';
+        $this->payment_paid_at = now()->format('Y-m-d');
+        $this->resetErrorBag(['payment_amount', 'payment_reference_number', 'payment_comments', 'payment_paid_at']);
+        $this->modal('record-payment')->show();
+    }
+
+    public function savePayment(): void
+    {
+        abort_if($this->version->epaymentCredential === null, 404);
+
+        $this->validate([
+            'payment_amount' => ['required', 'numeric', 'min:0.01', 'max:99999.99'],
+            'payment_reference_number' => ['nullable', 'string', 'max:255'],
+            'payment_comments' => ['nullable', 'string', 'max:1000'],
+            'payment_paid_at' => ['required', 'date', 'before_or_equal:today'],
+        ]);
+
+        CandidatePayment::create([
+            'version_id' => $this->version->id,
+            'candidate_id' => $this->candidate->id,
+            'payment_type' => PaymentType::Electronic->value,
+            'amount' => (int) round(((float) $this->payment_amount) * 100),
+            'reference_number' => $this->payment_reference_number !== '' ? $this->payment_reference_number : null,
+            'comments' => $this->payment_comments !== '' ? $this->payment_comments : null,
+            'paid_at' => $this->payment_paid_at,
+        ]);
+
+        $this->modal('record-payment')->close();
+
+        // This writes a manual ledger entry only — no live payment
+        // processor is connected yet (see CandidatePayment's own docblock).
+        Flux::toast('Payment recorded. This is a manual record only — no live payment was processed.', variant: 'warning');
+    }
+
     public function refreshStatus(CandidateService $candidates): void
     {
         $candidates->recalculateStatus(
-            $this->candidate->load(['student.homeAddress', 'student.emergencyContacts'])->refresh(),
+            $this->candidate->load(['student.homeAddress', 'student.emergencyContacts', 'uploadFiles'])->refresh(),
             $this->checklistDefs($this->version),
         );
 
@@ -364,15 +625,69 @@ class CandidateDetail extends Component
             'student.homeAddress',
             'student.emergencyContacts',
             'voicePart',
+            'uploadFiles',
         ]);
 
         $checklistDefs = $this->checklistDefs($this->version);
+
+        $epaymentEnabled = $this->version->epaymentCredential !== null;
 
         return view('livewire.registrations.candidate-detail', [
             'checklistDefs' => $checklistDefs,
             'relationships' => EmergencyContactRelationship::cases(),
             'voiceParts' => $this->version->availableVoiceParts(),
+            'uploadSlots' => $this->version->getRawOriginal('audition_type') === AuditionType::Remote->value
+                ? $this->version->uploadFiles
+                : collect(),
+            'candidateUploads' => $this->candidate->uploadFiles->keyBy('version_upload_file_id'),
+            'epaymentEnabled' => $epaymentEnabled,
+            'epaymentOptedIn' => $epaymentEnabled && (bool) VersionTeacherEpaymentOptIn::where('version_id', $this->version->id)
+                ->where('teacher_id', $this->teacher()->id)
+                ->value('opted_in'),
+            'candidatePayments' => $epaymentEnabled
+                ? CandidatePayment::where('candidate_id', $this->candidate->id)->orderByDesc('paid_at')->get()
+                : collect(),
+            ...$this->applicationDocumentView(),
         ]);
+    }
+
+    /**
+     * Same merge-token computation as CandidateApplicationPdfController, so
+     * the in-modal preview and the actual PDF download can never drift —
+     * both render the identical shared partial (candidate-application.document).
+     *
+     * @return array{application: VersionApplication|null, applicationDoc: array{data: CandidateApplicationData, studentBody: string, parentBody: string, teacherBody: ?string, scheduleBody: ?string, policiesBody: ?string, showTeacherSection: bool}|null}
+     */
+    private function applicationDocumentView(): array
+    {
+        $application = $this->version->candidateApplication;
+
+        if ($application === null || ! $application->isPublished()) {
+            return ['application' => null, 'applicationDoc' => null];
+        }
+
+        $data = CandidateApplicationData::fromCandidate($this->candidate->load([
+            'student.user.pronoun', 'student.emergencyContacts', 'teacher.user', 'school', 'voicePart', 'version.fees', 'version.dates', 'version.event.organization',
+        ]));
+
+        return [
+            'application' => $application,
+            'applicationDoc' => [
+                'data' => $data,
+                'studentBody' => VersionApplication::mergeTokens($application->student_endorsement_body, $data),
+                'parentBody' => VersionApplication::mergeTokens($application->parent_endorsement_body, $data),
+                'teacherBody' => $application->teacher_principal_endorsement_body !== null
+                    ? VersionApplication::mergeTokens($application->teacher_principal_endorsement_body, $data)
+                    : null,
+                'scheduleBody' => $application->schedule_body !== null
+                    ? VersionApplication::mergeTokens($application->schedule_body, $data)
+                    : null,
+                'policiesBody' => $application->policies_body !== null
+                    ? VersionApplication::mergeTokens($application->policies_body, $data)
+                    : null,
+                'showTeacherSection' => $this->version->getRawOriginal('application_type') === ApplicationType::Pdf->value,
+            ],
+        ];
     }
 
     private function teacher(): Teacher

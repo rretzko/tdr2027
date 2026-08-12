@@ -148,11 +148,16 @@
                         {{-- Poka-yoke checklist --}}
                         <div class="flex flex-wrap gap-2 mb-3">
                             @foreach ($checklistDefs as $def)
-                                @php $done = ($def['check'])($candidate); @endphp
+                                @php
+                                    $done = ($def['check'])($candidate);
+                                    $partial = ! $done && isset($def['partial']) && ($def['partial'])($candidate);
+                                @endphp
                                 <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
-                                    {{ $done ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400' }}">
+                                    {{ $done ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : ($partial ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400') }}">
                                     @if ($done)
                                         <flux:icon.check-circle variant="micro" />
+                                    @elseif ($partial)
+                                        <flux:icon.minus-circle variant="micro" />
                                     @else
                                         <flux:icon.x-circle variant="micro" />
                                     @endif
@@ -206,11 +211,16 @@
                             <flux:table.cell>
                                 <div class="flex flex-wrap gap-1.5">
                                     @foreach ($checklistDefs as $def)
-                                        @php $done = ($def['check'])($candidate); @endphp
+                                        @php
+                                            $done = ($def['check'])($candidate);
+                                            $partial = ! $done && isset($def['partial']) && ($def['partial'])($candidate);
+                                        @endphp
                                         <span class="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium
-                                            {{ $done ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400' }}">
+                                            {{ $done ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : ($partial ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400') }}">
                                             @if ($done)
                                                 <flux:icon.check-circle variant="micro" />
+                                            @elseif ($partial)
+                                                <flux:icon.minus-circle variant="micro" />
                                             @else
                                                 <flux:icon.x-circle variant="micro" />
                                             @endif
