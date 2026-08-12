@@ -28,7 +28,7 @@ use Illuminate\Support\Collection;
     'birthday', 'emergency_contact_name', 'emergency_contact_cell', 'emergency_contact_email',
     'height', 'home_address', 'judge_count',
     'max_registrants', 'max_upper_voice_registrants',
-    'pitch_file_visibility', 'release_confidential_results',
+    'pitch_file_visibility',
     'score_order', 'cutoff_strategy', 'results_released_at', 'share_results', 'shirt_size', 'teacher_cell', 'upload_type',
 ])]
 class Version extends Model
@@ -56,7 +56,6 @@ class Version extends Model
             'emergency_contact_email' => 'boolean',
             'height' => 'boolean',
             'home_address' => 'boolean',
-            'release_confidential_results' => 'boolean',
             'share_results' => 'boolean',
             'shirt_size' => 'boolean',
             'teacher_cell' => 'boolean',

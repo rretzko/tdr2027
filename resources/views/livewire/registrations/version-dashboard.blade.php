@@ -22,17 +22,6 @@
         @endif
     </div>
 
-    @if ($obligationsRejected)
-        <flux:callout variant="danger" icon="no-symbol" heading="Participation stopped" class="mb-6">
-            <flux:callout.text>
-                You rejected this Version's obligations, so your participation has come to a full stop: any candidates
-                you'd already enrolled were withdrawn, and you can't enroll new students until you
-                <a href="{{ route('registrations.obligations', $version) }}" wire:navigate class="underline">accept the obligations</a>
-                again.
-            </flux:callout.text>
-        </flux:callout>
-    @endif
-
     {{-- Upcoming dates --}}
     @if ($upcomingDates->isNotEmpty())
         <div class="mb-6">

@@ -41,6 +41,24 @@
                             @if ($candidateCount > 0)
                                 <flux:badge color="blue">{{ $candidateCount }} {{ Str::plural('candidate', $candidateCount) }}</flux:badge>
                             @endif
+                            @if ($version->obligation?->isPublished())
+                                <flux:badge
+                                    :href="route('registrations.obligations', $version)"
+                                    wire:navigate
+                                    size="sm"
+                                    :color="match ($item['obligationDecision']) {
+                                        'accepted' => 'green',
+                                        'rejected' => 'red',
+                                        default => 'amber',
+                                    }"
+                                >
+                                    Obligations: {{ match ($item['obligationDecision']) {
+                                        'accepted' => 'Accepted',
+                                        'rejected' => 'Rejected',
+                                        default => 'Awaiting',
+                                    } }}
+                                </flux:badge>
+                            @endif
                             <flux:badge color="green" size="sm">Active</flux:badge>
                             <flux:button size="sm" variant="primary" :href="route('registrations.version', $version)" wire:navigate>
                                 Manage
@@ -122,6 +140,24 @@
 
                         <div class="flex items-center gap-3 shrink-0">
                             <flux:badge color="blue">{{ $candidateCount }} {{ Str::plural('candidate', $candidateCount) }}</flux:badge>
+                            @if ($version->obligation?->isPublished())
+                                <flux:badge
+                                    :href="route('registrations.obligations', $version)"
+                                    wire:navigate
+                                    size="sm"
+                                    :color="match ($item['obligationDecision']) {
+                                        'accepted' => 'green',
+                                        'rejected' => 'red',
+                                        default => 'amber',
+                                    }"
+                                >
+                                    Obligations: {{ match ($item['obligationDecision']) {
+                                        'accepted' => 'Accepted',
+                                        'rejected' => 'Rejected',
+                                        default => 'Awaiting',
+                                    } }}
+                                </flux:badge>
+                            @endif
                             <flux:badge color="green" size="sm">Active</flux:badge>
                             <flux:button size="sm" :href="route('registrations.version', $version)" wire:navigate>
                                 View

@@ -6,6 +6,7 @@ namespace App\Concerns;
 
 use App\Enums\ApplicationType;
 use App\Models\Candidate;
+use App\Models\EmergencyContact;
 use App\Models\Version;
 
 trait HasCandidateChecklist
@@ -28,8 +29,15 @@ trait HasCandidateChecklist
         if ((bool) $version->emergency_contact_name) {
             $items[] = [
                 'label' => 'Emergency contact',
-                'check' => fn (Candidate $c): bool => $c->emergency_contact_id !== null
-                    || $c->student->emergencyContacts->isNotEmpty(),
+                // "Present" isn't enough on its own — a qualifying contact
+                // must also carry whichever of cell/email this Version
+                // separately requires (versions.emergency_contact_cell/
+                // emergency_contact_email), matching the same two flags
+                // CandidateDetail::saveEmergencyContact() validates against.
+                'check' => fn (Candidate $c): bool => $c->student->emergencyContacts->contains(
+                    fn (EmergencyContact $ec): bool => (! (bool) $version->emergency_contact_cell || $ec->cell_phone !== null)
+                        && (! (bool) $version->emergency_contact_email || $ec->email !== null),
+                ),
             ];
         }
 

@@ -6,6 +6,7 @@ namespace App\Livewire\Founder;
 
 use App\Mail\SchoolEmailVerificationMail;
 use App\Models\Pivots\SchoolTeacher;
+use App\Models\User;
 use App\Support\ReplacedTeacherStudentTransfer;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
@@ -20,6 +21,8 @@ class TeacherVerification extends Component
 {
     public bool $pendingOnly = false;
 
+    public string $search = '';
+
     /**
      * @return Collection<int, SchoolTeacher>
      */
@@ -28,14 +31,36 @@ class TeacherVerification extends Component
         $query = SchoolTeacher::with(['teacher.user', 'school']);
 
         if ($this->pendingOnly) {
-            $query->whereNotNull('school_email')->whereNull('verified_at');
+            $query->where(function ($outer): void {
+                $outer->where(function ($inner): void {
+                    $inner->whereNotNull('school_email')->whereNull('verified_at');
+                })->orWhereHas('teacher.user', function ($inner): void {
+                    $inner->where('email_unverifiable', false)->whereNull('email_verified_at');
+                });
+            });
+        }
+
+        if (filled($this->search)) {
+            $search = $this->search;
+
+            $query->where(function ($outer) use ($search): void {
+                $outer->whereHas('teacher.user', function ($inner) use ($search): void {
+                    $inner->where('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%")
+                        ->orWhereRaw("CONCAT(first_name, ' ', last_name) like ?", ["%{$search}%"])
+                        ->orWhereRaw("CONCAT(last_name, ' ', first_name) like ?", ["%{$search}%"]);
+                })->orWhereHas('school', function ($inner) use ($search): void {
+                    $inner->where('name', 'like', "%{$search}%");
+                });
+            });
         }
 
         return $query->get()->sortBy(function (SchoolTeacher $p): string {
             $rank = match (true) {
                 filled($p->school_email) && blank($p->verified_at) => '0',
-                blank($p->school_email) => '1',
-                default => '2',
+                ! $p->teacher->user->hasVerifiedEmail() => '1',
+                blank($p->school_email) => '2',
+                default => '3',
             };
 
             return $rank.'|'.($p->teacher->user->last_name ?? '').'|'.($p->teacher->user->first_name ?? '');
@@ -51,6 +76,20 @@ class TeacherVerification extends Component
 
         $name = $pivot->teacher->user->first_name.' '.$pivot->teacher->user->last_name;
         Flux::toast(text: "{$name} manually verified at {$pivot->school->name}.", variant: 'success');
+    }
+
+    public function revokeTeacherVerification(int $id): void
+    {
+        $pivot = SchoolTeacher::with(['teacher.user', 'school'])->findOrFail($id);
+
+        if (blank($pivot->verified_at)) {
+            return;
+        }
+
+        $pivot->update(['verified_at' => null]);
+
+        $name = $pivot->teacher->user->first_name.' '.$pivot->teacher->user->last_name;
+        Flux::toast(text: "{$name}'s school email verification at {$pivot->school->name} revoked.", variant: 'success');
     }
 
     public function sendVerificationEmail(int $id): void
@@ -71,6 +110,45 @@ class TeacherVerification extends Component
 
         $name = $pivot->teacher->user->first_name.' '.$pivot->teacher->user->last_name;
         Flux::toast(text: "Verification email sent to {$name} at {$pivot->school_email}.", variant: 'success');
+    }
+
+    public function verifyUserEmail(int $userId): void
+    {
+        $user = User::findOrFail($userId);
+
+        if ($user->hasVerifiedEmail()) {
+            return;
+        }
+
+        $user->markEmailAsVerified();
+
+        Flux::toast(text: "{$user->first_name} {$user->last_name}'s account email manually verified.", variant: 'success');
+    }
+
+    public function revokeUserEmail(int $userId): void
+    {
+        $user = User::findOrFail($userId);
+
+        if (blank($user->email_verified_at)) {
+            return;
+        }
+
+        $user->forceFill(['email_verified_at' => null])->save();
+
+        Flux::toast(text: "{$user->first_name} {$user->last_name}'s account email verification revoked.", variant: 'success');
+    }
+
+    public function sendUserVerificationEmail(int $userId): void
+    {
+        $user = User::findOrFail($userId);
+
+        if ($user->hasVerifiedEmail()) {
+            return;
+        }
+
+        $user->sendEmailVerificationNotification();
+
+        Flux::toast(text: "Verification email sent to {$user->first_name} {$user->last_name} at {$user->email}.", variant: 'success');
     }
 
     public function confirmAnnualReset(): void

@@ -55,81 +55,75 @@
         </div>
     </flux:card>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="space-y-6">
 
-        {{-- Left column: Program name + Student info --}}
-        <div class="space-y-6">
+        {{-- Student --}}
+        <flux:card>
+            <div class="flex items-center justify-between mb-3">
+                <flux:heading size="sm">Student</flux:heading>
+                <flux:button size="sm" variant="ghost" icon="pencil" wire:click="editStudent">Edit</flux:button>
+            </div>
 
-            {{-- Program name --}}
-            <flux:card>
-                <flux:heading size="sm" class="mb-3">Program Name</flux:heading>
-                <flux:text size="sm" class="text-zinc-500 mb-3">
-                    How this student's name appears in the program. Required for registration.
-                </flux:text>
-
-                <div class="flex gap-2 items-end">
-                    <flux:field class="flex-1">
-                        <flux:label>Program Name</flux:label>
-                        <flux:input wire:model="program_name" placeholder="e.g. Jane Smith" />
-                        <flux:error name="program_name" />
-                    </flux:field>
-                    <flux:button wire:click="saveProgramName">Save</flux:button>
+            <div class="space-y-2 text-sm">
+                <div class="flex gap-2">
+                    <span class="text-zinc-500 w-28 shrink-0">Name</span>
+                    <span>{{ $candidate->student->user->first_name }} {{ $candidate->student->user->last_name }}</span>
                 </div>
-            </flux:card>
 
-            {{-- Student info --}}
-            <flux:card>
-                <flux:heading size="sm" class="mb-3">Student</flux:heading>
+                <div class="flex gap-2">
+                    <span class="text-zinc-500 w-28 shrink-0">Voice Part</span>
+                    <span>{{ $candidate->voicePart?->name ?? '—' }}</span>
+                </div>
 
-                <div class="space-y-2 text-sm">
+                @if ((bool) $version->birthday || $candidate->student->birthday !== null)
                     <div class="flex gap-2">
-                        <span class="text-zinc-500 w-28 shrink-0">Name</span>
-                        <span>{{ $candidate->student->user->first_name }} {{ $candidate->student->user->last_name }}</span>
+                        <span class="text-zinc-500 w-28 shrink-0">Birthday</span>
+                        @php $bday = $candidate->student->getRawOriginal('birthday'); @endphp
+                        <span>{{ $bday ? \Carbon\Carbon::parse((string) $bday)->format('M j, Y') : '—' }}</span>
                     </div>
+                @endif
 
-                    @if ($candidate->voicePart)
-                        <div class="flex gap-2">
-                            <span class="text-zinc-500 w-28 shrink-0">Voice Part</span>
-                            <span>{{ $candidate->voicePart->name }}</span>
-                        </div>
-                    @endif
+                @if ((bool) $version->height || $candidate->student->height !== null)
+                    <div class="flex gap-2">
+                        <span class="text-zinc-500 w-28 shrink-0">Height</span>
+                        <span>{{ $candidate->student->height !== null ? $candidate->student->height.'"' : '—' }}</span>
+                    </div>
+                @endif
+            </div>
+        </flux:card>
 
-                    @if ($candidate->student->birthday !== null)
-                        <div class="flex gap-2">
-                            <span class="text-zinc-500 w-28 shrink-0">Birthday</span>
-                            @php $bday = $candidate->student->getRawOriginal('birthday'); @endphp
-                            <span>{{ $bday ? \Carbon\Carbon::parse((string) $bday)->format('M j, Y') : '—' }}</span>
-                        </div>
-                    @endif
-
-                    @if ($candidate->student->height !== null)
-                        <div class="flex gap-2">
-                            <span class="text-zinc-500 w-28 shrink-0">Height</span>
-                            <span>{{ $candidate->student->height }}"</span>
-                        </div>
-                    @endif
-
-                    @if ($candidate->student->homeAddress !== null)
-                        <div class="flex gap-2">
-                            <span class="text-zinc-500 w-28 shrink-0">Address</span>
-                            <span>{{ $candidate->student->homeAddress->formatted }}</span>
-                        </div>
-                    @endif
+        {{-- Home Address (only when this Version requires it) --}}
+        @if ((bool) $version->home_address)
+            <flux:card>
+                <div class="flex items-center justify-between mb-3">
+                    <flux:heading size="sm">Home Address</flux:heading>
+                    <flux:button size="sm" variant="ghost" icon="pencil" wire:click="editHomeAddress">
+                        {{ $candidate->student->homeAddress !== null ? 'Edit' : 'Add' }}
+                    </flux:button>
                 </div>
+
+                @if ($candidate->student->homeAddress !== null)
+                    <flux:text size="sm">{{ $candidate->student->homeAddress->formatted }}</flux:text>
+                @else
+                    <flux:text size="sm" class="text-zinc-500">Not yet provided.</flux:text>
+                @endif
             </flux:card>
+        @endif
 
-        </div>
+        {{-- Emergency Contacts --}}
+        <flux:card>
+            <div class="flex items-center justify-between mb-3">
+                <flux:heading size="sm">Emergency Contacts</flux:heading>
+                @if ((bool) $version->emergency_contact_name)
+                    <flux:button size="sm" variant="ghost" icon="plus" wire:click="addEmergencyContact">Add</flux:button>
+                @endif
+            </div>
 
-        {{-- Right column: Emergency contact --}}
-        <div class="space-y-6">
-
-            {{-- Existing emergency contacts --}}
             @if ($candidate->student->emergencyContacts->isNotEmpty())
-                <flux:card>
-                    <flux:heading size="sm" class="mb-3">Emergency Contacts</flux:heading>
-                    <div class="space-y-3">
-                        @foreach ($candidate->student->emergencyContacts as $ec)
-                            <div class="text-sm border-b border-zinc-100 dark:border-zinc-800 pb-3 last:border-0 last:pb-0">
+                <div class="space-y-3">
+                    @foreach ($candidate->student->emergencyContacts as $ec)
+                        <div class="flex items-start justify-between gap-3 text-sm border-b border-zinc-100 dark:border-zinc-800 pb-3 last:border-0 last:pb-0">
+                            <div>
                                 <div class="font-medium">{{ $ec->name }}</div>
                                 <div class="text-zinc-500">{{ $ec->getRawOriginal('relationship') }}</div>
                                 @if ($ec->cell_phone)
@@ -142,113 +136,238 @@
                                     <div class="text-zinc-500">{{ $ec->email }}</div>
                                 @endif
                             </div>
-                        @endforeach
-                    </div>
-                </flux:card>
-            @endif
-
-            {{-- Add emergency contact form --}}
-            @if ((bool) $version->emergency_contact_name)
-                <flux:card>
-                    <flux:heading size="sm" class="mb-3">Add Emergency Contact</flux:heading>
-
-                    <div class="space-y-4">
-                        <flux:field>
-                            <flux:label>Name</flux:label>
-                            <flux:input wire:model="ec_name" placeholder="Full name" />
-                            <flux:error name="ec_name" />
-                        </flux:field>
-
-                        <flux:field>
-                            <flux:label>Relationship</flux:label>
-                            <flux:select wire:model="ec_relationship">
-                                <flux:select.option value="">— select —</flux:select.option>
-                                @foreach ($relationships as $rel)
-                                    <flux:select.option value="{{ $rel->value }}">{{ $rel->label() }}</flux:select.option>
-                                @endforeach
-                            </flux:select>
-                            <flux:error name="ec_relationship" />
-                        </flux:field>
-
-                        <flux:field>
-                            <flux:label>Cell Phone</flux:label>
-                            <flux:input wire:model="ec_cell_phone" placeholder="(555) 000-0000" />
-                            <flux:error name="ec_cell_phone" />
-                        </flux:field>
-
-                        <flux:field>
-                            <flux:label>Home Phone</flux:label>
-                            <flux:input wire:model="ec_home_phone" placeholder="(555) 000-0000" />
-                            <flux:error name="ec_home_phone" />
-                        </flux:field>
-
-                        <flux:field>
-                            <flux:label>Email</flux:label>
-                            <flux:input wire:model="ec_email" type="email" placeholder="email@example.com" />
-                            <flux:error name="ec_email" />
-                        </flux:field>
-
-                        @if ($errors->hasAny(['ec_name', 'ec_relationship', 'ec_cell_phone', 'ec_home_phone', 'ec_email']))
-                            <flux:callout variant="danger" icon="exclamation-triangle">
-                                <flux:callout.text>Please correct the errors above.</flux:callout.text>
-                            </flux:callout>
-                        @endif
-
-                        <flux:button variant="primary" wire:click="saveEmergencyContact">
-                            Save Emergency Contact
-                        </flux:button>
-                    </div>
-                </flux:card>
-            @endif
-
-            {{-- Candidate Application --}}
-            @if ($version->candidateApplication?->isPublished())
-                <flux:card>
-                    <flux:heading size="sm" class="mb-3">Candidate Application</flux:heading>
-
-                    @if ($version->application_type === \App\Enums\ApplicationType::Pdf)
-                        <flux:button
-                            variant="{{ $candidate->application_certified_at !== null ? 'primary' : 'filled' }}"
-                            wire:click="toggleApplicationCertified"
-                            wire:confirm="{{ $candidate->application_certified_at !== null ? 'Undo this certification?' : 'Certify that these signatures are present, complete, and have integrity?' }}"
-                        >
-                            {{ $candidate->application_certified_at !== null ? 'Certified — Undo' : 'Certify Signatures' }}
-                        </flux:button>
-                        @if ($candidate->application_certified_at !== null)
-                            <flux:text size="sm" class="text-zinc-500 mt-2">
-                                Certified by {{ $candidate->applicationCertifiedBy?->name }}
-                                on {{ $candidate->application_certified_at->format('M j, Y g:ia') }}.
-                            </flux:text>
-                        @endif
-                    @else
-                        <div class="flex flex-wrap gap-2">
-                            <flux:button
-                                size="sm"
-                                variant="{{ $candidate->application_candidate_signed_at !== null ? 'primary' : 'filled' }}"
-                                wire:click="toggleApplicationCandidateSigned"
-                            >
-                                {{ $candidate->application_candidate_signed_at !== null ? 'Candidate Signed — Undo' : 'Mark Candidate Signed' }}
-                            </flux:button>
-                            <flux:button
-                                size="sm"
-                                variant="{{ $candidate->application_parent_signed_at !== null ? 'primary' : 'filled' }}"
-                                wire:click="toggleApplicationParentSigned"
-                            >
-                                {{ $candidate->application_parent_signed_at !== null ? 'Parent Signed — Undo' : 'Mark Parent Signed' }}
-                            </flux:button>
+                            <flux:button size="sm" variant="ghost" icon="pencil" wire:click="editEmergencyContact({{ $ec->id }})">Edit</flux:button>
                         </div>
-                    @endif
+                    @endforeach
+                </div>
+            @else
+                <flux:text size="sm" class="text-zinc-500">No emergency contacts yet.</flux:text>
+            @endif
+        </flux:card>
 
+        {{-- Program Name --}}
+        <flux:card>
+            <div class="flex items-center justify-between mb-1">
+                <flux:heading size="sm">Program Name</flux:heading>
+                <flux:button size="sm" variant="ghost" icon="pencil" wire:click="editProgramName">Edit</flux:button>
+            </div>
+            <flux:text size="sm" class="text-zinc-500 mb-2">
+                How this student's name appears in the program. Required for registration.
+            </flux:text>
+            <flux:text size="sm">{{ $candidate->program_name ?: 'Not yet set.' }}</flux:text>
+        </flux:card>
+
+        {{-- Candidate Application --}}
+        @if ($version->candidateApplication?->isPublished())
+            <flux:card>
+                <flux:heading size="sm" class="mb-3">Candidate Application</flux:heading>
+
+                @if ($version->application_type === \App\Enums\ApplicationType::Pdf)
                     <flux:button
-                        class="mt-4"
-                        size="sm" variant="ghost" icon="arrow-down-tray"
-                        :href="route('registrations.candidate.application-pdf', [$version, $candidate])"
+                        variant="{{ $candidate->application_certified_at !== null ? 'primary' : 'filled' }}"
+                        wire:click="toggleApplicationCertified"
+                        wire:confirm="{{ $candidate->application_certified_at !== null ? 'Undo this certification?' : 'Certify that these signatures are present, complete, and have integrity?' }}"
                     >
-                        Download PDF{{ $version->application_type === \App\Enums\ApplicationType::EApplication ? ' (optional copy)' : '' }}
+                        {{ $candidate->application_certified_at !== null ? 'Certified — Undo' : 'Certify Signatures' }}
                     </flux:button>
-                </flux:card>
+                    @if ($candidate->application_certified_at !== null)
+                        <flux:text size="sm" class="text-zinc-500 mt-2">
+                            Certified by {{ $candidate->applicationCertifiedBy?->name }}
+                            on {{ $candidate->application_certified_at->format('M j, Y g:ia') }}.
+                        </flux:text>
+                    @endif
+                @else
+                    <div class="flex flex-wrap gap-2">
+                        <flux:button
+                            size="sm"
+                            variant="{{ $candidate->application_candidate_signed_at !== null ? 'primary' : 'filled' }}"
+                            wire:click="toggleApplicationCandidateSigned"
+                        >
+                            {{ $candidate->application_candidate_signed_at !== null ? 'Candidate Signed — Undo' : 'Mark Candidate Signed' }}
+                        </flux:button>
+                        <flux:button
+                            size="sm"
+                            variant="{{ $candidate->application_parent_signed_at !== null ? 'primary' : 'filled' }}"
+                            wire:click="toggleApplicationParentSigned"
+                        >
+                            {{ $candidate->application_parent_signed_at !== null ? 'Parent Signed — Undo' : 'Mark Parent Signed' }}
+                        </flux:button>
+                    </div>
+                @endif
+
+                <flux:button
+                    class="mt-4"
+                    size="sm" variant="ghost" icon="arrow-down-tray"
+                    :href="route('registrations.candidate.application-pdf', [$version, $candidate])"
+                >
+                    Download PDF{{ $version->application_type === \App\Enums\ApplicationType::EApplication ? ' (optional copy)' : '' }}
+                </flux:button>
+            </flux:card>
+        @endif
+
+    </div>
+
+    {{-- Edit Student modal --}}
+    <flux:modal name="edit-student" class="w-full max-w-md">
+        <div class="space-y-6">
+            <flux:heading>Edit Student</flux:heading>
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <flux:field>
+                    <flux:label>First Name</flux:label>
+                    <flux:input wire:model="edit_first_name" />
+                    <flux:error name="edit_first_name" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>Last Name</flux:label>
+                    <flux:input wire:model="edit_last_name" />
+                    <flux:error name="edit_last_name" />
+                </flux:field>
+            </div>
+
+            <flux:field>
+                <flux:label>Voice Part</flux:label>
+                <flux:select wire:model="edit_voice_part_id" placeholder="Select a voice part...">
+                    @foreach ($voiceParts as $voicePart)
+                        <flux:select.option value="{{ $voicePart->id }}">{{ $voicePart->name }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <flux:error name="edit_voice_part_id" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Birthday</flux:label>
+                <flux:input wire:model="edit_birthday" type="date" />
+                <flux:error name="edit_birthday" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Height (in)</flux:label>
+                <flux:select wire:model="edit_height" placeholder="Select height...">
+                    @for ($inches = 30; $inches <= 84; $inches++)
+                        <flux:select.option value="{{ $inches }}">{{ $inches }}" ({{ intdiv($inches, 12) }}' {{ $inches % 12 }}")</flux:select.option>
+                    @endfor
+                </flux:select>
+                <flux:error name="edit_height" />
+            </flux:field>
+
+            <div class="flex justify-end gap-2">
+                <flux:modal.close>
+                    <flux:button variant="ghost">Cancel</flux:button>
+                </flux:modal.close>
+                <flux:button variant="primary" wire:click="saveStudent">Save Changes</flux:button>
+            </div>
+        </div>
+    </flux:modal>
+
+    {{-- Edit Home Address modal --}}
+    @if ((bool) $version->home_address)
+        <flux:modal name="edit-home-address" class="w-full max-w-md">
+            <div class="space-y-6">
+                <flux:heading>{{ $candidate->student->homeAddress !== null ? 'Edit Home Address' : 'Add Home Address' }}</flux:heading>
+
+                <flux:input wire:model="edit_home_address1" label="Address line 1" />
+                <flux:error name="edit_home_address1" />
+                <flux:input wire:model="edit_home_address2" label="Address line 2 (optional)" />
+                <flux:error name="edit_home_address2" />
+
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <flux:input wire:model="edit_home_city" label="City" class="sm:col-span-1" />
+                    <flux:input wire:model="edit_home_geo_state" label="State" maxlength="2" />
+                    <flux:input wire:model="edit_home_zip_code" label="Zip code" />
+                </div>
+                <flux:error name="edit_home_city" />
+                <flux:error name="edit_home_geo_state" />
+                <flux:error name="edit_home_zip_code" />
+
+                <div class="flex justify-end gap-2">
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Cancel</flux:button>
+                    </flux:modal.close>
+                    <flux:button variant="primary" wire:click="saveHomeAddress">Save Changes</flux:button>
+                </div>
+            </div>
+        </flux:modal>
+    @endif
+
+    {{-- Add/Edit Emergency Contact modal --}}
+    @if ((bool) $version->emergency_contact_name || $candidate->student->emergencyContacts->isNotEmpty())
+        <flux:modal name="add-emergency-contact" class="w-full max-w-md">
+        <div class="space-y-4">
+            <flux:heading>{{ $editingEmergencyContactId !== null ? 'Edit Emergency Contact' : 'Add Emergency Contact' }}</flux:heading>
+
+            <flux:field>
+                <flux:label>Name</flux:label>
+                <flux:input wire:model="ec_name" placeholder="Full name" />
+                <flux:error name="ec_name" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Relationship</flux:label>
+                <flux:select wire:model="ec_relationship">
+                    <flux:select.option value="">— select —</flux:select.option>
+                    @foreach ($relationships as $rel)
+                        <flux:select.option value="{{ $rel->value }}">{{ $rel->label() }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <flux:error name="ec_relationship" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Cell Phone{{ (bool) $version->emergency_contact_cell ? '' : ' (optional)' }}</flux:label>
+                <flux:input wire:model="ec_cell_phone" placeholder="(555) 000-0000" />
+                <flux:error name="ec_cell_phone" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Home Phone (optional)</flux:label>
+                <flux:input wire:model="ec_home_phone" placeholder="(555) 000-0000" />
+                <flux:error name="ec_home_phone" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Email{{ (bool) $version->emergency_contact_email ? '' : ' (optional)' }}</flux:label>
+                <flux:input wire:model="ec_email" type="email" placeholder="email@example.com" />
+                <flux:error name="ec_email" />
+            </flux:field>
+
+            @if ($errors->hasAny(['ec_name', 'ec_relationship', 'ec_cell_phone', 'ec_home_phone', 'ec_email']))
+                <flux:callout variant="danger" icon="exclamation-triangle">
+                    <flux:callout.text>Please correct the errors above.</flux:callout.text>
+                </flux:callout>
             @endif
 
+            <div class="flex justify-end gap-2">
+                <flux:modal.close>
+                    <flux:button variant="ghost">Cancel</flux:button>
+                </flux:modal.close>
+                <flux:button variant="primary" wire:click="saveEmergencyContact">{{ $editingEmergencyContactId !== null ? 'Save Changes' : 'Save Emergency Contact' }}</flux:button>
+            </div>
         </div>
-    </div>
+        </flux:modal>
+    @endif
+
+    {{-- Edit Program Name modal --}}
+    <flux:modal name="edit-program-name" class="w-full max-w-md">
+        <div class="space-y-6">
+            <flux:heading>Edit Program Name</flux:heading>
+            <flux:text size="sm" class="text-zinc-500">
+                How this student's name appears in the program. Required for registration.
+            </flux:text>
+
+            <flux:field>
+                <flux:label>Program Name</flux:label>
+                <flux:input wire:model="program_name" placeholder="e.g. Jane Smith" />
+                <flux:error name="program_name" />
+            </flux:field>
+
+            <div class="flex justify-end gap-2">
+                <flux:modal.close>
+                    <flux:button variant="ghost">Cancel</flux:button>
+                </flux:modal.close>
+                <flux:button variant="primary" wire:click="saveProgramName">Save</flux:button>
+            </div>
+        </div>
+    </flux:modal>
 </div>

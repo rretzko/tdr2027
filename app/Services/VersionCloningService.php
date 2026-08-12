@@ -52,7 +52,7 @@ class VersionCloningService
                     'birthday', 'emergency_contact_name', 'emergency_contact_cell', 'emergency_contact_email',
                     'height', 'home_address', 'judge_count',
                     'max_registrants', 'max_upper_voice_registrants',
-                    'pitch_file_visibility', 'release_confidential_results',
+                    'pitch_file_visibility',
                     'score_order', 'shirt_size', 'teacher_cell', 'upload_type',
                 ]),
                 'event_id' => $source->event_id,

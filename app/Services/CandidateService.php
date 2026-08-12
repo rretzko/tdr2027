@@ -65,6 +65,29 @@ class CandidateService
     }
 
     /**
+     * Mirror-image of withdrawAllForTeacherVersion(): when a teacher
+     * re-accepts obligations after a rejection, every candidate that
+     * rejection's cascade withdrew is brought back — reset to Eligible, then
+     * immediately re-run through recalculateStatus() so one already fully
+     * checklisted before the withdrawal lands straight back on Registered
+     * rather than sitting at Eligible until the teacher happens to touch it.
+     *
+     * @param  list<array{label: string, check: \Closure(Candidate): bool}>  $checklistDefs
+     */
+    public function reinstateAllForTeacherVersion(int $versionId, int $teacherId, array $checklistDefs): void
+    {
+        Candidate::where('version_id', $versionId)
+            ->where('teacher_id', $teacherId)
+            ->where('status', CandidateStatus::TeacherWithdrawn->value)
+            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts'])
+            ->get()
+            ->each(function (Candidate $candidate) use ($checklistDefs): void {
+                $candidate->update(['status' => CandidateStatus::Eligible->value]);
+                $this->recalculateStatus($candidate, $checklistDefs);
+            });
+    }
+
+    /**
      * Recalculate and apply the appropriate auto-promotion status for a
      * candidate based on how many milestone items are complete vs required.
      *

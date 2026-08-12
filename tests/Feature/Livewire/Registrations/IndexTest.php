@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use App\Enums\CandidateStatus;
+use App\Enums\ObligationDecision;
 use App\Enums\VersionInvitationStatus;
+use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\Index;
 use App\Models\Candidate;
 use App\Models\County;
@@ -17,6 +19,8 @@ use App\Models\Version;
 use App\Models\VersionCounty;
 use App\Models\VersionDate;
 use App\Models\VersionInvitation;
+use App\Models\VersionObligation;
+use App\Models\VersionObligationResponse;
 use App\Models\VoicePart;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -199,6 +203,61 @@ test('versions are sorted by descending senior_class_of, then ascending name', f
     Livewire::actingAs($teacher->user)
         ->test(Index::class)
         ->assertSeeInOrder([$alpha2026->name, $alpha2025->name, $zeta2025->name]);
+});
+
+test('an invited teacher who accepted obligations sees a green Obligations: Accepted badge linking back to the form', function () {
+    $teacher = makeIndexTeacher();
+    attachIndexTeacherSchool($teacher);
+    $version = makeIndexVersion();
+    openTeacherWindow($version);
+
+    $invitation = VersionInvitation::create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => VersionInvitationStatus::Invited->value,
+        'invited_at' => now(),
+        'invited_by_user_id' => User::factory()->create()->id,
+    ]);
+
+    $obligation = VersionObligation::create([
+        'version_id' => $version->id,
+        'body' => '<p>Be excellent.</p>',
+        'status' => VersionObligationStatus::Published->value,
+        'published_at' => now(),
+        'published_by_user_id' => User::factory()->create()->id,
+    ]);
+
+    VersionObligationResponse::create([
+        'version_invitation_id' => $invitation->id,
+        'version_obligation_id' => $obligation->id,
+        'decision' => ObligationDecision::Accepted->value,
+        'decided_at' => now(),
+        'obligation_snapshot' => $obligation->body,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(Index::class)
+        ->assertSee('Obligations: Accepted')
+        ->assertSeeHtml(route('registrations.obligations', $version));
+});
+
+test('an invited teacher with no published obligation sees no Obligations badge', function () {
+    $teacher = makeIndexTeacher();
+    attachIndexTeacherSchool($teacher);
+    $version = makeIndexVersion();
+    openTeacherWindow($version);
+
+    VersionInvitation::create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => VersionInvitationStatus::Invited->value,
+        'invited_at' => now(),
+        'invited_by_user_id' => User::factory()->create()->id,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(Index::class)
+        ->assertDontSee('Obligations:');
 });
 
 test('the empty-state callout shows when nothing is open or active', function () {

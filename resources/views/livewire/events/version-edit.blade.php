@@ -341,7 +341,6 @@
                             <flux:heading size="sm" class="mb-3">Other</flux:heading>
                             <div class="space-y-3">
                                 <flux:checkbox wire:model="teacher_cell" label="Teacher Cell" />
-                                <flux:checkbox wire:model="release_confidential_results" label="Release Confidential Results" />
                             </div>
                         </flux:card>
                     </div>

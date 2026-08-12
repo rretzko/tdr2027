@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Registrations;
 
+use App\Concerns\GuardsAcceptedObligations;
 use App\Concerns\HasCandidateChecklist;
 use App\Enums\CandidateStatus;
 use App\Models\Candidate;
@@ -12,7 +13,6 @@ use App\Models\Version;
 use App\Models\VersionInvitation;
 use App\Models\VoicePart;
 use App\Services\CandidateService;
-use App\Services\EligibilityService;
 use App\Services\VersionInvitationEligibilityService;
 use Flux\Flux;
 use Illuminate\Support\Collection;
@@ -25,6 +25,7 @@ use Livewire\Component;
 #[Layout('components.layouts.app')]
 class VersionDashboard extends Component
 {
+    use GuardsAcceptedObligations;
     use HasCandidateChecklist;
 
     public Version $version;
@@ -62,15 +63,12 @@ class VersionDashboard extends Component
             abort(403);
         }
 
-        // A teacher who has never responded to a published obligation is sent
-        // there first. A teacher who already rejected it still lands here —
-        // that's handled by the "Participation stopped" banner below, not a
-        // redirect, since they've already made a decision (just the wrong one).
-        $obligation = $version->obligation;
-
-        if ($obligation?->isPublished() && $invitation->obligationResponse()->doesntExist()) {
-            $this->redirect(route('registrations.obligations', $version), navigate: true);
-
+        // A teacher who has never responded to a published obligation, or who
+        // rejected it, is sent there first — a rejection is not a terminal
+        // "you're done here" state (it flips back the moment they accept
+        // again), but until then this Version's other pages are as
+        // inaccessible as if no Obligation record existed at all.
+        if ($this->redirectUnlessObligationsAccepted($version, $invitation)) {
             return;
         }
 
@@ -156,12 +154,10 @@ class VersionDashboard extends Component
 
         $checklistDefs = $this->checklistDefs($this->version);
 
-        $obligationsRejected = app(EligibilityService::class)->isBlockedByRejectedObligations($this->version, $teacher);
-
         return view('livewire.registrations.version-dashboard', compact(
             'myCandidates', 'filteredCandidates', 'voicePartCounts', 'voicePartTotal',
             'statusCounts', 'statusTotal', 'statusOptions',
-            'upcomingDates', 'voiceParts', 'checklistDefs', 'obligationsRejected',
+            'upcomingDates', 'voiceParts', 'checklistDefs',
         ));
     }
 

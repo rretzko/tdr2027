@@ -101,8 +101,6 @@ class VersionEdit extends Component
 
     public bool $home_address = false;
 
-    public bool $release_confidential_results = false;
-
     public bool $shirt_size = false;
 
     public bool $teacher_cell = true;
@@ -196,7 +194,6 @@ class VersionEdit extends Component
         $this->emergency_contact_email = (bool) $version->emergency_contact_email;
         $this->height = (bool) $version->height;
         $this->home_address = (bool) $version->home_address;
-        $this->release_confidential_results = (bool) $version->release_confidential_results;
         $this->shirt_size = (bool) $version->shirt_size;
         $this->teacher_cell = (bool) $version->teacher_cell;
 
@@ -389,7 +386,6 @@ class VersionEdit extends Component
             'emergency_contact_email' => ['boolean'],
             'height' => ['boolean'],
             'home_address' => ['boolean'],
-            'release_confidential_results' => ['boolean'],
             'shirt_size' => ['boolean'],
             'teacher_cell' => ['boolean'],
         ]);
@@ -409,7 +405,6 @@ class VersionEdit extends Component
             'emergency_contact_email' => $validated['emergency_contact_email'],
             'height' => $validated['height'],
             'home_address' => $validated['home_address'],
-            'release_confidential_results' => $validated['release_confidential_results'],
             'shirt_size' => $validated['shirt_size'],
             'teacher_cell' => $validated['teacher_cell'],
         ]);

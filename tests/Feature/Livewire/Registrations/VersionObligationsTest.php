@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Enums\CandidateStatus;
 use App\Enums\VersionInvitationStatus;
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\VersionObligations;
+use App\Models\Candidate;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
@@ -13,6 +15,8 @@ use App\Models\VersionObligation;
 use App\Models\VersionObligationResponse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
+
+use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
@@ -161,6 +165,49 @@ test('accept records a frozen snapshot independent of later edits to the obligat
 
     expect($response->obligation_snapshot)->toContain('Original text.');
     expect($response->obligation_snapshot)->not->toContain('Changed after acceptance.');
+});
+
+test('accept reinstates candidates a prior rejection withdrew, recalculating each back to its earned status', function () {
+    $teacher = makeObligationsTeacher();
+    $version = Version::factory()->create(['emergency_contact_name' => false]);
+    inviteTeacherToVersion($teacher, $version);
+    publishObligationFor($version);
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Registered,
+    ]);
+
+    $component = Livewire::actingAs($teacher->user)
+        ->test(VersionObligations::class, ['version' => $version]);
+
+    $component->call('reject');
+    expect($candidate->fresh()->getRawOriginal('status'))->toBe('teacher_withdrawn');
+
+    $component->call('accept');
+    expect($candidate->fresh()->getRawOriginal('status'))->toBe('registered');
+});
+
+test('accept leaves candidates who were already withdrawn before any rejection untouched in status history terms but still reinstates them (no distinction is tracked)', function () {
+    $teacher = makeObligationsTeacher();
+    $version = Version::factory()->create(['emergency_contact_name' => false]);
+    inviteTeacherToVersion($teacher, $version);
+    publishObligationFor($version);
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::TeacherWithdrawn,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionObligations::class, ['version' => $version])
+        ->call('accept');
+
+    expect($candidate->fresh()->getRawOriginal('status'))->toBe('registered');
 });
 
 test('accept aborts with 404 when there is no published obligation', function () {

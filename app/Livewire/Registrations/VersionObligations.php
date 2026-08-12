@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Livewire\Registrations;
 
+use App\Concerns\HasCandidateChecklist;
 use App\Enums\ObligationDecision;
 use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionInvitation;
 use App\Models\VersionObligation;
 use App\Models\VersionObligationResponse;
+use App\Services\CandidateService;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -19,6 +21,8 @@ use Livewire\Component;
 #[Layout('components.layouts.app')]
 class VersionObligations extends Component
 {
+    use HasCandidateChecklist;
+
     public Version $version;
 
     public VersionInvitation $invitation;
@@ -35,9 +39,15 @@ class VersionObligations extends Component
         $this->invitation = $invitation;
     }
 
-    public function accept(): void
+    public function accept(CandidateService $candidates): void
     {
         $this->respond(ObligationDecision::Accepted);
+
+        $candidates->reinstateAllForTeacherVersion(
+            $this->version->id,
+            $this->teacher()->id,
+            $this->checklistDefs($this->version),
+        );
 
         Flux::toast(text: 'Obligations accepted.', variant: 'success');
     }

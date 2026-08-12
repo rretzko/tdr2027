@@ -142,7 +142,7 @@ test('mount does not redirect a teacher who already accepted the obligation', fu
         ->assertSee('Accepted Version');
 });
 
-test('mount does not redirect a teacher who already rejected the obligation — the dashboard shows the "Participation stopped" banner instead', function () {
+test('mount redirects a teacher who already rejected the obligation back to the obligations form, same as never having responded', function () {
     $teacher = makeRegistrationTeacher();
     $version = Version::factory()->create(['name' => 'Rejected Version']);
     $invitation = inviteRegistrationTeacher($teacher, $version, 'rejected');
@@ -158,7 +158,7 @@ test('mount does not redirect a teacher who already rejected the obligation — 
 
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
-        ->assertSee('Participation stopped');
+        ->assertRedirect(route('registrations.obligations', $version));
 });
 
 test('eligibleStudents (and its isNotInvited gate) is blocked for an uninvited teacher, even bypassing the page-level gate', function () {

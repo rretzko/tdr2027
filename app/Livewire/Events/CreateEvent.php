@@ -82,7 +82,6 @@ class CreateEvent extends Component
                 'home_address' => false,
                 'judge_count' => 1,
                 'pitch_file_visibility' => PitchFileVisibility::Both->value,
-                'release_confidential_results' => false,
                 'score_order' => ScoreOrder::Asc->value,
                 'shirt_size' => false,
                 'teacher_cell' => true,

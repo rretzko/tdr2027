@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Registrations;
 
+use App\Enums\ObligationDecision;
 use App\Models\Candidate;
 use App\Models\Teacher;
 use App\Models\Version;
@@ -53,7 +54,7 @@ class Index extends Component
      * Results page (ResultsIndex) instead, regardless of whether a stale
      * `version_dates` row still makes it look date-wise "open".
      *
-     * @return array{open: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null}>, eligible: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null}>, active: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null}>}
+     * @return array{open: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null, obligationDecision: string|null}>, eligible: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null}>, active: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null, obligationDecision: string|null}>}
      */
     private function buildSections(VersionInvitationEligibilityService $eligibility): array
     {
@@ -77,7 +78,7 @@ class Index extends Component
         // free — avoids sorting the composite array-shape entries
         // afterward, which trips PHPStan's Collection-template-invariance
         // limitation when a closure re-types through push()/sort()/values().
-        $versions = Version::with(['event', 'dates'])
+        $versions = Version::with(['event', 'dates', 'obligation'])
             ->whereIn('id', $allVersionIds)
             ->where('status', 'active')
             ->get()
@@ -93,9 +94,16 @@ class Index extends Component
             ->groupBy('version_id')
             ->pluck('total', 'version_id');
 
-        $invitedVersionIds = VersionInvitation::where('teacher_id', $teacher->id)
+        // Keyed by version_id (not a plain id list) so the obligation badge
+        // below can read each teacher's decision without a second query per
+        // Version.
+        $invitations = VersionInvitation::with('obligationResponse')
+            ->where('teacher_id', $teacher->id)
             ->whereIn('version_id', $allVersionIds)
-            ->pluck('version_id');
+            ->get()
+            ->keyBy('version_id');
+
+        $invitedVersionIds = $invitations->keys();
 
         $now = Carbon::now();
 
@@ -129,6 +137,16 @@ class Index extends Component
                 'candidateCount' => (int) ($counts[$version->id] ?? 0),
                 'nextDate' => $nextDate,
             ];
+
+            if ($bucket === 'open' || $bucket === 'active') {
+                // Reachable regardless of decision (accepted/rejected/none) so a
+                // teacher can reopen the obligations form to review or change
+                // their response — mount() on VersionObligations only requires
+                // an invitation, not an unanswered one.
+                $entry['obligationDecision'] = $version->obligation?->isPublished() === true
+                    ? $invitations->get($version->id)?->obligationResponse?->getRawOriginal('decision')
+                    : null;
+            }
 
             match ($bucket) {
                 'open' => $open->push($entry),

@@ -34,7 +34,7 @@ class VersionSeeder extends Seeder
                 'upload_type', 'emergency_contact_name', 'emergency_contact_cell',
                 'emergency_contact_email', 'height', 'home_address', 'judge_count',
                 'max_registrants', 'max_upper_voice_registrants', 'pitch_file_visibility',
-                'release_confidential_results', 'score_order', 'shirt_size', 'teacher_cell',
+                'score_order', 'shirt_size', 'teacher_cell',
                 'updated_at', 'deleted_at',
             ]
         );
@@ -85,7 +85,6 @@ class VersionSeeder extends Seeder
                 'max_registrants' => $this->nullableInt($row['max_registrants'] ?? ''),
                 'max_upper_voice_registrants' => $this->nullableInt($row['max_upper_voice_registrants'] ?? ''),
                 'pitch_file_visibility' => trim($row['pitch_file_visibility']),
-                'release_confidential_results' => (bool) $row['release_confidential_results'],
                 'score_order' => trim($row['score_order']),
                 'shirt_size' => (bool) $row['shirt_size'],
                 'teacher_cell' => (bool) $row['teacher_cell'],

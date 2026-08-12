@@ -2,14 +2,21 @@
     <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
             <flux:heading size="xl">Teacher Verification</flux:heading>
-            <flux:subheading>Manually verify teachers' school emails or run the annual re-verification reset.</flux:subheading>
+            <flux:subheading>Manually verify teachers' account and school emails or run the annual re-verification reset.</flux:subheading>
         </div>
         <flux:button icon="arrow-path" variant="danger" wire:click="confirmAnnualReset">
             Annual Reset &amp; Send Emails
         </flux:button>
     </div>
 
-    <div class="mb-4">
+    <div class="mb-4 flex flex-wrap items-center gap-4">
+        <flux:input
+            wire:model.live.debounce.300ms="search"
+            icon="magnifying-glass"
+            placeholder="Search teacher or school name..."
+            class="max-w-sm"
+            clearable
+        />
         <flux:checkbox wire:model.live="pendingOnly" label="Show pending only" />
     </div>
 
@@ -17,16 +24,25 @@
     <div class="flex flex-col gap-3 md:hidden">
         @forelse ($pivots as $pivot)
             @php
+                $user = $pivot->teacher->user;
                 $isPending  = filled($pivot->school_email) && blank($pivot->verified_at);
                 $isVerified = filled($pivot->verified_at);
+                $isAccountVerified = $user->hasVerifiedEmail();
             @endphp
             <div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
                 <div class="mb-2 flex items-start justify-between gap-2">
                     <div class="min-w-0">
                         <flux:text class="font-medium">
-                            {{ $pivot->teacher->user->last_name }}, {{ $pivot->teacher->user->first_name }}
+                            {{ $user->last_name }}, {{ $user->first_name }}
                         </flux:text>
-                        <flux:text size="sm" class="truncate text-zinc-500">{{ $pivot->teacher->user->email }}</flux:text>
+                        <div class="flex items-center gap-1">
+                            <flux:text size="sm" class="truncate text-zinc-500">{{ $user->email }}</flux:text>
+                            @if ($isAccountVerified)
+                                <flux:badge color="green" size="sm">Verified</flux:badge>
+                            @else
+                                <flux:badge color="yellow" size="sm">Pending</flux:badge>
+                            @endif
+                        </div>
                         <flux:text size="sm" class="font-medium text-zinc-700 dark:text-zinc-300">{{ $pivot->school->name }}</flux:text>
                         @if ($pivot->school_email)
                             <flux:text size="sm" class="truncate text-zinc-500">{{ $pivot->school_email }}</flux:text>
@@ -42,8 +58,27 @@
                         @endif
                     </div>
                 </div>
+                @if (! $isAccountVerified)
+                    <div class="mb-2 flex flex-wrap items-center gap-2">
+                        <flux:text size="sm" class="text-zinc-500">Account email:</flux:text>
+                        <flux:button size="sm" icon="check" variant="primary" wire:click="verifyUserEmail({{ $user->id }})">
+                            Verify
+                        </flux:button>
+                        <flux:button size="sm" icon="envelope" wire:click="sendUserVerificationEmail({{ $user->id }})">
+                            Send Email
+                        </flux:button>
+                    </div>
+                @elseif (filled($user->email_verified_at))
+                    <div class="mb-2 flex flex-wrap items-center gap-2">
+                        <flux:text size="sm" class="text-zinc-500">Account email:</flux:text>
+                        <flux:button size="sm" icon="x-mark" variant="danger" wire:click="revokeUserEmail({{ $user->id }})">
+                            Revoke
+                        </flux:button>
+                    </div>
+                @endif
                 @if ($isPending)
                     <div class="flex flex-wrap items-center gap-2">
+                        <flux:text size="sm" class="text-zinc-500">School email:</flux:text>
                         <flux:button size="sm" icon="check" variant="primary" wire:click="verifyTeacher({{ $pivot->id }})">
                             Verify
                         </flux:button>
@@ -51,11 +86,18 @@
                             Send Email
                         </flux:button>
                     </div>
+                @elseif ($isVerified)
+                    <div class="flex flex-wrap items-center gap-2">
+                        <flux:text size="sm" class="text-zinc-500">School email:</flux:text>
+                        <flux:button size="sm" icon="x-mark" variant="danger" wire:click="revokeTeacherVerification({{ $pivot->id }})">
+                            Revoke
+                        </flux:button>
+                    </div>
                 @endif
             </div>
         @empty
             <flux:text class="text-zinc-500">
-                {{ $pendingOnly ? 'No pending verifications.' : 'No teacher school records found.' }}
+                {{ filled($search) || $pendingOnly ? 'No matching teacher school records found.' : 'No teacher school records found.' }}
             </flux:text>
         @endforelse
     </div>
@@ -65,6 +107,7 @@
         <flux:table>
             <flux:table.columns>
                 <flux:table.column>Teacher</flux:table.column>
+                <flux:table.column>Account Email</flux:table.column>
                 <flux:table.column>School</flux:table.column>
                 <flux:table.column>School Email</flux:table.column>
                 <flux:table.column>Status</flux:table.column>
@@ -74,15 +117,39 @@
             <flux:table.rows>
                 @forelse ($pivots as $pivot)
                     @php
+                        $user = $pivot->teacher->user;
                         $isPending  = filled($pivot->school_email) && blank($pivot->verified_at);
                         $isVerified = filled($pivot->verified_at);
+                        $isAccountVerified = $user->hasVerifiedEmail();
                     @endphp
                     <flux:table.row :key="$pivot->id">
                         <flux:table.cell>
                             <flux:text class="font-medium">
-                                {{ $pivot->teacher->user->last_name }}, {{ $pivot->teacher->user->first_name }}
+                                {{ $user->last_name }}, {{ $user->first_name }}
                             </flux:text>
-                            <flux:text size="sm" class="text-zinc-500">{{ $pivot->teacher->user->email }}</flux:text>
+                            <flux:text size="sm" class="text-zinc-500">{{ $user->email }}</flux:text>
+                        </flux:table.cell>
+                        <flux:table.cell>
+                            @if ($isAccountVerified)
+                                <div class="flex items-center gap-2">
+                                    <flux:badge color="green">Verified</flux:badge>
+                                    @if (filled($user->email_verified_at))
+                                        <flux:button size="sm" icon="x-mark" variant="danger" wire:click="revokeUserEmail({{ $user->id }})">
+                                            Revoke
+                                        </flux:button>
+                                    @endif
+                                </div>
+                            @else
+                                <div class="flex items-center gap-2">
+                                    <flux:badge color="yellow">Pending</flux:badge>
+                                    <flux:button size="sm" icon="check" variant="primary" wire:click="verifyUserEmail({{ $user->id }})">
+                                        Verify
+                                    </flux:button>
+                                    <flux:button size="sm" icon="envelope" wire:click="sendUserVerificationEmail({{ $user->id }})">
+                                        Send Email
+                                    </flux:button>
+                                </div>
+                            @endif
                         </flux:table.cell>
                         <flux:table.cell>{{ $pivot->school->name }}</flux:table.cell>
                         <flux:table.cell class="text-zinc-500">{{ $pivot->school_email ?? '—' }}</flux:table.cell>
@@ -106,14 +173,19 @@
                                     </flux:button>
                                 </div>
                             @elseif ($isVerified)
-                                <flux:text size="sm" class="text-zinc-400">{{ $pivot->verified_at->format('M j, Y') }}</flux:text>
+                                <div class="flex items-center gap-2">
+                                    <flux:text size="sm" class="text-zinc-400">{{ $pivot->verified_at->format('M j, Y') }}</flux:text>
+                                    <flux:button size="sm" icon="x-mark" variant="danger" wire:click="revokeTeacherVerification({{ $pivot->id }})">
+                                        Revoke
+                                    </flux:button>
+                                </div>
                             @endif
                         </flux:table.cell>
                     </flux:table.row>
                 @empty
                     <flux:table.row>
-                        <flux:table.cell colspan="5" class="text-zinc-500">
-                            {{ $pendingOnly ? 'No pending verifications.' : 'No teacher school records found.' }}
+                        <flux:table.cell colspan="6" class="text-zinc-500">
+                            {{ filled($search) || $pendingOnly ? 'No matching teacher school records found.' : 'No teacher school records found.' }}
                         </flux:table.cell>
                     </flux:table.row>
                 @endforelse

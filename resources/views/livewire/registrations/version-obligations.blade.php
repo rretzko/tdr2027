@@ -53,6 +53,18 @@
                     were withdrawn, and you can't enroll new students until you accept these obligations again.
                 </flux:callout.text>
             </flux:callout>
+        @elseif ($rawDecision === 'accepted')
+            <flux:callout variant="success" icon="check-circle" class="mb-4">
+                <flux:callout.text>
+                    You're set to participate in this Version — head to the candidate roster to review eligible
+                    students and enroll them.
+                </flux:callout.text>
+                <x-slot name="actions">
+                    <flux:button variant="primary" size="sm" :href="route('registrations.version', $version)" wire:navigate>
+                        Review Eligible Students
+                    </flux:button>
+                </x-slot>
+            </flux:callout>
         @endif
 
         <div class="flex flex-wrap items-center gap-3 mb-2">

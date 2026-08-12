@@ -43,7 +43,6 @@ class VersionFactory extends Factory
             'max_registrants' => null,
             'max_upper_voice_registrants' => null,
             'pitch_file_visibility' => PitchFileVisibility::Both,
-            'release_confidential_results' => false,
             'score_order' => ScoreOrder::Asc,
             'shirt_size' => false,
             'teacher_cell' => true,
