@@ -5,10 +5,16 @@ declare(strict_types=1);
 namespace App\Livewire\Registrations;
 
 use App\Enums\CandidateStatus;
+use App\Enums\PdfExportStatus;
 use App\Models\Candidate;
+use App\Models\CombinedScoresPdfExport;
+use App\Models\School;
 use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionInvitation;
+use App\Models\VoicePart;
+use App\Services\EnsembleCutoffService;
+use App\Services\TabRoomReportService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -50,6 +56,10 @@ class Results extends Component
 
     public string $switchVersionId = '';
 
+    public string $sortColumn = 'name';
+
+    public string $sortDirection = 'asc';
+
     public function mount(Version $version): void
     {
         $teacher = $this->teacher();
@@ -76,11 +86,27 @@ class Results extends Component
         $this->redirectRoute('registrations.results', ['version' => $this->switchVersionId], navigate: true);
     }
 
-    public function render(): View
+    public function sortBy(string $column): void
     {
+        if ($this->sortColumn === $column) {
+            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            $this->sortColumn = $column;
+            $this->sortDirection = 'asc';
+        }
+    }
+
+    public function render(TabRoomReportService $reports, EnsembleCutoffService $cutoffs): View
+    {
+        $candidates = $this->candidates();
+
         return view('livewire.registrations.results', [
-            'candidates' => $this->candidates(),
+            'candidates' => $candidates,
             'switcherOptions' => $this->switcherOptions(),
+            'schoolReports' => $this->schoolReports($candidates, $reports, $cutoffs),
+            'candidateReports' => $this->candidateReports($candidates, $reports, $cutoffs),
+            'shareResultsEnabled' => (bool) $this->version->share_results,
+            'shareResultsReady' => $this->shareResultsReady(),
         ]);
     }
 
@@ -91,13 +117,103 @@ class Results extends Component
     {
         $teacher = $this->teacher();
 
-        return Candidate::where('version_id', $this->version->id)
+        $candidates = Candidate::where('version_id', $this->version->id)
             ->where('teacher_id', $teacher->id)
             ->whereIn('status', self::RESULT_STATES)
-            ->with(['student.user', 'voicePart', 'acceptedEnsemble', 'auditionResult'])
-            ->get()
-            ->sortBy(fn (Candidate $candidate): string => mb_strtolower($candidate->student->user->sort_name))
+            ->with(['student.user', 'voicePart', 'acceptedEnsemble', 'auditionResult', 'school'])
+            ->get();
+
+        $sortValue = fn (Candidate $candidate): int|string => match ($this->sortColumn) {
+            // voice_part_id is a non-nullable FK — voicePart is never null.
+            'voice_part' => $candidate->voicePart->sort_order,
+            'score' => $candidate->auditionResult !== null ? $candidate->auditionResult->total : -1,
+            'result' => mb_strtolower($this->resultLabel($candidate)),
+            'ensemble' => $candidate->acceptedEnsemble !== null ? mb_strtolower($candidate->acceptedEnsemble->name) : '',
+            default => mb_strtolower($candidate->student->user->sort_name),
+        };
+
+        $sorted = $this->sortDirection === 'desc' ? $candidates->sortByDesc($sortValue) : $candidates->sortBy($sortValue);
+
+        return $sorted->values();
+    }
+
+    /**
+     * The Result column's displayed text — "Accepted" for an accepted
+     * Candidate (not the generic status label, matching the badge the view
+     * renders), or the status label otherwise. Shared between the sort
+     * comparator above and nowhere else — the view computes its own badge
+     * inline, this only needs to match it well enough to sort consistently.
+     */
+    private function resultLabel(Candidate $candidate): string
+    {
+        $status = CandidateStatus::from((string) $candidate->getRawOriginal('status'));
+
+        return $status === CandidateStatus::Accepted
+            ? 'Accepted'
+            : $status->label();
+    }
+
+    /**
+     * Per-School public score report data (Results page "view"/"download"
+     * icons, one pair per distinct School the teacher has a resolved-outcome
+     * Candidate at in this Version — usually one, but a teacher can teach at
+     * more than one school). Each School's report is a set of single-
+     * Candidate pages (TabRoomReportService::candidateScoreRow()), not one
+     * shared multi-row table, matching the one-candidate-per-page PDF/modal
+     * format requested for this report.
+     *
+     * @param  Collection<int, Candidate>  $candidates
+     * @return Collection<int, array{school: School, pages: Collection<int, array{candidate: Candidate, table: array{voicePart: VoicePart, columns: Collection<int, array{judge_id: int, score_factor_id: int, score_category_id: int, label: string, category_box: bool, category_shaded: bool, is_category_start: bool, is_category_end: bool, is_judge_start: bool, is_judge_end: bool}>, categoryGroups: Collection<int, array{label: string, span: int, box: bool, shaded: bool}>, judgeGroups: Collection<int, array{label: string, span: int, box: bool, shaded: bool, is_category_start: bool, is_category_end: bool}>, rows: Collection<int, array{candidate: Candidate, scores: array<string, int>, total: int, result: string}>}}>}>
+     */
+    private function schoolReports(Collection $candidates, TabRoomReportService $reports, EnsembleCutoffService $cutoffs): Collection
+    {
+        return $candidates
+            ->groupBy('school_id')
+            ->map(function (Collection $schoolCandidates) use ($reports, $cutoffs): array {
+                $pages = $schoolCandidates
+                    ->map(fn (Candidate $candidate): array => ['candidate' => $candidate, 'table' => $reports->candidateScoreRow($this->version, $candidate, $cutoffs)])
+                    ->filter(fn (array $page): bool => $page['table'] !== null)
+                    ->values();
+
+                return ['school' => $schoolCandidates->first()->school, 'pages' => $pages];
+            })
+            ->filter(fn (array $report): bool => $report['school'] !== null && $report['pages']->isNotEmpty())
             ->values();
+    }
+
+    /**
+     * Per-Person public score report data (Results page row-level "view"/
+     * "download" icons), keyed by candidate_id for the row-loop's lookup.
+     *
+     * @param  Collection<int, Candidate>  $candidates
+     * @return Collection<int, array{candidate: Candidate, table: array{voicePart: VoicePart, columns: Collection<int, array{judge_id: int, score_factor_id: int, score_category_id: int, label: string, category_box: bool, category_shaded: bool, is_category_start: bool, is_category_end: bool, is_judge_start: bool, is_judge_end: bool}>, categoryGroups: Collection<int, array{label: string, span: int, box: bool, shaded: bool}>, judgeGroups: Collection<int, array{label: string, span: int, box: bool, shaded: bool, is_category_start: bool, is_category_end: bool}>, rows: Collection<int, array{candidate: Candidate, scores: array<string, int>, total: int, result: string}>}}>
+     */
+    private function candidateReports(Collection $candidates, TabRoomReportService $reports, EnsembleCutoffService $cutoffs): Collection
+    {
+        return $candidates
+            ->map(fn (Candidate $candidate): array => ['candidate' => $candidate, 'table' => $reports->candidateScoreRow($this->version, $candidate, $cutoffs)])
+            ->filter(fn (array $page): bool => $page['table'] !== null)
+            ->keyBy(fn (array $page): int => $page['candidate']->id);
+    }
+
+    /**
+     * Whether the Event Manager's optional "Share Results" all-Ensembles
+     * public PDF (§ share_results) is both enabled and actually finished
+     * generating — GenerateCombinedScoresPdfJob runs in the background
+     * (queued at Close, see CloseAudition::close()), so there's a real
+     * window right after results release where share_results is true but
+     * no Completed export exists yet.
+     */
+    private function shareResultsReady(): bool
+    {
+        if (! $this->version->share_results) {
+            return false;
+        }
+
+        return CombinedScoresPdfExport::where('version_id', $this->version->id)
+            ->where('confidential', false)
+            ->where('status', PdfExportStatus::Completed->value)
+            ->exists();
     }
 
     /**

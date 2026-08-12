@@ -9,6 +9,7 @@ use App\Models\Candidate;
 use App\Models\Ensemble;
 use App\Models\Event;
 use App\Models\School;
+use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
@@ -94,6 +95,65 @@ test('candidates lists only this teacher\'s resolved-outcome candidates, with sc
     // variants in the same HTML (CSS-hidden, not DOM-removed) — one
     // "Accepted" badge per variant, for the one qualifying candidate.
     expect(substr_count($html, 'Accepted'))->toBe(2);
+});
+
+test('sortBy toggles candidate ordering, defaulting to Name ascending', function () {
+    $teacher = makeResultsTeacher();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'closed', 'results_released_at' => now()]);
+    $school = School::factory()->create();
+    $voicePart = VoicePart::factory()->create();
+
+    actingAs($teacher->user);
+
+    $lowUser = User::factory()->create(['first_name' => 'Zed', 'last_name' => 'Zephyr']);
+    $lowStudent = Student::factory()->create(['user_id' => $lowUser->id]);
+    $low = Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $school->id, 'teacher_id' => $teacher->id, 'student_id' => $lowStudent->id, 'voice_part_id' => $voicePart->id, 'status' => CandidateStatus::Accepted]);
+    AuditionResult::create(['candidate_id' => $low->id, 'version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'school_id' => $school->id, 'voice_part_order_by' => 1, 'score_count' => 1, 'total' => 40]);
+
+    $highUser = User::factory()->create(['first_name' => 'Amy', 'last_name' => 'Alpha']);
+    $highStudent = Student::factory()->create(['user_id' => $highUser->id]);
+    $high = Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $school->id, 'teacher_id' => $teacher->id, 'student_id' => $highStudent->id, 'voice_part_id' => $voicePart->id, 'status' => CandidateStatus::NotAccepted]);
+    AuditionResult::create(['candidate_id' => $high->id, 'version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'school_id' => $school->id, 'voice_part_order_by' => 1, 'score_count' => 1, 'total' => 90]);
+
+    $component = Livewire::actingAs($teacher->user)->test(Results::class, ['version' => $version]);
+
+    // Default sort: Name ascending — "Alpha, Amy" sorts before "Zephyr, Zed".
+    $component->assertSeeInOrder(['Alpha', 'Zephyr']);
+
+    $component->call('sortBy', 'score')
+        ->assertSet('sortColumn', 'score')
+        ->assertSet('sortDirection', 'asc')
+        ->assertSeeInOrder(['40', '90']);
+
+    // Clicking the same column again flips direction.
+    $component->call('sortBy', 'score')
+        ->assertSet('sortDirection', 'desc')
+        ->assertSeeInOrder(['90', '40']);
+});
+
+test('sortBy voice_part orders by voice_parts.sort_order, not name/abbr', function () {
+    $teacher = makeResultsTeacher();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'closed', 'results_released_at' => now()]);
+    $school = School::factory()->create();
+
+    // Names/abbreviations deliberately reversed against sort_order, so a
+    // pass sorting by name/abbr instead of sort_order would fail this.
+    $laterPart = VoicePart::factory()->create(['name' => 'Alto', 'abbr' => 'A', 'sort_order' => 10]);
+    $earlierPart = VoicePart::factory()->create(['name' => 'Tenor', 'abbr' => 'T', 'sort_order' => 1]);
+
+    actingAs($teacher->user);
+    $laterCandidate = Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $school->id, 'teacher_id' => $teacher->id, 'voice_part_id' => $laterPart->id, 'status' => CandidateStatus::Accepted]);
+    $earlierCandidate = Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $school->id, 'teacher_id' => $teacher->id, 'voice_part_id' => $earlierPart->id, 'status' => CandidateStatus::Accepted]);
+
+    // Assert via each candidate's own unique id cell (voicePart->abbr is a
+    // single letter here and not reliably unique/locatable in the page's
+    // full HTML) — sort_order 1 (Tenor) must render before sort_order 10 (Alto).
+    Livewire::actingAs($teacher->user)
+        ->test(Results::class, ['version' => $version])
+        ->call('sortBy', 'voice_part')
+        ->assertSeeInOrder([(string) $earlierCandidate->id, (string) $laterCandidate->id]);
 });
 
 test('switcherOptions only lists Versions whose results have been released', function () {

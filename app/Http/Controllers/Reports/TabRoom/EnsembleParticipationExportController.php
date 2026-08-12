@@ -51,6 +51,6 @@ class EnsembleParticipationExportController extends Controller
             'version' => $version,
             'ensemble' => $ensemble,
             'rows' => $rows,
-        ])->setPaper('a4', 'landscape')->stream("ensemble-participation-{$ensemble->id}.pdf");
+        ])->setPaper('letter', 'landscape')->stream("ensemble-participation-{$ensemble->id}.pdf");
     }
 }

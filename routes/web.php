@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\CandidateApplicationPdfController;
+use App\Http\Controllers\CandidateScoreReportPdfController;
 use App\Http\Controllers\Reports\AdjudicationBackupExportController;
 use App\Http\Controllers\Reports\CandidateCountsExportController;
 use App\Http\Controllers\Reports\ObligatedTeachersPdfController;
@@ -16,6 +17,8 @@ use App\Http\Controllers\Reports\TabRoom\CombinedAuditionScoresExportController;
 use App\Http\Controllers\Reports\TabRoom\EnsembleParticipationExportController;
 use App\Http\Controllers\Reports\TabRoom\StudentSeniorityExportController;
 use App\Http\Controllers\SchoolEmailVerificationController;
+use App\Http\Controllers\SchoolScoreReportPdfController;
+use App\Http\Controllers\SharedScoresPdfController;
 use App\Http\Controllers\StopImpersonatingController;
 use App\Http\Controllers\StudentClaimController;
 use App\Http\Controllers\VersionInvitationRequestController;
@@ -162,8 +165,11 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/registrations/{version}/request-invitation', RequestInvitation::class)->name('registrations.request-invitation');
         Route::get('/registrations/{version}/obligations', VersionObligations::class)->name('registrations.obligations');
         Route::get('/registrations/{version}/results', Results::class)->name('registrations.results');
+        Route::get('/registrations/{version}/results/schools/{school}/report.pdf', SchoolScoreReportPdfController::class)->name('registrations.results.school-report-pdf');
+        Route::get('/registrations/{version}/results/shared-scores.pdf', SharedScoresPdfController::class)->name('registrations.results.shared-scores-pdf');
         Route::get('/registrations/{version}/{candidate}', CandidateDetail::class)->name('registrations.candidate');
         Route::get('/registrations/{version}/{candidate}/application.pdf', CandidateApplicationPdfController::class)->name('registrations.candidate.application-pdf');
+        Route::get('/registrations/{version}/{candidate}/score-report.pdf', CandidateScoreReportPdfController::class)->name('registrations.results.candidate-report-pdf');
     });
 
     // Events is gated behind having an active school OR holding a

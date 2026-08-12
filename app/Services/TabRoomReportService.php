@@ -453,6 +453,37 @@ final class TabRoomReportService
     }
 
     /**
+     * The public-report table shape (auditionScoreRows()'s per-Voice-Part
+     * grid), narrowed to a single row for one Candidate — backs the
+     * Registrations-side Per-School and Per-Person score reports (Results
+     * page), both of which render one Candidate per page/section rather
+     * than a shared multi-candidate table. Reuses the cached
+     * auditionScoreRows() call for that Candidate's own Voice Part rather
+     * than a bespoke query, same "thin loop over the cached per-Voice-Part
+     * data" approach combinedScoreRows()/allEnsemblesScoreRows() already
+     * use. Returns null if this Candidate has no row yet (not in
+     * auditionScoreRows()'s CandidateStatus::roomTrackingStates() pool, or
+     * simply not scored) — the caller (a Results-page controller/component)
+     * treats that as "nothing to show" rather than an error.
+     *
+     * @return array{voicePart: VoicePart, columns: Collection<int, array{judge_id: int, score_factor_id: int, score_category_id: int, label: string, category_box: bool, category_shaded: bool, is_category_start: bool, is_category_end: bool, is_judge_start: bool, is_judge_end: bool}>, categoryGroups: Collection<int, array{label: string, span: int, box: bool, shaded: bool}>, judgeGroups: Collection<int, array{label: string, span: int, box: bool, shaded: bool, is_category_start: bool, is_category_end: bool}>, rows: Collection<int, array{candidate: Candidate, scores: array<string, int>, total: int, result: string}>}|null
+     */
+    public function candidateScoreRow(Version $version, Candidate $candidate, EnsembleCutoffService $cutoffs): ?array
+    {
+        $data = $this->auditionScoreRows($version, $candidate->voicePart, $cutoffs);
+
+        $row = $data['rows']->first(fn (array $row): bool => $row['candidate']->id === $candidate->id);
+
+        if ($row === null) {
+            return null;
+        }
+
+        EloquentCollection::make([$row['candidate']])->loadMissing(['student.user', 'school', 'teacher.user']);
+
+        return ['voicePart' => $candidate->voicePart, ...$data, 'rows' => collect([$row])];
+    }
+
+    /**
      * Every Candidate accepted into $ensemble, with student contact info,
      * school, teacher, emergency contact, voice part, grand total, and
      * grade/class_of — Tab Room Module.docx's Ensemble Participation report

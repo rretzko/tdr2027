@@ -78,6 +78,8 @@ class VersionEdit extends Component
 
     public string $pitch_file_visibility = '';
 
+    public bool $share_results = false;
+
     public string $max_registrants = '';
 
     public string $max_upper_voice_registrants = '0';
@@ -185,6 +187,7 @@ class VersionEdit extends Component
         $this->score_order = $version->getRawOriginal('score_order');
         $this->cutoff_strategy = $version->getRawOriginal('cutoff_strategy') ?? '';
         $this->pitch_file_visibility = $version->getRawOriginal('pitch_file_visibility');
+        $this->share_results = (bool) $version->share_results;
         $this->max_registrants = $version->max_registrants !== null ? (string) $version->max_registrants : '';
         $this->max_upper_voice_registrants = $version->max_upper_voice_registrants !== null ? (string) $version->max_upper_voice_registrants : '';
         $this->birthday = (bool) $version->birthday;
@@ -272,6 +275,7 @@ class VersionEdit extends Component
             'score_order' => ['required', 'string', 'in:'.implode(',', array_column(ScoreOrder::cases(), 'value'))],
             'cutoff_strategy' => ['nullable', 'string', 'in:'.implode(',', array_column(CutoffStrategy::cases(), 'value'))],
             'pitch_file_visibility' => ['required', 'string', 'in:'.implode(',', array_column(PitchFileVisibility::cases(), 'value'))],
+            'share_results' => ['boolean'],
             'max_registrants' => ['nullable', 'integer', 'min:0'],
             'max_upper_voice_registrants' => ['nullable', 'integer', 'min:0'],
         ]);
@@ -289,6 +293,7 @@ class VersionEdit extends Component
             'score_order' => $validated['score_order'],
             'cutoff_strategy' => ($validated['cutoff_strategy'] ?? '') ?: null,
             'pitch_file_visibility' => $validated['pitch_file_visibility'],
+            'share_results' => $validated['share_results'],
             'max_registrants' => ($validated['max_registrants'] ?? '') !== '' && (int) $validated['max_registrants'] !== 0 ? (int) $validated['max_registrants'] : null,
             'max_upper_voice_registrants' => ($validated['max_upper_voice_registrants'] ?? '') !== '' ? (int) $validated['max_upper_voice_registrants'] : null,
         ]);

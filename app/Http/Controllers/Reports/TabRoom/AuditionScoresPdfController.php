@@ -31,6 +31,6 @@ class AuditionScoresPdfController extends Controller
             'categoryGroups' => $data['categoryGroups'],
             'judgeGroups' => $data['judgeGroups'],
             'rows' => $data['rows'],
-        ])->setPaper('a4', 'landscape')->stream("audition-scores-{$voicePart->abbr}-{$version->id}.pdf");
+        ])->setPaper('letter', 'landscape')->stream("audition-scores-{$voicePart->abbr}-{$version->id}.pdf");
     }
 }

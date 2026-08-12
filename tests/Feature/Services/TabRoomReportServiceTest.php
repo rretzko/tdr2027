@@ -364,6 +364,30 @@ test('allEnsemblesScoreRows survives a real serializing cache store when two Ens
     }
 });
 
+test('candidateScoreRow returns a single-row table for one Candidate, with identity fields loaded', function () {
+    ['version' => $version, 'voicePart' => $voicePart, 'high' => $high] = makeTabRoomReportScenario();
+
+    $table = app(TabRoomReportService::class)->candidateScoreRow($version, $high, app(EnsembleCutoffService::class));
+
+    expect($table)->not->toBeNull();
+    expect($table['voicePart']->id)->toBe($voicePart->id);
+    expect($table['rows'])->toHaveCount(1);
+    expect($table['rows']->first()['candidate']->id)->toBe($high->id);
+    expect($table['rows']->first()['total'])->toBe(90);
+    expect($table['rows']->first()['candidate']->relationLoaded('student'))->toBeTrue();
+    expect($table['rows']->first()['candidate']->relationLoaded('school'))->toBeTrue();
+    expect($table['rows']->first()['candidate']->relationLoaded('teacher'))->toBeTrue();
+});
+
+test('candidateScoreRow returns null for a Candidate with no score row', function () {
+    ['version' => $version, 'voicePart' => $voicePart] = makeTabRoomReportScenario();
+    $unscored = Candidate::factory()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'status' => CandidateStatus::Eligible]);
+
+    $table = app(TabRoomReportService::class)->candidateScoreRow($version, $unscored, app(EnsembleCutoffService::class));
+
+    expect($table)->toBeNull();
+});
+
 test('allEnsemblesScoreRows renders a Voice Part shared by multiple Ensembles exactly once', function () {
     ['version' => $version, 'voicePart' => $voicePart] = makeTabRoomReportScenario();
     $reports = app(TabRoomReportService::class);

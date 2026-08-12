@@ -79,6 +79,27 @@ test('saveGeneral updates the Version record', function () {
     expect($version->fresh()->status)->toBe(EventStatus::Active);
 });
 
+test('saveGeneral persists share_results', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['event_id' => Event::factory()->create()->id, 'share_results' => false]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertSet('share_results', false)
+        ->set('status', EventStatus::Active->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('audition_type', AuditionType::Remote->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->set('share_results', true)
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    expect($version->fresh()->share_results)->toBeTrue();
+});
+
 test('saveGeneral persists cutoff_strategy, and treats a blank selection as null', function () {
     $user = makeVersionEditUser();
     $version = Version::factory()->create();

@@ -6,12 +6,16 @@ namespace App\Livewire\Events\TabRoom;
 
 use App\Enums\CandidateStatus;
 use App\Enums\EventStatus;
+use App\Enums\PdfExportStatus;
+use App\Jobs\GenerateCombinedScoresPdfJob;
 use App\Mail\AuditionResultsAvailableMail;
 use App\Models\Candidate;
+use App\Models\CombinedScoresPdfExport;
 use App\Models\Version;
 use App\Services\EnsembleCutoffService;
 use App\Services\EnsembleHistoryService;
 use App\Services\VersionRoleAssignmentService;
+use App\Support\Reports\TabRoomReportCache;
 use Flux\Flux;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -66,6 +70,10 @@ class CloseAudition extends Component
 
         $history->recordCurrentSeason($this->version, $cutoffs);
 
+        if ($this->version->share_results) {
+            $this->queueSharedScoresPdf();
+        }
+
         if ($this->emailTeachers) {
             foreach ($this->notifiableTeacherEmails() as $email) {
                 Mail::to($email)->send(new AuditionResultsAvailableMail($this->version, Auth::user()));
@@ -73,6 +81,41 @@ class CloseAudition extends Component
         }
 
         Flux::toast(text: "{$this->version->name} closed — results are now available to teachers.", variant: 'success');
+    }
+
+    /**
+     * Queues the "All Ensembles" public Combined Audition Scores PDF
+     * (GenerateCombinedScoresPdfJob) so it's ready on S3 for participating
+     * teachers to download directly (SharedScoresPdfController) once
+     * share_results is on — the same dedupe-by-generation check
+     * CombinedAuditionScores::requestAllEnsemblesPdf() uses for the Tab Room
+     * Manager's manual "Email me the PDF" button, minus that method's
+     * "already fresh → re-email it" branch, since nobody explicitly
+     * requested an email here.
+     */
+    private function queueSharedScoresPdf(): void
+    {
+        $generation = TabRoomReportCache::currentGeneration($this->version);
+
+        $export = CombinedScoresPdfExport::firstOrNew(['version_id' => $this->version->id, 'confidential' => false]);
+
+        // getRawOriginal(), not a direct enum comparison — Larastan can't
+        // infer the enum cast through this method-based casts() return here
+        // (cataloged Larastan quirk; see PHPStan-quirks memory).
+        $status = $export->exists ? PdfExportStatus::from((string) $export->getRawOriginal('status')) : null;
+        $alreadyFresh = $status === PdfExportStatus::Completed && $export->report_generation === $generation;
+
+        if ($alreadyFresh) {
+            return;
+        }
+
+        $export->fill([
+            'requested_by_user_id' => Auth::id(),
+            'status' => PdfExportStatus::Queued,
+            'report_generation' => null,
+        ])->save();
+
+        GenerateCombinedScoresPdfJob::dispatch($export->id);
     }
 
     public function reopen(): void

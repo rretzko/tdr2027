@@ -107,4 +107,9 @@
     .category-shade {
         background-color: #f2f2f2;
     }
+
+    /* One report unit (e.g. one Candidate) per printed page. */
+    .page-break {
+        page-break-before: always;
+    }
 </style>

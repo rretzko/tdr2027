@@ -183,6 +183,12 @@
                     </flux:field>
 
                     <flux:field>
+                        <flux:checkbox wire:model="share_results" label="Share Results" />
+                        <flux:description>Combined audition results will be automatically shared with the participating teachers when the results are released. The student's name and school are NOT included in this report.</flux:description>
+                        <flux:error name="share_results" />
+                    </flux:field>
+
+                    <flux:field>
                         <flux:label>Max Registrants</flux:label>
                         <flux:input wire:model="max_registrants" type="number" min="0" placeholder="No limit" />
                         <flux:error name="max_registrants" />

@@ -3,9 +3,12 @@
 declare(strict_types=1);
 
 use App\Enums\CandidateStatus;
+use App\Enums\PdfExportStatus;
+use App\Jobs\GenerateCombinedScoresPdfJob;
 use App\Livewire\Events\TabRoom\CloseAudition;
 use App\Mail\AuditionResultsAvailableMail;
 use App\Models\Candidate;
+use App\Models\CombinedScoresPdfExport;
 use App\Models\Event;
 use App\Models\School;
 use App\Models\Teacher;
@@ -13,6 +16,7 @@ use App\Models\User;
 use App\Models\Version;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 use function Pest\Laravel\actingAs;
@@ -123,6 +127,71 @@ test('closing with emailTeachers checked sends the results-available mail to eac
     Mail::assertSent(AuditionResultsAvailableMail::class, 1);
     Mail::assertSent(AuditionResultsAvailableMail::class, fn ($mail) => $mail->hasTo('teacher-a@example.com'));
     Mail::assertNotSent(AuditionResultsAvailableMail::class, fn ($mail) => $mail->hasTo('teacher-b@example.com'));
+});
+
+test('closing with share_results on queues the public All-Ensembles PDF export', function () {
+    Queue::fake();
+
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active', 'share_results' => true]);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    Livewire::actingAs($manager)
+        ->test(CloseAudition::class, ['version' => $version])
+        ->call('close');
+
+    Queue::assertPushed(GenerateCombinedScoresPdfJob::class, 1);
+
+    $export = CombinedScoresPdfExport::where('version_id', $version->id)->where('confidential', false)->first();
+    expect($export)->not->toBeNull();
+    expect($export->getRawOriginal('status'))->toBe(PdfExportStatus::Queued->value);
+    expect($export->requested_by_user_id)->toBe($manager->id);
+});
+
+test('closing with share_results off queues nothing', function () {
+    Queue::fake();
+
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active', 'share_results' => false]);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    Livewire::actingAs($manager)
+        ->test(CloseAudition::class, ['version' => $version])
+        ->call('close');
+
+    Queue::assertNotPushed(GenerateCombinedScoresPdfJob::class);
+    expect(CombinedScoresPdfExport::where('version_id', $version->id)->exists())->toBeFalse();
+});
+
+test('closing with share_results on skips re-queuing when a Completed export is already current', function () {
+    Queue::fake();
+
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active', 'share_results' => true]);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    // Current generation is 0 (never invalidated on a fresh Version) — an
+    // already-Completed export at that same generation must not be re-queued.
+    CombinedScoresPdfExport::create([
+        'version_id' => $version->id,
+        'confidential' => false,
+        'requested_by_user_id' => $manager->id,
+        'report_generation' => 0,
+        's3_key' => 'combinedPublicPdfs/existing.pdf',
+        'status' => PdfExportStatus::Completed->value,
+    ]);
+
+    Livewire::actingAs($manager)
+        ->test(CloseAudition::class, ['version' => $version])
+        ->call('close');
+
+    Queue::assertNotPushed(GenerateCombinedScoresPdfJob::class);
 });
 
 test('closing without emailTeachers checked sends no mail', function () {

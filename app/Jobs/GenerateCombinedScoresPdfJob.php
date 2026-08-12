@@ -122,7 +122,7 @@ class GenerateCombinedScoresPdfJob implements ShouldQueue
                 'version' => $version,
                 'ensembleTables' => collect([['sectionLabel' => $version->name, 'voicePartTables' => $voicePartTables]]),
                 'confidential' => $export->confidential,
-            ])->setPaper('a4', 'landscape')->output();
+            ])->setPaper('letter', 'landscape')->output();
 
             $prefix = $export->confidential ? 'combinedConfidentialPdfs' : 'combinedPublicPdfs';
             $key = "{$prefix}/{$version->id}/{$generation}.pdf";

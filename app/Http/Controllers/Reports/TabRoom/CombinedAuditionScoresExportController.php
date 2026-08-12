@@ -92,6 +92,6 @@ class CombinedAuditionScoresExportController extends Controller
             'version' => $version,
             'ensembleTables' => collect([['sectionLabel' => $ensemble->name, 'voicePartTables' => $voicePartTables]]),
             'confidential' => $confidential,
-        ])->setPaper('a4', 'landscape')->stream("combined-audition-scores-{$filenameSuffix}-{$filenameEnsemblePart}.pdf");
+        ])->setPaper('letter', 'landscape')->stream("combined-audition-scores-{$filenameSuffix}-{$filenameEnsemblePart}.pdf");
     }
 }

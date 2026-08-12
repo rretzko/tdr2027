@@ -48,6 +48,6 @@ class StudentSeniorityExportController extends Controller
             'ensemble' => $ensemble,
             'years' => $years,
             'rows' => $rows,
-        ])->setPaper('a4', 'landscape')->stream("student-seniority-{$ensemble->id}.pdf");
+        ])->setPaper('letter', 'landscape')->stream("student-seniority-{$ensemble->id}.pdf");
     }
 }
