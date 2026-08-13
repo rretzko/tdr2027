@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Enums\EventStatus;
 use App\Enums\Frequency;
+use App\Enums\PaymentEnvironment;
 use Database\Factories\EventFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -72,6 +73,31 @@ class Event extends Model
     public function invitationRequests(): HasMany
     {
         return $this->hasMany(EventInvitationRequest::class);
+    }
+
+    /**
+     * One row per PaymentEnvironment (sandbox/production) — see
+     * EventEpaymentConfig's own docblock. Use activeEpaymentConfig() to
+     * resolve the one that matters for the app's current environment.
+     *
+     * @return HasMany<EventEpaymentConfig, $this>
+     */
+    public function eventEpaymentConfigs(): HasMany
+    {
+        return $this->hasMany(EventEpaymentConfig::class);
+    }
+
+    /**
+     * The credential matching the app-wide services.payments.environment
+     * toggle. Not a cacheable relation — its result depends on runtime
+     * config, not just this Event's own data, so it can't be eager-loaded
+     * via with() the way eventEpaymentConfigs() can.
+     */
+    public function activeEpaymentConfig(): ?EventEpaymentConfig
+    {
+        $environment = config('services.payments.environment', PaymentEnvironment::Sandbox->value);
+
+        return $this->eventEpaymentConfigs()->where('environment', $environment)->first();
     }
 
     /**

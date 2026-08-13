@@ -9,20 +9,23 @@ use App\Enums\CandidateUploadStatus;
 use App\Enums\EmergencyContactRelationship;
 use App\Enums\ObligationDecision;
 use App\Enums\UploadType;
+use App\Enums\Vendor;
 use App\Enums\VersionApplicationStatus;
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\CandidateDetail;
 use App\Models\Candidate;
-use App\Models\CandidatePayment;
 use App\Models\CandidateUploadFile;
 use App\Models\EmergencyContact;
 use App\Models\Ensemble;
-use App\Models\EpaymentCredential;
+use App\Models\EventEpaymentConfig;
+use App\Models\PaymentAllocation;
+use App\Models\PaymentTransaction;
 use App\Models\Recording;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionApplication;
+use App\Models\VersionEpaymentConfig;
 use App\Models\VersionInvitation;
 use App\Models\VersionObligation;
 use App\Models\VersionObligationResponse;
@@ -1296,7 +1299,7 @@ test('the Approval checklist item renders amber when some but not all uploaded f
         ->assertSeeHtml('bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400');
 });
 
-test('the Payment section is absent when the Version has no e-payment credential configured', function () {
+test('the Payment card is always visible, but Pay Now and the opt-in checkbox are absent with nothing configured', function () {
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create();
 
@@ -1305,15 +1308,50 @@ test('the Payment section is absent when the Version has no e-payment credential
 
     Livewire::actingAs($teacher->user)
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
-        ->assertDontSee('Payment')
-        ->assertDontSee('Record Payment');
+        ->assertSee('Payment')
+        ->assertSee('Record Payment')
+        ->assertDontSee('Pay Now')
+        ->assertDontSee('Enable e-payment for all of your candidates');
+});
+
+test('Pay Now is visible only when epayment_teacher is on and the Event has a real vendor configured', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create();
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+
+    // epayment_teacher on, but no vendor configured on the Event yet.
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => false, 'epayment_teacher' => true]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->assertDontSee('Pay Now');
+
+    EventEpaymentConfig::create([
+        'event_id' => $version->event_id,
+        'vendor' => Vendor::Square,
+        'vendor_account_id' => 'loc-123',
+        'secret' => 'token-123',
+    ]);
+
+    // ->fresh(): mount() assigns the exact $version object passed in below,
+    // and Eloquent caches a loaded relation (including a not-found
+    // eventEpaymentConfig) on that instance — the first render above already
+    // resolved $version->event->eventEpaymentConfig as null and cached it,
+    // so re-using the same $version object here would see stale state, not
+    // the row just created. A real request never hits this: it always
+    // starts from a fresh model instance.
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version->fresh(), 'candidate' => $candidate])
+        ->assertSee('Pay Now');
 });
 
 test('toggleEpaymentOptIn flips the teacher+Version opt-in and is scoped per teacher', function () {
     $teacher = makeCandidateDetailTeacher();
     $otherTeacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create();
-    EpaymentCredential::create(['version_id' => $version->id, 'epayment_id' => 'test-id', 'secret' => 'test-secret']);
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => true, 'epayment_teacher' => false]);
 
     actingAs($teacher->user);
     $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
@@ -1329,10 +1367,9 @@ test('toggleEpaymentOptIn flips the teacher+Version opt-in and is scoped per tea
     expect(VersionTeacherEpaymentOptIn::where('version_id', $version->id)->where('teacher_id', $otherTeacher->id)->exists())->toBeFalse();
 });
 
-test('savePayment records a manual candidate_payments row with the amount converted to cents', function () {
+test('savePayment records a manual payment_transactions row, auto-allocated 100% to the candidate', function () {
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create();
-    EpaymentCredential::create(['version_id' => $version->id, 'epayment_id' => 'test-id', 'secret' => 'test-secret']);
 
     actingAs($teacher->user);
     $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
@@ -1340,6 +1377,7 @@ test('savePayment records a manual candidate_payments row with the amount conver
     Livewire::actingAs($teacher->user)
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->call('recordPayment')
+        ->set('payment_type', 'check')
         ->set('payment_amount', '125.50')
         ->set('payment_paid_at', now()->format('Y-m-d'))
         ->set('payment_reference_number', 'CONF-123')
@@ -1347,19 +1385,26 @@ test('savePayment records a manual candidate_payments row with the amount conver
         ->call('savePayment')
         ->assertHasNoErrors();
 
-    $payment = CandidatePayment::where('candidate_id', $candidate->id)->first();
+    $transaction = PaymentTransaction::where('version_id', $version->id)->first();
 
-    expect($payment)->not->toBeNull();
-    expect($payment->amount)->toBe(12550);
-    expect($payment->getRawOriginal('payment_type'))->toBe('electronic');
-    expect($payment->reference_number)->toBe('CONF-123');
-    expect($payment->comments)->toBe('Paid at registration desk');
+    expect($transaction)->not->toBeNull();
+    expect($transaction->amount)->toBe(12550);
+    expect($transaction->getRawOriginal('source'))->toBe('manual');
+    expect($transaction->getRawOriginal('status'))->toBe('completed');
+    expect($transaction->getRawOriginal('payment_type'))->toBe('check');
+    expect($transaction->reference_number)->toBe('CONF-123');
+    expect($transaction->comments)->toBe('Paid at registration desk');
+    expect($transaction->payer_teacher_id)->toBe($teacher->id);
+
+    $allocation = PaymentAllocation::where('payment_transaction_id', $transaction->id)->first();
+    expect($allocation)->not->toBeNull();
+    expect($allocation->candidate_id)->toBe($candidate->id);
+    expect($allocation->amount)->toBe(12550);
 });
 
-test('savePayment requires a positive amount and a valid date', function () {
+test('savePayment requires a valid payment type, a positive amount, and a valid date', function () {
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create();
-    EpaymentCredential::create(['version_id' => $version->id, 'epayment_id' => 'test-id', 'secret' => 'test-secret']);
 
     actingAs($teacher->user);
     $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
@@ -1367,45 +1412,42 @@ test('savePayment requires a positive amount and a valid date', function () {
     Livewire::actingAs($teacher->user)
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->call('recordPayment')
+        ->set('payment_type', 'not-a-real-type')
         ->set('payment_amount', '0')
         ->set('payment_paid_at', '')
         ->call('savePayment')
-        ->assertHasErrors(['payment_amount', 'payment_paid_at']);
+        ->assertHasErrors(['payment_type', 'payment_amount', 'payment_paid_at']);
 });
 
-test('savePayment aborts with 404 when the Version has no e-payment credential', function () {
+test('the payment history list shows previously recorded payments with their status', function () {
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create();
 
     actingAs($teacher->user);
     $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
 
-    Livewire::actingAs($teacher->user)
-        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
-        ->set('payment_amount', '50.00')
-        ->set('payment_paid_at', now()->format('Y-m-d'))
-        ->call('savePayment')
-        ->assertStatus(404);
-});
-
-test('the payment history list shows previously recorded payments', function () {
-    $teacher = makeCandidateDetailTeacher();
-    $version = Version::factory()->create();
-    EpaymentCredential::create(['version_id' => $version->id, 'epayment_id' => 'test-id', 'secret' => 'test-secret']);
-
-    actingAs($teacher->user);
-    $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
-    CandidatePayment::create([
+    $transaction = PaymentTransaction::create([
         'version_id' => $version->id,
-        'candidate_id' => $candidate->id,
-        'payment_type' => 'electronic',
+        'source' => 'manual',
+        'payer_teacher_id' => $teacher->id,
+        'school_id' => $candidate->school_id,
         'amount' => 5000,
+        'status' => 'completed',
+        'payment_type' => 'check',
         'reference_number' => 'REF-99',
         'paid_at' => now(),
+    ]);
+
+    PaymentAllocation::create([
+        'payment_transaction_id' => $transaction->id,
+        'candidate_id' => $candidate->id,
+        'amount' => 5000,
+        'allocated_at' => now(),
     ]);
 
     Livewire::actingAs($teacher->user)
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->assertSee('$50.00')
-        ->assertSee('REF-99');
+        ->assertSee('REF-99')
+        ->assertSee('Completed');
 });

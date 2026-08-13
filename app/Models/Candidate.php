@@ -114,11 +114,11 @@ class Candidate extends Model
     }
 
     /**
-     * @return HasMany<CandidatePayment, $this>
+     * @return HasMany<PaymentAllocation, $this>
      */
-    public function payments(): HasMany
+    public function paymentAllocations(): HasMany
     {
-        return $this->hasMany(CandidatePayment::class);
+        return $this->hasMany(PaymentAllocation::class);
     }
 
     /**

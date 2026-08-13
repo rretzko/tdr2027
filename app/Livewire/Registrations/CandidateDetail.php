@@ -10,12 +10,15 @@ use App\Enums\ApplicationType;
 use App\Enums\AuditionType;
 use App\Enums\CandidateUploadStatus;
 use App\Enums\EmergencyContactRelationship;
+use App\Enums\PaymentSource;
+use App\Enums\PaymentTransactionStatus;
 use App\Enums\PaymentType;
 use App\Enums\UploadType;
 use App\Models\Candidate;
-use App\Models\CandidatePayment;
 use App\Models\CandidateUploadFile;
 use App\Models\EmergencyContact;
+use App\Models\PaymentAllocation;
+use App\Models\PaymentTransaction;
 use App\Models\Recording;
 use App\Models\Teacher;
 use App\Models\Version;
@@ -24,6 +27,7 @@ use App\Models\VersionInvitation;
 use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VersionUploadFile;
 use App\Services\CandidateService;
+use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\RecordingReviewService;
 use App\Support\CandidateApplicationData;
 use Flux\Flux;
@@ -90,6 +94,8 @@ class CandidateDetail extends Component
     public $newRecordingFile = null;
 
     // Payment form
+    public string $payment_type = '';
+
     public string $payment_amount = '';
 
     public string $payment_reference_number = '';
@@ -550,11 +556,13 @@ class CandidateDetail extends Component
     /**
      * Roster-wide, not per-Candidate — toggles whether every Candidate this
      * teacher manages in this Version may use e-payment, once a real gateway
-     * exists (see VersionTeacherEpaymentOptIn's own docblock).
+     * exists (see VersionTeacherEpaymentOptIn's own docblock). Gated on
+     * epayment_student, not epaymentCredential's old presence-as-gate — see
+     * epayment-integration.md §1.3.
      */
     public function toggleEpaymentOptIn(): void
     {
-        if ($this->version->epaymentCredential === null) {
+        if (! $this->version->epaymentStudentEnabled()) {
             return;
         }
 
@@ -570,42 +578,80 @@ class CandidateDetail extends Component
             : 'E-payment disabled for all of your candidates in this Version.');
     }
 
+    /**
+     * Redirects to the vendor's hosted checkout for this one Candidate — see
+     * epayment-integration.md §2.1/§3. Gated on epayment_teacher and a real
+     * vendor being configured on this Version's Event.
+     */
+    public function payNow(PaymentGatewayFactory $factory): void
+    {
+        abort_unless($this->version->epaymentTeacherReady(), 403);
+
+        $gateway = $factory->make($this->version);
+        $session = $gateway->createCheckoutSession($this->version, collect([$this->candidate]), $this->teacher());
+
+        $this->redirect($session->redirectUrl, navigate: false);
+    }
+
     public function recordPayment(): void
     {
+        $this->payment_type = '';
         $this->payment_amount = '';
         $this->payment_reference_number = '';
         $this->payment_comments = '';
         $this->payment_paid_at = now()->format('Y-m-d');
-        $this->resetErrorBag(['payment_amount', 'payment_reference_number', 'payment_comments', 'payment_paid_at']);
+        $this->resetErrorBag(['payment_type', 'payment_amount', 'payment_reference_number', 'payment_comments', 'payment_paid_at']);
         $this->modal('record-payment')->show();
     }
 
+    /**
+     * Manual entry only (check/PO/cash/other) — a real electronic payment
+     * goes through payNow() instead. Writes payment_transactions
+     * (source=manual) plus an auto-created 100%-allocated payment_allocations
+     * row for this one Candidate, per epayment-integration.md §1.1. Not
+     * gated on e-payment being configured at all — recording a manually
+     * collected payment is independent of whether electronic payment exists
+     * for this Version.
+     */
     public function savePayment(): void
     {
-        abort_if($this->version->epaymentCredential === null, 404);
+        $modalPaymentTypes = [PaymentType::Check->value, PaymentType::PurchaseOrder->value, PaymentType::Cash->value, PaymentType::Other->value];
 
-        $this->validate([
+        $validated = $this->validate([
+            'payment_type' => ['required', 'string', Rule::in($modalPaymentTypes)],
             'payment_amount' => ['required', 'numeric', 'min:0.01', 'max:99999.99'],
             'payment_reference_number' => ['nullable', 'string', 'max:255'],
             'payment_comments' => ['nullable', 'string', 'max:1000'],
             'payment_paid_at' => ['required', 'date', 'before_or_equal:today'],
         ]);
 
-        CandidatePayment::create([
+        $amountCents = (int) round(((float) $this->payment_amount) * 100);
+
+        $transaction = PaymentTransaction::create([
             'version_id' => $this->version->id,
-            'candidate_id' => $this->candidate->id,
-            'payment_type' => PaymentType::Electronic->value,
-            'amount' => (int) round(((float) $this->payment_amount) * 100),
+            'source' => PaymentSource::Manual,
+            'payer_teacher_id' => $this->teacher()->id,
+            'school_id' => $this->candidate->school_id,
+            'amount' => $amountCents,
+            'status' => PaymentTransactionStatus::Completed,
+            'payment_type' => $validated['payment_type'],
             'reference_number' => $this->payment_reference_number !== '' ? $this->payment_reference_number : null,
             'comments' => $this->payment_comments !== '' ? $this->payment_comments : null,
+            'recorded_by_user_id' => Auth::id(),
             'paid_at' => $this->payment_paid_at,
+        ]);
+
+        PaymentAllocation::create([
+            'payment_transaction_id' => $transaction->id,
+            'candidate_id' => $this->candidate->id,
+            'amount' => $amountCents,
+            'allocated_by_user_id' => Auth::id(),
+            'allocated_at' => now(),
         ]);
 
         $this->modal('record-payment')->close();
 
-        // This writes a manual ledger entry only — no live payment
-        // processor is connected yet (see CandidatePayment's own docblock).
-        Flux::toast('Payment recorded. This is a manual record only — no live payment was processed.', variant: 'warning');
+        Flux::toast('Payment recorded.', variant: 'success');
     }
 
     public function refreshStatus(CandidateService $candidates): void
@@ -630,7 +676,8 @@ class CandidateDetail extends Component
 
         $checklistDefs = $this->checklistDefs($this->version);
 
-        $epaymentEnabled = $this->version->epaymentCredential !== null;
+        $epaymentStudentEnabled = $this->version->epaymentStudentEnabled();
+        $epaymentTeacherReady = $this->version->epaymentTeacherReady();
 
         return view('livewire.registrations.candidate-detail', [
             'checklistDefs' => $checklistDefs,
@@ -640,13 +687,18 @@ class CandidateDetail extends Component
                 ? $this->version->uploadFiles
                 : collect(),
             'candidateUploads' => $this->candidate->uploadFiles->keyBy('version_upload_file_id'),
-            'epaymentEnabled' => $epaymentEnabled,
-            'epaymentOptedIn' => $epaymentEnabled && (bool) VersionTeacherEpaymentOptIn::where('version_id', $this->version->id)
+            'epaymentStudentEnabled' => $epaymentStudentEnabled,
+            'epaymentTeacherReady' => $epaymentTeacherReady,
+            'epaymentOptedIn' => $epaymentStudentEnabled && (bool) VersionTeacherEpaymentOptIn::where('version_id', $this->version->id)
                 ->where('teacher_id', $this->teacher()->id)
                 ->value('opted_in'),
-            'candidatePayments' => $epaymentEnabled
-                ? CandidatePayment::where('candidate_id', $this->candidate->id)->orderByDesc('paid_at')->get()
-                : collect(),
+            'candidatePayments' => PaymentTransaction::whereHas(
+                'allocations',
+                fn ($q) => $q->where('candidate_id', $this->candidate->id),
+            )->with(['allocations' => fn ($q) => $q->where('candidate_id', $this->candidate->id)])
+                ->orderByDesc('paid_at')
+                ->orderByDesc('created_at')
+                ->get(),
             ...$this->applicationDocumentView(),
         ]);
     }

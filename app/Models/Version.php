@@ -103,6 +103,53 @@ class Version extends Model
     }
 
     /**
+     * The per-Version accept-electronic-payment flags. Replaces
+     * epaymentCredential()'s presence-as-gate once CandidateDetail/VersionEdit
+     * are cut over — see VersionEpaymentConfig's own docblock. The vendor
+     * credential itself is NOT here — see eventEpaymentConfig() below.
+     *
+     * @return HasOne<VersionEpaymentConfig, $this>
+     */
+    public function versionEpaymentConfig(): HasOne
+    {
+        return $this->hasOne(VersionEpaymentConfig::class);
+    }
+
+    /**
+     * Convenience accessor, not an Eloquent relation (no eager-loading via
+     * with()) — a plain method because a genuine hasOneThrough(Event) adds
+     * FK-order plumbing for no real benefit at this call volume. The vendor
+     * credential lives on the Event, not the Version — see
+     * EventEpaymentConfig's own docblock for why.
+     */
+    public function eventEpaymentConfig(): ?EventEpaymentConfig
+    {
+        return $this->event->activeEpaymentConfig();
+    }
+
+    /**
+     * Shared by CandidateDetail (single-candidate Pay Now) and
+     * VersionDashboard (group Pay for Selected) — both need the identical
+     * epayment_teacher + real-vendor check, so it lives here once rather
+     * than duplicated per Livewire component.
+     */
+    public function epaymentTeacherReady(): bool
+    {
+        $versionConfig = $this->versionEpaymentConfig;
+        $eventConfig = $this->eventEpaymentConfig();
+
+        return $versionConfig !== null && $versionConfig->epayment_teacher
+            && $eventConfig !== null && $eventConfig->epaymentAccepted();
+    }
+
+    public function epaymentStudentEnabled(): bool
+    {
+        $versionConfig = $this->versionEpaymentConfig;
+
+        return $versionConfig !== null && $versionConfig->epayment_student;
+    }
+
+    /**
      * @return HasOne<VersionMembershipRequirement, $this>
      */
     public function membershipRequirement(): HasOne
@@ -188,19 +235,11 @@ class Version extends Model
     }
 
     /**
-     * @return HasMany<TeacherPayment, $this>
+     * @return HasMany<PaymentTransaction, $this>
      */
-    public function teacherPayments(): HasMany
+    public function paymentTransactions(): HasMany
     {
-        return $this->hasMany(TeacherPayment::class);
-    }
-
-    /**
-     * @return HasMany<CandidatePayment, $this>
-     */
-    public function candidatePayments(): HasMany
-    {
-        return $this->hasMany(CandidatePayment::class);
+        return $this->hasMany(PaymentTransaction::class);
     }
 
     /**

@@ -19,7 +19,7 @@
                 ['route' => 'events.versions.reports.obligated-teachers', 'name' => 'Obligated Teachers', 'description' => 'Teachers who have accepted the Version obligations.'],
                 ['route' => 'events.versions.reports.participating-teachers', 'name' => 'Participating Teachers', 'description' => 'Teachers with registered candidates.'],
                 ['route' => 'events.versions.reports.participating-schools', 'name' => 'Participating Schools', 'description' => 'Packet receipt and payment status by school.'],
-                ['route' => 'events.versions.reports.payment-roster', 'name' => 'Payment Roster', 'description' => 'Every payment recorded for this Version.'],
+                ['route' => 'events.versions.reports.payment-reconciliation', 'name' => 'Payment Reconciliation', 'description' => 'Balances by school, and payments still needing allocation.'],
                 ['route' => 'events.versions.reports.participating-candidates', 'name' => 'Participating Candidates', 'description' => 'Registered candidates, with limited edit/remove.'],
                 ['route' => 'events.versions.reports.participation-by-county', 'name' => 'Participation by County', 'description' => 'Counts by county, including counties with none.'],
                 ['route' => 'events.versions.reports.candidate-counts', 'name' => 'Candidate Counts', 'description' => 'Counts by school, teacher, and voice part.'],

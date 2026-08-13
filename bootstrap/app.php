@@ -29,6 +29,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(ResetVersionRoleContext::class);
 
         $middleware->web(append: [TrackVisitedPage::class, RestrictWebRegistrationImpersonation::class]);
+
+        // Vendor e-payment webhooks (epayment-integration.md §2.4) — a
+        // vendor server has no CSRF token to send; each gateway verifies its
+        // own signature instead (SquarePaymentGateway::verifyWebhookSignature()).
+        $middleware->validateCsrfTokens(except: ['webhooks/payments/*']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

@@ -8,18 +8,22 @@ use App\Enums\ApplicationType;
 use App\Enums\AuditionType;
 use App\Enums\CutoffStrategy;
 use App\Enums\EventStatus;
+use App\Enums\PaymentEnvironment;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
+use App\Enums\Vendor;
 use App\Enums\VersionApplicationStatus;
 use App\Enums\VersionDateType;
 use App\Enums\VersionObligationStatus;
 use App\Models\County;
+use App\Models\EventEpaymentConfig;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionApplication;
 use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
+use App\Models\VersionEpaymentConfig;
 use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
 use App\Models\VersionObligation;
@@ -160,6 +164,31 @@ class VersionEdit extends Component
 
     public int $obligation_response_count = 0;
 
+    // Payments tab — vendor credential is Event-scoped (event_epayment_configs,
+    // one row per PaymentEnvironment — see EventEpaymentConfig's own
+    // docblock); epayment_student/epayment_teacher are Version-scoped
+    // (version_epayment_configs).
+    public string $payment_environment = 'sandbox';
+
+    public string $payment_vendor = '';
+
+    public string $payment_vendor_account_id = '';
+
+    // Never pre-filled with the real decrypted value — see
+    // loadPaymentCredential()'s own comment. Blank on save means "keep the
+    // existing secret", not "clear it".
+    public string $payment_secret = '';
+
+    public bool $payment_has_secret = false;
+
+    public string $payment_webhook_signature_key = '';
+
+    public bool $payment_has_webhook_signature_key = false;
+
+    public bool $epayment_student = false;
+
+    public bool $epayment_teacher = false;
+
     // Roles tab
     public string $assign_search = '';
 
@@ -253,6 +282,100 @@ class VersionEdit extends Component
             ? Carbon::parse($rawPublishedAt)->format('M j, Y g:ia')
             : null;
         $this->obligation_response_count = $obligation !== null ? $obligation->responses()->count() : 0;
+
+        // getRawOriginal()/explicit null-check, not the magic-cast property
+        // or ?-> — Larastan can't infer VersionEpaymentConfig's HasOne
+        // relation type through the casts() accessor (same quirk noted
+        // throughout the e-payment feature, e.g. PaymentGatewayFactory).
+        $versionEpaymentConfig = $version->versionEpaymentConfig;
+        $this->epayment_student = $versionEpaymentConfig !== null && $versionEpaymentConfig->epayment_student;
+        $this->epayment_teacher = $versionEpaymentConfig !== null && $versionEpaymentConfig->epayment_teacher;
+
+        $this->loadPaymentCredential((string) config('services.payments.environment', PaymentEnvironment::Sandbox->value));
+    }
+
+    /**
+     * Loads the Payments tab's vendor-credential fields for one
+     * environment — switching environments (updatedPaymentEnvironment())
+     * re-runs this rather than loading both up front, since a Version's
+     * Event may not have a row for every environment yet.
+     *
+     * secret/webhook_signature_key are deliberately never populated with
+     * the real decrypted value here — showing a live API secret back in a
+     * plain form field on every page load is unnecessary exposure (browser
+     * history, screen-sharing, etc.). payment_has_secret/
+     * payment_has_webhook_signature_key drive a "already saved" hint in the
+     * view instead; saveEventEpaymentCredential() only overwrites either
+     * field when the teacher actually types a new value.
+     */
+    private function loadPaymentCredential(string $environment): void
+    {
+        $this->payment_environment = $environment;
+
+        $eventConfig = $this->version->event->eventEpaymentConfigs()->where('environment', $environment)->first();
+
+        $this->payment_vendor = $eventConfig === null ? '' : ((string) $eventConfig->getRawOriginal('vendor'));
+        $this->payment_vendor_account_id = $eventConfig === null ? '' : ($eventConfig->vendor_account_id ?? '');
+        $this->payment_secret = '';
+        $this->payment_has_secret = $eventConfig !== null && $eventConfig->secret !== null;
+        $this->payment_webhook_signature_key = '';
+        $this->payment_has_webhook_signature_key = $eventConfig !== null && $eventConfig->webhook_signature_key !== null;
+    }
+
+    public function updatedPaymentEnvironment(string $value): void
+    {
+        $this->loadPaymentCredential($value);
+    }
+
+    public function saveEventEpaymentCredential(): void
+    {
+        $validated = $this->validate([
+            'payment_environment' => ['required', 'string', 'in:'.implode(',', array_column(PaymentEnvironment::cases(), 'value'))],
+            'payment_vendor' => ['nullable', 'string', 'in:'.implode(',', array_column(Vendor::cases(), 'value'))],
+            'payment_vendor_account_id' => ['nullable', 'string', 'max:255'],
+            'payment_secret' => ['nullable', 'string', 'max:2000'],
+            'payment_webhook_signature_key' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $eventConfig = EventEpaymentConfig::firstOrNew([
+            'event_id' => $this->version->event_id,
+            'environment' => $validated['payment_environment'],
+        ]);
+
+        $eventConfig->vendor = ($validated['payment_vendor'] ?? '') !== '' ? $validated['payment_vendor'] : null;
+        $eventConfig->vendor_account_id = ($validated['payment_vendor_account_id'] ?? '') !== '' ? $validated['payment_vendor_account_id'] : null;
+
+        if (($validated['payment_secret'] ?? '') !== '') {
+            $eventConfig->secret = $validated['payment_secret'];
+        }
+
+        if (($validated['payment_webhook_signature_key'] ?? '') !== '') {
+            $eventConfig->webhook_signature_key = $validated['payment_webhook_signature_key'];
+        }
+
+        $eventConfig->save();
+
+        $this->loadPaymentCredential($validated['payment_environment']);
+
+        Flux::toast("Payment credential saved for {$validated['payment_environment']}.");
+    }
+
+    public function saveEpaymentFlags(): void
+    {
+        $validated = $this->validate([
+            'epayment_student' => ['boolean'],
+            'epayment_teacher' => ['boolean'],
+        ]);
+
+        VersionEpaymentConfig::updateOrCreate(
+            ['version_id' => $this->version->id],
+            [
+                'epayment_student' => $validated['epayment_student'],
+                'epayment_teacher' => $validated['epayment_teacher'],
+            ],
+        );
+
+        Flux::toast('E-payment settings saved.');
     }
 
     public function saveGeneral(EnsembleHistoryService $history, EnsembleCutoffService $cutoffs): void

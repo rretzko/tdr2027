@@ -19,6 +19,7 @@
             <flux:tab name="requirements">Requirements</flux:tab>
             <flux:tab name="application">Application</flux:tab>
             <flux:tab name="obligations">Obligations</flux:tab>
+            <flux:tab name="payments">Payments</flux:tab>
             <flux:tab name="roles">Roles</flux:tab>
         </flux:tabs>
 
@@ -669,6 +670,88 @@
                 </div>
             </div>
         </flux:modal>
+
+        {{-- Payments --}}
+        <flux:tab.panel name="payments">
+            <div class="mt-6 space-y-8 max-w-2xl">
+                <div>
+                    <flux:heading size="sm" class="mb-1">Vendor Credential</flux:heading>
+                    <flux:text size="sm" class="text-zinc-500 mb-4">
+                        Belongs to {{ $version->event->name }}, not just this Version — every Version of this Event
+                        shares the same Square/PayPal business.
+                    </flux:text>
+
+                    <div class="space-y-4">
+                        <flux:field>
+                            <flux:label>Environment</flux:label>
+                            <flux:select wire:model.live="payment_environment">
+                                <flux:select.option value="sandbox">Sandbox</flux:select.option>
+                                <flux:select.option value="production">Production</flux:select.option>
+                            </flux:select>
+                            <flux:error name="payment_environment" />
+                        </flux:field>
+
+                        <flux:callout variant="info" icon="information-circle">
+                            <flux:callout.text>
+                                Which environment's credential is actually used app-wide is a single deployment
+                                setting (not chosen here) — this lets you prepare or review either one without
+                                overwriting the other.
+                            </flux:callout.text>
+                        </flux:callout>
+
+                        <flux:field>
+                            <flux:label>Vendor</flux:label>
+                            <flux:select wire:model="payment_vendor" placeholder="Not accepted">
+                                <flux:select.option value="">Not accepted</flux:select.option>
+                                <flux:select.option value="square">Square</flux:select.option>
+                                <flux:select.option value="paypal">PayPal</flux:select.option>
+                            </flux:select>
+                            <flux:error name="payment_vendor" />
+                        </flux:field>
+
+                        <flux:field>
+                            <flux:label>Account / Client ID</flux:label>
+                            <flux:input wire:model="payment_vendor_account_id" placeholder="Square location id, or PayPal Client ID" />
+                            <flux:error name="payment_vendor_account_id" />
+                        </flux:field>
+
+                        <flux:field>
+                            <flux:label>API Secret</flux:label>
+                            <flux:input wire:model="payment_secret" type="password" placeholder="{{ $payment_has_secret ? 'A secret is already saved — leave blank to keep it' : 'Square access token, or PayPal Client Secret' }}" />
+                            <flux:error name="payment_secret" />
+                        </flux:field>
+
+                        <flux:field>
+                            <flux:label>Webhook Signing Key</flux:label>
+                            <flux:input wire:model="payment_webhook_signature_key" type="password" placeholder="{{ $payment_has_webhook_signature_key ? 'A webhook key is already saved — leave blank to keep it' : 'Square webhook signature key, or PayPal Webhook ID' }}" />
+                            <flux:error name="payment_webhook_signature_key" />
+                        </flux:field>
+
+                        <flux:button variant="primary" wire:click="saveEventEpaymentCredential">Save Vendor Credential</flux:button>
+                    </div>
+                </div>
+
+                <div>
+                    <flux:heading size="sm" class="mb-1">Accept Electronic Payment</flux:heading>
+                    <flux:text size="sm" class="text-zinc-500 mb-4">Per-Version — decide separately for each season.</flux:text>
+
+                    <div class="space-y-4">
+                        <flux:checkbox
+                            wire:model="epayment_teacher"
+                            label="Teachers may pay electronically"
+                            description="Enables Pay Now on Candidate Detail and the group Pay for Selected action on the Version dashboard."
+                        />
+                        <flux:checkbox
+                            wire:model="epayment_student"
+                            label="Students may pay electronically"
+                            description="No consumer yet — StudentFolder.info is a separate, not-yet-built project. Safe to turn on ahead of it."
+                        />
+
+                        <flux:button variant="primary" wire:click="saveEpaymentFlags">Save E-Payment Settings</flux:button>
+                    </div>
+                </div>
+            </div>
+        </flux:tab.panel>
 
         {{-- Roles --}}
         <flux:tab.panel name="roles">

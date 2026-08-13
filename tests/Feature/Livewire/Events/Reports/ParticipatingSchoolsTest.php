@@ -2,14 +2,17 @@
 
 declare(strict_types=1);
 
+use App\Enums\PaymentSource;
+use App\Enums\PaymentTransactionStatus;
 use App\Livewire\Events\Reports\ParticipatingSchools;
 use App\Mail\PacketReceivedMail;
 use App\Models\Candidate;
 use App\Models\CoRegistrationManagerCounty;
 use App\Models\County;
+use App\Models\PaymentAllocation;
+use App\Models\PaymentTransaction;
 use App\Models\School;
 use App\Models\Teacher;
-use App\Models\TeacherPayment;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionFee;
@@ -41,6 +44,32 @@ function makeParticipatingSchoolPair(Version $version, ?County $county = null, i
     return ['school' => $school, 'teacher' => $teacher];
 }
 
+/**
+ * A completed, 100%-allocated payment for one candidate — the only shape
+ * that counts toward ParticipatingSchools::baseRows()'s "paid" total (see
+ * that method's own comment on why an unallocated lump-sum payment does not).
+ */
+function payCandidate(Candidate $candidate, int $amountCents): void
+{
+    $transaction = PaymentTransaction::create([
+        'version_id' => $candidate->version_id,
+        'source' => PaymentSource::Manual,
+        'payer_teacher_id' => $candidate->teacher_id,
+        'school_id' => $candidate->school_id,
+        'amount' => $amountCents,
+        'status' => PaymentTransactionStatus::Completed,
+        'payment_type' => 'check',
+        'paid_at' => now(),
+    ]);
+
+    PaymentAllocation::create([
+        'payment_transaction_id' => $transaction->id,
+        'candidate_id' => $candidate->id,
+        'amount' => $amountCents,
+        'allocated_at' => now(),
+    ]);
+}
+
 test('mount aborts with 403 for a user with no relevant role', function () {
     $user = User::factory()->create();
     $version = Version::factory()->create();
@@ -57,14 +86,8 @@ test('lists a school/teacher pair with the correct due, paid, and balance amount
     VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
     ['school' => $school, 'teacher' => $teacher] = makeParticipatingSchoolPair($version, registeredCount: 2);
 
-    TeacherPayment::create([
-        'version_id' => $version->id,
-        'school_id' => $school->id,
-        'teacher_id' => $teacher->id,
-        'payment_type' => 'check',
-        'amount' => 1500,
-        'recorded_by_user_id' => $founder->id,
-    ]);
+    $candidate = Candidate::where('school_id', $school->id)->where('teacher_id', $teacher->id)->first();
+    payCandidate($candidate, 1500);
 
     Livewire::actingAs($founder)
         ->test(ParticipatingSchools::class, ['version' => $version])
@@ -73,6 +96,25 @@ test('lists a school/teacher pair with the correct due, paid, and balance amount
         ->assertSee('40.00') // due: 2 candidates * $20.00
         ->assertSee('15.00') // paid
         ->assertSee('25.00 due'); // balance
+});
+
+test('a lump-sum payment recorded via savePayment does not count toward the balance until it is allocated', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    ['school' => $school, 'teacher' => $teacher] = makeParticipatingSchoolPair($version, registeredCount: 1);
+
+    Livewire::actingAs($founder)
+        ->test(ParticipatingSchools::class, ['version' => $version])
+        ->call('openPayment', $school->id, $teacher->id)
+        ->set('paymentType', 'check')
+        ->set('amount', '20.00')
+        ->call('savePayment');
+
+    Livewire::actingAs($founder)
+        ->test(ParticipatingSchools::class, ['version' => $version])
+        ->assertSee('20.00 due'); // full balance still due — the payment is unallocated
 });
 
 test('togglePacket creates a received packet row and toggling again clears it', function () {
@@ -116,7 +158,7 @@ test('togglePacket aborts with 403 for a school/teacher pair outside the acting 
         ->assertStatus(403);
 });
 
-test('savePayment records a teacher_payments row with the acting user attributed', function () {
+test('savePayment records an unallocated payment_transactions row with the acting user attributed', function () {
     $founder = makeFounder();
     actingAs($founder);
     $version = Version::factory()->create();
@@ -132,12 +174,14 @@ test('savePayment records a teacher_payments row with the acting user attributed
         ->call('savePayment')
         ->assertHasNoErrors();
 
-    $payment = TeacherPayment::where('version_id', $version->id)->where('school_id', $school->id)->where('teacher_id', $teacher->id)->first();
+    $payment = PaymentTransaction::where('version_id', $version->id)->where('school_id', $school->id)->where('payer_teacher_id', $teacher->id)->first();
 
     expect($payment)->not->toBeNull();
     expect($payment->amount)->toBe(2550);
     expect($payment->reference_number)->toBe('CHK-1001');
     expect($payment->recorded_by_user_id)->toBe($founder->id);
+    expect($payment->getRawOriginal('source'))->toBe('manual');
+    expect($payment->allocations)->toHaveCount(0);
 });
 
 test('savePayment rejects an invalid payment type', function () {
@@ -235,14 +279,8 @@ test('sorting by Registered, Due, and Balance orders rows by their underlying va
     ['school' => $schoolFew] = makeParticipatingSchoolPair($version, registeredCount: 1);
     ['school' => $schoolMany, 'teacher' => $teacherMany] = makeParticipatingSchoolPair($version, registeredCount: 3);
 
-    TeacherPayment::create([
-        'version_id' => $version->id,
-        'school_id' => $schoolMany->id,
-        'teacher_id' => $teacherMany->id,
-        'payment_type' => 'check',
-        'amount' => 6000,
-        'recorded_by_user_id' => $founder->id,
-    ]);
+    $candidateMany = Candidate::where('school_id', $schoolMany->id)->where('teacher_id', $teacherMany->id)->first();
+    payCandidate($candidateMany, 6000);
 
     $component = Livewire::actingAs($founder)
         ->test(ParticipatingSchools::class, ['version' => $version])

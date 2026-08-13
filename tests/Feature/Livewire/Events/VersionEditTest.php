@@ -19,12 +19,14 @@ use App\Models\County;
 use App\Models\Ensemble;
 use App\Models\EnsembleHistory;
 use App\Models\Event;
+use App\Models\EventEpaymentConfig;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionApplication;
 use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
+use App\Models\VersionEpaymentConfig;
 use App\Models\VersionFee;
 use App\Models\VersionMembershipRequirement;
 use App\Models\VersionObligation;
@@ -397,6 +399,116 @@ test('saveFees converts dollar input to cents on the VersionFee row', function (
     expect($fee->registration)->toBe(2500);
     expect($fee->participation)->toBe(7550);
     expect($fee->epayment_surcharge)->toBe(250);
+});
+
+test('saveEventEpaymentCredential creates a config row for the current environment', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertSet('payment_environment', 'sandbox')
+        ->set('payment_vendor', 'square')
+        ->set('payment_vendor_account_id', 'loc-123')
+        ->set('payment_secret', 'super-secret-token')
+        ->set('payment_webhook_signature_key', 'whk-123')
+        ->call('saveEventEpaymentCredential')
+        ->assertHasNoErrors();
+
+    $config = EventEpaymentConfig::where('event_id', $version->event_id)->where('environment', 'sandbox')->first();
+
+    expect($config)->not->toBeNull();
+    expect($config->getRawOriginal('vendor'))->toBe('square');
+    expect($config->vendor_account_id)->toBe('loc-123');
+    expect($config->secret)->toBe('super-secret-token');
+    expect($config->webhook_signature_key)->toBe('whk-123');
+});
+
+test('saveEventEpaymentCredential leaves the secret and webhook key untouched when the fields are left blank', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    EventEpaymentConfig::create([
+        'event_id' => $version->event_id,
+        'environment' => 'sandbox',
+        'vendor' => 'square',
+        'vendor_account_id' => 'loc-123',
+        'secret' => 'original-secret',
+        'webhook_signature_key' => 'original-webhook-key',
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertSet('payment_secret', '') // never pre-filled with the real value
+        ->assertSet('payment_has_secret', true)
+        ->set('payment_vendor_account_id', 'loc-456') // change something else, leave secret blank
+        ->call('saveEventEpaymentCredential')
+        ->assertHasNoErrors();
+
+    $config = EventEpaymentConfig::where('event_id', $version->event_id)->where('environment', 'sandbox')->first();
+
+    expect($config->vendor_account_id)->toBe('loc-456');
+    expect($config->secret)->toBe('original-secret');
+    expect($config->webhook_signature_key)->toBe('original-webhook-key');
+});
+
+test('switching the environment loads that environment\'s own credential, not the other one\'s', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    EventEpaymentConfig::create(['event_id' => $version->event_id, 'environment' => 'sandbox', 'vendor' => 'square', 'vendor_account_id' => 'sandbox-loc']);
+    EventEpaymentConfig::create(['event_id' => $version->event_id, 'environment' => 'production', 'vendor' => 'paypal', 'vendor_account_id' => 'prod-client-id']);
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertSet('payment_vendor_account_id', 'sandbox-loc')
+        ->set('payment_environment', 'production')
+        ->assertSet('payment_vendor', 'paypal')
+        ->assertSet('payment_vendor_account_id', 'prod-client-id');
+});
+
+test('the vendor credential is shared across every Version of the same Event', function () {
+    $user = makeVersionEditUser();
+    $event = Event::factory()->create();
+    $versionA = Version::factory()->create(['event_id' => $event->id]);
+    $versionB = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $versionA, 'Event Manager');
+    grantVersionRole($user, $versionB, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $versionA])
+        ->set('payment_vendor', 'square')
+        ->set('payment_vendor_account_id', 'shared-loc')
+        ->call('saveEventEpaymentCredential');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $versionB])
+        ->assertSet('payment_vendor_account_id', 'shared-loc');
+});
+
+test('saveEpaymentFlags updates the per-Version accept-payment flags without affecting other Versions of the same Event', function () {
+    $user = makeVersionEditUser();
+    $event = Event::factory()->create();
+    $versionA = Version::factory()->create(['event_id' => $event->id]);
+    $versionB = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $versionA, 'Event Manager');
+    grantVersionRole($user, $versionB, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $versionA])
+        ->set('epayment_teacher', true)
+        ->set('epayment_student', true)
+        ->call('saveEpaymentFlags')
+        ->assertHasNoErrors();
+
+    $configA = VersionEpaymentConfig::where('version_id', $versionA->id)->first();
+    expect($configA->epayment_teacher)->toBeTrue();
+    expect($configA->epayment_student)->toBeTrue();
+
+    expect(VersionEpaymentConfig::where('version_id', $versionB->id)->exists())->toBeFalse();
 });
 
 test('saveRequirements saves membership requirement and syncs selected counties', function () {

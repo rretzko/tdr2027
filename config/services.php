@@ -47,4 +47,19 @@ return [
         'redirect' => env('FACEBOOK_REDIRECT_URI'),
     ],
 
+    // See epayment-integration.md §1.2/§2. One shared toggle for every
+    // vendor gateway — not tied to APP_ENV, since a production app instance
+    // may still need to run sandbox-only smoke tests. Every actual vendor
+    // credential (access token/secret, webhook signing key, account id)
+    // lives in event_epayment_configs, one row per (Event, environment) —
+    // see EventEpaymentConfig's own docblock. This is deliberately the only
+    // payments config value left here; SQUARE_ACCESS_TOKEN/
+    // SQUARE_SANDBOX_ACCESS_TOKEN/SQUARE_SANDBOX_APPLICATION_ID/
+    // SQUARE_SANDBOX_LOCATION were an earlier, incorrect app-wide-credential
+    // design (a real bug, caught 2026-08-13 — see §1.2) and are gone, not
+    // just unused.
+    'payments' => [
+        'environment' => env('PAYMENTS_ENVIRONMENT', 'sandbox'),
+    ],
+
 ];

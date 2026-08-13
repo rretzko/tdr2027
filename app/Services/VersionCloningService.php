@@ -8,13 +8,13 @@ use App\Enums\EventStatus;
 use App\Enums\VersionApplicationStatus;
 use App\Enums\VersionInvitationStatus;
 use App\Enums\VersionObligationStatus;
-use App\Models\EpaymentCredential;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionApplication;
 use App\Models\VersionCounty;
 use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
+use App\Models\VersionEpaymentConfig;
 use App\Models\VersionFee;
 use App\Models\VersionInvitation;
 use App\Models\VersionMembershipRequirement;
@@ -30,11 +30,17 @@ class VersionCloningService
     /**
      * Clones $source into a brand-new Version plus its configuration
      * (dates, fees, counties, ensemble order, upload/pitch files,
-     * membership requirement, obligation, application, epayment
-     * credential, rooms with their voice-part and score-category
+     * membership requirement, obligation, application, e-payment
+     * accept-flags, rooms with their voice-part and score-category
      * assignments, and non-rejected invitations). Deliberately excludes
      * version_timeslots, candidates, and version_invitation_requests —
      * roster/season-specific data that a new Version must build fresh.
+     *
+     * The e-payment vendor *credential* (EventEpaymentConfig) is
+     * deliberately NOT cloned — it's Event-scoped, not Version-scoped
+     * (epayment-integration.md §1.2), and the clone always shares its
+     * source's event_id, so it already has access to the same credential
+     * with nothing to copy.
      *
      * Room score-category assignments are only copied when the category
      * is the Event's shared default (score_categories.version_id is
@@ -71,7 +77,7 @@ class VersionCloningService
             $this->cloneApplication($source, $version);
             $this->clonePitchFiles($source, $version);
             $this->cloneUploadFiles($source, $version);
-            $this->cloneEpaymentCredential($source, $version);
+            $this->cloneVersionEpaymentConfig($source, $version);
             $this->cloneRooms($source, $version);
             $this->cloneInvitations($source, $version, $invitedBy);
 
@@ -213,18 +219,18 @@ class VersionCloningService
         }
     }
 
-    private function cloneEpaymentCredential(Version $source, Version $version): void
+    private function cloneVersionEpaymentConfig(Version $source, Version $version): void
     {
-        $credential = $source->epaymentCredential;
+        $config = $source->versionEpaymentConfig;
 
-        if (! $credential) {
+        if ($config === null) {
             return;
         }
 
-        EpaymentCredential::create([
+        VersionEpaymentConfig::create([
             'version_id' => $version->id,
-            'epayment_id' => $credential->epayment_id,
-            'secret' => $credential->secret,
+            'epayment_student' => $config->epayment_student,
+            'epayment_teacher' => $config->epayment_teacher,
         ]);
     }
 

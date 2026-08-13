@@ -6,12 +6,14 @@ namespace App\Services;
 
 use App\Enums\EventStatus;
 use App\Enums\VersionDateType;
+use App\Enums\VersionInvitationStatus;
 use App\Models\CoRegistrationManagerCounty;
 use App\Models\Event;
 use App\Models\RoomJudge;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionDate;
+use App\Models\VersionInvitation;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Support\Config;
@@ -130,6 +132,8 @@ final class VersionRoleAssignmentService
         $this->versionRoles->withVersion($version, function () use ($user): void {
             $user->assignRole('Event Manager');
         });
+
+        $this->inviteToVersion($user, $version, $user);
     }
 
     public function canManageVersionRoles(User $user, Version $version): bool
@@ -377,6 +381,8 @@ final class VersionRoleAssignmentService
         $this->versionRoles->withVersion($version, function () use ($targetUser, $roleName): void {
             $targetUser->assignRole($roleName);
         });
+
+        $this->inviteToVersion($targetUser, $version, $actingUser);
     }
 
     public function revokeRole(User $actingUser, Version $version, User $targetUser, string $roleName): void
@@ -408,7 +414,7 @@ final class VersionRoleAssignmentService
     {
         abort_unless($this->canManageCoRegistrationManagers($actingUser, $version), 403);
 
-        DB::transaction(function () use ($version, $targetUser, $countyIds): void {
+        DB::transaction(function () use ($version, $targetUser, $countyIds, $actingUser): void {
             $this->versionRoles->withVersion($version, function () use ($targetUser): void {
                 $targetUser->assignRole('Co-Registration Manager');
             });
@@ -424,6 +430,8 @@ final class VersionRoleAssignmentService
                     'county_id' => $countyId,
                 ]);
             }
+
+            $this->inviteToVersion($targetUser, $version, $actingUser);
         });
     }
 
@@ -451,6 +459,35 @@ final class VersionRoleAssignmentService
             $version,
             fn (): Collection => collect(self::VERSION_SCOPED_ROLES)
                 ->mapWithKeys(fn (string $role): array => [$role => User::role($role)->get()]),
+        );
+    }
+
+    /**
+     * Auto-invites a version-scoped role assignee to the Version itself —
+     * anyone holding one of the six roles needs Registrations access to the
+     * same Version they're managing, without an Event Manager having to
+     * separately invite them via the teacher-eligibility screen (§5.4).
+     * Silently no-ops if the target has no Teacher record yet (e.g. a
+     * staff-only account that never completed teacher onboarding).
+     * firstOrCreate() rather than create() because the
+     * unique(version_id, teacher_id) constraint would otherwise throw when a
+     * second role is granted to an already-invited teacher.
+     */
+    private function inviteToVersion(User $targetUser, Version $version, User $invitedByUser): void
+    {
+        $teacher = $targetUser->teacher;
+
+        if ($teacher === null) {
+            return;
+        }
+
+        VersionInvitation::firstOrCreate(
+            ['version_id' => $version->id, 'teacher_id' => $teacher->id],
+            [
+                'status' => VersionInvitationStatus::Invited->value,
+                'invited_at' => now(),
+                'invited_by_user_id' => $invitedByUser->id,
+            ],
         );
     }
 

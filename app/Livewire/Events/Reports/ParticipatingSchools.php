@@ -6,12 +6,14 @@ namespace App\Livewire\Events\Reports;
 
 use App\Concerns\ScopesReports;
 use App\Enums\CandidateStatus;
+use App\Enums\PaymentSource;
+use App\Enums\PaymentTransactionStatus;
 use App\Enums\PaymentType;
 use App\Mail\PacketReceivedMail;
 use App\Models\Candidate;
-use App\Models\CandidatePayment;
+use App\Models\PaymentAllocation;
+use App\Models\PaymentTransaction;
 use App\Models\School;
-use App\Models\TeacherPayment;
 use App\Models\Version;
 use App\Models\VersionTeacherPacket;
 use App\Services\VersionRoleAssignmentService;
@@ -145,20 +147,29 @@ class ParticipatingSchools extends Component
             'comments' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        TeacherPayment::create([
+        // A lump-sum, school/teacher-level payment — genuinely not tied to
+        // any specific candidate (that's the whole "haphazard" problem this
+        // schema fixes, epayment-integration.md §1.1), so it's created with
+        // zero allocations and does NOT count toward any candidate's balance
+        // in baseRows() below until reconciled via the allocation screen
+        // (§4 step 6).
+        PaymentTransaction::create([
             'version_id' => $this->version->id,
+            'source' => PaymentSource::Manual,
+            'payer_teacher_id' => $this->paymentTeacherId,
             'school_id' => $this->paymentSchoolId,
-            'teacher_id' => $this->paymentTeacherId,
-            'payment_type' => $validated['paymentType'],
             'amount' => (int) round(((float) $validated['amount']) * 100),
+            'status' => PaymentTransactionStatus::Completed,
+            'payment_type' => $validated['paymentType'],
             'reference_number' => $validated['referenceNumber'] !== null && $validated['referenceNumber'] !== '' ? $validated['referenceNumber'] : null,
             'comments' => $validated['comments'] !== null && $validated['comments'] !== '' ? $validated['comments'] : null,
             'recorded_by_user_id' => Auth::id(),
+            'paid_at' => now(),
         ]);
 
         $this->modal('payment-form')->close();
 
-        Flux::toast('Payment recorded.', variant: 'success');
+        Flux::toast('Payment recorded. Allocate it to specific candidates for it to count toward their balance.', variant: 'success');
     }
 
     /**
@@ -233,31 +244,41 @@ class ParticipatingSchools extends Component
         // (VersionCloningService only creates one when cloning from a prior
         // Version) — optional() avoids a Larastan false positive that treats
         // fees()->first() as never-null (see feedback_phpstan_quirks).
-        $registrationFeeCents = (int) (optional($version->fees()->first())->registration ?? 0);
+        // Confirmed 2026-08-14, epayment-integration.md §5 item 1:
+        // registration + participation, not registration alone.
+        $fees = optional($version->fees()->first());
+        $feeCentsPerCandidate = (int) ($fees->registration ?? 0) + (int) ($fees->participation ?? 0);
 
         $packets = VersionTeacherPacket::where('version_id', $version->id)->get()->keyBy(fn (VersionTeacherPacket $p): string => "{$p->school_id}:{$p->teacher_id}");
-
-        $teacherPaymentTotals = TeacherPayment::where('version_id', $version->id)->get()
-            ->groupBy(fn (TeacherPayment $p): string => "{$p->school_id}:{$p->teacher_id}")
-            ->map(fn (Collection $group): int => (int) $group->sum('amount'));
 
         $candidateIdsByPair = $candidates->groupBy(fn (Candidate $c): string => "{$c->school_id}:{$c->teacher_id}")
             ->map(fn (Collection $group): array => $group->pluck('id')->all());
 
-        $candidatePaymentTotals = CandidatePayment::where('version_id', $version->id)->get()->groupBy('candidate_id')->map(fn (Collection $g): int => (int) $g->sum('amount'));
+        // "Paid" is sum(payment_allocations.amount) for Completed
+        // transactions only, resolved via each allocation's own candidate —
+        // never payment_transactions.school_id/payer_teacher_id, which is
+        // only a creation-time snapshot (epayment-integration.md §1.1). A
+        // lump-sum payment recorded via savePayment() above intentionally
+        // does NOT count here until it's been allocated to specific
+        // candidates through the reconciliation screen (§4 step 6) — this
+        // is a deliberate behavior change from the old teacher_payments
+        // total, which counted immediately on entry.
+        $paidByCandidateId = PaymentAllocation::whereIn('candidate_id', $candidates->pluck('id'))
+            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
+            ->get()
+            ->groupBy('candidate_id')
+            ->map(fn (Collection $g): int => (int) $g->sum('amount'));
 
         return $candidates->groupBy(fn (Candidate $c): string => "{$c->school_id}:{$c->teacher_id}")
-            ->map(function (Collection $group, string $key) use ($registrationFeeCents, $packets, $teacherPaymentTotals, $candidateIdsByPair, $candidatePaymentTotals): array {
+            ->map(function (Collection $group, string $key) use ($feeCentsPerCandidate, $packets, $candidateIdsByPair, $paidByCandidateId): array {
                 $first = $group->first();
                 $count = $group->count();
-                $dueCents = $count * $registrationFeeCents;
+                $dueCents = $count * $feeCentsPerCandidate;
 
-                $candidatePaidCents = 0;
+                $paidCents = 0;
                 foreach ($candidateIdsByPair->get($key, []) as $candidateId) {
-                    $candidatePaidCents += $candidatePaymentTotals->get($candidateId, 0);
+                    $paidCents += $paidByCandidateId->get($candidateId, 0);
                 }
-
-                $paidCents = $teacherPaymentTotals->get($key, 0) + $candidatePaidCents;
 
                 return [
                     'key' => $key,

@@ -8,9 +8,11 @@ use App\Models\Event;
 use App\Models\RoomJudge;
 use App\Models\School;
 use App\Models\Student;
+use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionDate;
+use App\Models\VersionInvitation;
 use App\Services\VersionRoleAssignmentService;
 use App\Services\VersionRoleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -398,6 +400,75 @@ test('assignRole grants the role under the target Version context and assignment
 
     expect($assignments->get('Web Registration Manager')->pluck('id'))->toContain($newHire->id);
     expect($assignments->get('Tab Room Manager'))->toBeEmpty();
+});
+
+test('assignRole auto-invites the target Teacher to the Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+    $teacher = Teacher::factory()->create();
+
+    $service->assignRole($founder, $version, $teacher->user, 'Tab Room Manager');
+
+    $invitation = VersionInvitation::where('version_id', $version->id)->where('teacher_id', $teacher->id)->first();
+    expect($invitation)->not->toBeNull();
+    expect($invitation->invited_by_user_id)->toBe($founder->id);
+});
+
+test('assignRole does not throw when the target user has no Teacher record', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+    $targetUser = User::factory()->create();
+
+    $service->assignRole($founder, $version, $targetUser, 'Tab Room Manager');
+
+    expect(VersionInvitation::where('version_id', $version->id)->exists())->toBeFalse();
+});
+
+test('assignRole does not duplicate an invitation when a second role is granted to an already-invited Teacher', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+    $teacher = Teacher::factory()->create();
+
+    $service->assignRole($founder, $version, $teacher->user, 'Tab Room Manager');
+    $service->assignRole($founder, $version, $teacher->user, 'Rehearsal Manager');
+
+    expect(VersionInvitation::where('version_id', $version->id)->where('teacher_id', $teacher->id)->count())->toBe(1);
+});
+
+test('bootstrapEventManager auto-invites the creator\'s Teacher to the Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $version = Version::factory()->create();
+    $teacher = Teacher::factory()->create();
+
+    $service->bootstrapEventManager($teacher->user, $version);
+
+    expect(VersionInvitation::where('version_id', $version->id)->where('teacher_id', $teacher->id)->exists())->toBeTrue();
+});
+
+test('assignCoRegistrationManager auto-invites the target Teacher to the Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+    $teacher = Teacher::factory()->create();
+
+    $service->assignCoRegistrationManager($founder, $version, $teacher->user, []);
+
+    expect(VersionInvitation::where('version_id', $version->id)->where('teacher_id', $teacher->id)->exists())->toBeTrue();
+});
+
+test('revokeRole leaves the auto-created invitation in place', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+    $teacher = Teacher::factory()->create();
+
+    $service->assignRole($founder, $version, $teacher->user, 'Tab Room Manager');
+    $service->revokeRole($founder, $version, $teacher->user, 'Tab Room Manager');
+
+    expect(VersionInvitation::where('version_id', $version->id)->where('teacher_id', $teacher->id)->exists())->toBeTrue();
 });
 
 test('assignRole aborts with 403 when the acting user cannot manage the Version', function () {

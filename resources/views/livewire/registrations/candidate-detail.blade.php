@@ -277,17 +277,11 @@
             </flux:card>
         @endif
 
-        {{-- Payment (only when this Version has e-payment configured) --}}
-        @if ($epaymentEnabled)
-            <flux:card>
-                <flux:heading size="sm" class="mb-1">Payment</flux:heading>
-                <flux:callout variant="warning" icon="exclamation-triangle" class="mb-3">
-                    <flux:callout.text>
-                        Manual record-keeping only — no live payment processor is connected yet. Recording a payment
-                        here does not charge anyone.
-                    </flux:callout.text>
-                </flux:callout>
+        {{-- Payment --}}
+        <flux:card>
+            <flux:heading size="sm" class="mb-1">Payment</flux:heading>
 
+            @if ($epaymentStudentEnabled)
                 <flux:checkbox
                     :checked="$epaymentOptedIn"
                     wire:click="toggleEpaymentOptIn"
@@ -295,34 +289,51 @@
                     description="This applies to your whole roster, not just {{ $candidate->program_name ?: 'this candidate' }}."
                     class="mb-4"
                 />
+            @endif
 
-                <div class="flex items-center justify-between mb-2">
-                    <flux:heading size="xs" class="text-zinc-500">Payment History</flux:heading>
+            <div class="flex items-center justify-between mb-2">
+                <flux:heading size="xs" class="text-zinc-500">Payment History</flux:heading>
+                <div class="flex items-center gap-2">
+                    @if ($epaymentTeacherReady)
+                        <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow">Pay Now</flux:button>
+                    @endif
                     <flux:button size="sm" variant="ghost" icon="plus" wire:click="recordPayment">Record Payment</flux:button>
                 </div>
+            </div>
 
-                @if ($candidatePayments->isNotEmpty())
-                    <div class="space-y-2">
-                        @foreach ($candidatePayments as $payment)
-                            <div class="flex items-center justify-between text-sm border-b border-zinc-100 dark:border-zinc-800 pb-2 last:border-0 last:pb-0">
-                                <div>
-                                    <span class="font-medium">${{ number_format($payment->amountInDollars(), 2) }}</span>
+            @if ($candidatePayments->isNotEmpty())
+                <div class="space-y-2">
+                    @foreach ($candidatePayments as $payment)
+                        @php $allocatedAmount = $payment->allocations->first()?->amountInDollars() ?? $payment->amountInDollars(); @endphp
+                        <div class="flex items-center justify-between text-sm border-b border-zinc-100 dark:border-zinc-800 pb-2 last:border-0 last:pb-0">
+                            <div>
+                                <span class="font-medium">${{ number_format($allocatedAmount, 2) }}</span>
+                                @if ($payment->paid_at)
                                     <span class="text-zinc-500"> — {{ $payment->paid_at->format('M j, Y') }}</span>
-                                    @if ($payment->reference_number)
-                                        <div class="text-zinc-500">Ref: {{ $payment->reference_number }}</div>
-                                    @endif
-                                    @if ($payment->comments)
-                                        <div class="text-zinc-500">{{ $payment->comments }}</div>
-                                    @endif
-                                </div>
+                                @endif
+                                @if ($payment->reference_number)
+                                    <div class="text-zinc-500">Ref: {{ $payment->reference_number }}</div>
+                                @endif
+                                @if ($payment->comments)
+                                    <div class="text-zinc-500">{{ $payment->comments }}</div>
+                                @endif
                             </div>
-                        @endforeach
-                    </div>
-                @else
-                    <flux:text size="sm" class="text-zinc-500">No payments recorded yet.</flux:text>
-                @endif
-            </flux:card>
-        @endif
+                            @php
+                                $statusColor = match ($payment->status) {
+                                    \App\Enums\PaymentTransactionStatus::Completed => 'green',
+                                    \App\Enums\PaymentTransactionStatus::Pending => 'amber',
+                                    \App\Enums\PaymentTransactionStatus::Failed => 'red',
+                                    \App\Enums\PaymentTransactionStatus::Refunded => 'zinc',
+                                };
+                            @endphp
+                            <flux:badge size="sm" :color="$statusColor">{{ $payment->status->label() }}</flux:badge>
+                        </div>
+                    @endforeach
+                </div>
+            @else
+                <flux:text size="sm" class="text-zinc-500">No payments recorded yet.</flux:text>
+            @endif
+        </flux:card>
 
     </div>
 
@@ -582,48 +593,57 @@
         </flux:modal>
     @endif
 
-    {{-- Record Payment modal --}}
-    @if ($epaymentEnabled)
-        <flux:modal name="record-payment" class="w-full max-w-md">
-            <div class="space-y-6">
-                <flux:heading>Record Payment</flux:heading>
-                <flux:callout variant="warning" icon="exclamation-triangle">
-                    <flux:callout.text>
-                        This records a manual entry only — it does not process a live payment.
-                    </flux:callout.text>
-                </flux:callout>
+    {{-- Record Payment modal — manual entry (check/PO/cash/other) only; a real electronic payment goes through Pay Now --}}
+    <flux:modal name="record-payment" class="w-full max-w-md">
+        <div class="space-y-6">
+            <flux:heading>Record Payment</flux:heading>
+            <flux:callout variant="warning" icon="exclamation-triangle">
+                <flux:callout.text>
+                    This records a manual entry only — it does not process a live payment.
+                </flux:callout.text>
+            </flux:callout>
 
-                <flux:field>
-                    <flux:label>Amount ($)</flux:label>
-                    <flux:input wire:model="payment_amount" type="number" step="0.01" min="0.01" placeholder="0.00" />
-                    <flux:error name="payment_amount" />
-                </flux:field>
+            <flux:field>
+                <flux:label>Payment Type</flux:label>
+                <flux:select wire:model="payment_type" placeholder="Select a payment type...">
+                    <flux:select.option value="check">Check</flux:select.option>
+                    <flux:select.option value="purchase_order">Purchase Order</flux:select.option>
+                    <flux:select.option value="cash">Cash</flux:select.option>
+                    <flux:select.option value="other">Other</flux:select.option>
+                </flux:select>
+                <flux:error name="payment_type" />
+            </flux:field>
 
-                <flux:field>
-                    <flux:label>Date Paid</flux:label>
-                    <flux:input wire:model="payment_paid_at" type="date" />
-                    <flux:error name="payment_paid_at" />
-                </flux:field>
+            <flux:field>
+                <flux:label>Amount ($)</flux:label>
+                <flux:input wire:model="payment_amount" type="number" step="0.01" min="0.01" placeholder="0.00" />
+                <flux:error name="payment_amount" />
+            </flux:field>
 
-                <flux:field>
-                    <flux:label>Reference Number (optional)</flux:label>
-                    <flux:input wire:model="payment_reference_number" placeholder="e.g. confirmation #" />
-                    <flux:error name="payment_reference_number" />
-                </flux:field>
+            <flux:field>
+                <flux:label>Date Paid</flux:label>
+                <flux:input wire:model="payment_paid_at" type="date" />
+                <flux:error name="payment_paid_at" />
+            </flux:field>
 
-                <flux:field>
-                    <flux:label>Comments (optional)</flux:label>
-                    <flux:textarea wire:model="payment_comments" rows="3" />
-                    <flux:error name="payment_comments" />
-                </flux:field>
+            <flux:field>
+                <flux:label>Reference Number (optional)</flux:label>
+                <flux:input wire:model="payment_reference_number" placeholder="e.g. confirmation #" />
+                <flux:error name="payment_reference_number" />
+            </flux:field>
 
-                <div class="flex justify-end gap-2">
-                    <flux:modal.close>
-                        <flux:button variant="ghost">Cancel</flux:button>
-                    </flux:modal.close>
-                    <flux:button variant="primary" wire:click="savePayment">Save</flux:button>
-                </div>
+            <flux:field>
+                <flux:label>Comments (optional)</flux:label>
+                <flux:textarea wire:model="payment_comments" rows="3" />
+                <flux:error name="payment_comments" />
+            </flux:field>
+
+            <div class="flex justify-end gap-2">
+                <flux:modal.close>
+                    <flux:button variant="ghost">Cancel</flux:button>
+                </flux:modal.close>
+                <flux:button variant="primary" wire:click="savePayment">Save</flux:button>
             </div>
-        </flux:modal>
-    @endif
+        </div>
+    </flux:modal>
 </div>

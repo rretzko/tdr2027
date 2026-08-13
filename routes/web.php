@@ -10,7 +10,7 @@ use App\Http\Controllers\Reports\ParticipatingCandidatesPdfController;
 use App\Http\Controllers\Reports\ParticipatingSchoolsPdfController;
 use App\Http\Controllers\Reports\ParticipatingTeachersPdfController;
 use App\Http\Controllers\Reports\ParticipationByCountyExportController;
-use App\Http\Controllers\Reports\PaymentRosterPdfController;
+use App\Http\Controllers\Reports\PaymentReconciliationPdfController;
 use App\Http\Controllers\Reports\RegistrationCardsPdfController;
 use App\Http\Controllers\Reports\TabRoom\AuditionScoresPdfController;
 use App\Http\Controllers\Reports\TabRoom\CombinedAuditionScoresExportController;
@@ -23,6 +23,9 @@ use App\Http\Controllers\StopImpersonatingController;
 use App\Http\Controllers\StudentClaimController;
 use App\Http\Controllers\VersionInvitationRequestController;
 use App\Http\Controllers\VersionRoomRosterPdfController;
+use App\Http\Controllers\Webhooks\PaypalReturnController;
+use App\Http\Controllers\Webhooks\PaypalWebhookController;
+use App\Http\Controllers\Webhooks\SquareWebhookController;
 use App\Livewire\Auth\SocialPhoneCheck;
 use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
@@ -38,7 +41,7 @@ use App\Livewire\Events\Reports\ParticipatingCandidates;
 use App\Livewire\Events\Reports\ParticipatingSchools;
 use App\Livewire\Events\Reports\ParticipatingTeachers;
 use App\Livewire\Events\Reports\ParticipationByCounty;
-use App\Livewire\Events\Reports\PaymentRoster;
+use App\Livewire\Events\Reports\PaymentReconciliation;
 use App\Livewire\Events\Reports\RegistrationCards;
 use App\Livewire\Events\Show as EventsShow;
 use App\Livewire\Events\TabRoom\AddEditScores as TabRoomAddEditScores;
@@ -80,6 +83,30 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return view('welcome-tdr');
 });
+
+// Vendor e-payment webhooks (epayment-integration.md §2.2/§2.4) — public,
+// unauthenticated, CSRF-excluded (see bootstrap/app.php's validateCsrfTokens
+// except list), rate-limited by IP. Each gateway verifies its own signature
+// before doing anything with the payload. {event} is per-business, not a
+// convenience — each Square/PayPal business (event_epayment_configs, §1.2)
+// has its own webhook subscription and signing key (§5 item 8), so the URL
+// itself must identify which key to verify against before the payload can
+// be trusted at all.
+Route::post('/webhooks/payments/square/{event}', SquareWebhookController::class)
+    ->middleware('throttle:payment-webhooks')
+    ->name('webhooks.payments.square');
+
+Route::post('/webhooks/payments/paypal/{event}', PaypalWebhookController::class)
+    ->middleware('throttle:payment-webhooks')
+    ->name('webhooks.payments.paypal');
+
+// Where PayPal sends the payer's browser back after approving an order —
+// see PaypalReturnController's own docblock for why PayPal needs this and
+// Square doesn't. GET, not a webhook: no signature to verify (the browser,
+// not PayPal's servers, makes this request), so no CSRF exemption needed
+// either — GET requests aren't covered by CSRF protection to begin with.
+Route::get('/payments/paypal/return', PaypalReturnController::class)
+    ->name('payments.paypal.return');
 
 Route::middleware('guest')->group(function () {
     Route::get('/tdr/register', TeacherRegister::class)->name('tdr.register');
@@ -220,8 +247,8 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/reports/participating-teachers/export.pdf', ParticipatingTeachersPdfController::class)->name('events.versions.reports.participating-teachers.pdf');
         Route::get('/events/versions/{version}/reports/participating-schools', ParticipatingSchools::class)->name('events.versions.reports.participating-schools');
         Route::get('/events/versions/{version}/reports/participating-schools/export.pdf', ParticipatingSchoolsPdfController::class)->name('events.versions.reports.participating-schools.pdf');
-        Route::get('/events/versions/{version}/reports/payment-roster', PaymentRoster::class)->name('events.versions.reports.payment-roster');
-        Route::get('/events/versions/{version}/reports/payment-roster/export.pdf', PaymentRosterPdfController::class)->name('events.versions.reports.payment-roster.pdf');
+        Route::get('/events/versions/{version}/reports/payment-reconciliation', PaymentReconciliation::class)->name('events.versions.reports.payment-reconciliation');
+        Route::get('/events/versions/{version}/reports/payment-reconciliation/export.pdf', PaymentReconciliationPdfController::class)->name('events.versions.reports.payment-reconciliation.pdf');
         Route::get('/events/versions/{version}/reports/participating-candidates', ParticipatingCandidates::class)->name('events.versions.reports.participating-candidates');
         Route::get('/events/versions/{version}/reports/participating-candidates/export.pdf', ParticipatingCandidatesPdfController::class)->name('events.versions.reports.participating-candidates.pdf');
         Route::get('/events/versions/{version}/reports/participation-by-county', ParticipationByCounty::class)->name('events.versions.reports.participation-by-county');

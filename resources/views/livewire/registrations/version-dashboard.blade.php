@@ -116,6 +116,18 @@
             @if ($filteredCandidates->isEmpty())
                 <flux:text class="text-zinc-500">No candidates match your search/filters.</flux:text>
             @else
+            @if ($epaymentTeacherReady)
+                <div class="flex items-center justify-between mb-3 min-h-9">
+                    <flux:text size="sm" class="text-zinc-500">
+                        {{ count($selectedCandidateIds) }} selected
+                    </flux:text>
+                    @if (count($selectedCandidateIds) > 0)
+                        <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payForSelected">
+                            Pay for Selected
+                        </flux:button>
+                    @endif
+                </div>
+            @endif
             {{-- Cards below md:, table at md:+ --}}
             <div class="md:hidden space-y-3">
                 @foreach ($filteredCandidates as $candidate)
@@ -127,7 +139,10 @@
                     @endphp
                     <flux:card size="sm">
                         <div class="flex items-start justify-between gap-3 mb-3">
-                            <div>
+                            <div class="flex items-start gap-2">
+                                @if ($epaymentTeacherReady)
+                                    <flux:checkbox wire:model="selectedCandidateIds" value="{{ $candidate->id }}" class="mt-1" />
+                                @endif
                                 <flux:heading size="base">{{ $displayName }}</flux:heading>
                             </div>
                             <div class="flex flex-col items-end gap-1">
@@ -190,6 +205,9 @@
 
             <flux:table class="hidden md:table">
                 <flux:table.columns>
+                    @if ($epaymentTeacherReady)
+                        <flux:table.column></flux:table.column>
+                    @endif
                     <flux:table.column>Name</flux:table.column>
                     <flux:table.column>Voice Part</flux:table.column>
                     <flux:table.column>Checklist</flux:table.column>
@@ -206,6 +224,11 @@
                             $displayName = $studentUser->last_name.', '.trim($studentUser->first_name.' '.$studentUser->middle_name);
                         @endphp
                         <flux:table.row>
+                            @if ($epaymentTeacherReady)
+                                <flux:table.cell>
+                                    <flux:checkbox wire:model="selectedCandidateIds" value="{{ $candidate->id }}" />
+                                </flux:table.cell>
+                            @endif
                             <flux:table.cell class="font-medium">{{ $displayName }}</flux:table.cell>
                             <flux:table.cell>{{ $candidate->voicePart?->name ?? '—' }}</flux:table.cell>
                             <flux:table.cell>
@@ -269,5 +292,86 @@
             @endif
         @endif
     </div>
+
+    {{-- Your Unreconciled Payments — teacher-scoped half of the shared
+         allocate-to-candidates action (epayment-integration.md §3); the
+         Registration Manager's unscoped, full-Version view is §4 step 8. --}}
+    @if ($unreconciledPayments->isNotEmpty())
+        <div class="mb-8">
+            <flux:heading size="lg" class="mb-3">Your Unreconciled Payments</flux:heading>
+            <flux:text size="sm" class="text-zinc-500 mb-3">
+                These payments haven't been allocated to specific candidates yet, so they don't count toward
+                anyone's balance until you allocate them.
+            </flux:text>
+
+            <div class="space-y-3">
+                @foreach ($unreconciledPayments as $payment)
+                    <flux:card size="sm">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <span class="font-medium">${{ number_format($payment->amountInDollars(), 2) }}</span>
+                                <span class="text-zinc-500"> total</span>
+                                @if ($payment->paid_at)
+                                    <span class="text-zinc-500"> — {{ $payment->paid_at->format('M j, Y') }}</span>
+                                @endif
+                                <div class="text-sm text-amber-600 dark:text-amber-400">
+                                    ${{ number_format($payment->unallocatedAmount() / 100, 2) }} still unallocated
+                                </div>
+                                @if ($payment->reference_number)
+                                    <div class="text-sm text-zinc-500">Ref: {{ $payment->reference_number }}</div>
+                                @endif
+                            </div>
+                            <flux:button size="sm" variant="primary" wire:click="openAllocate({{ $payment->id }})">
+                                Allocate
+                            </flux:button>
+                        </div>
+                    </flux:card>
+                @endforeach
+            </div>
+        </div>
+    @endif
+
+    {{-- Allocate Payment modal --}}
+    <flux:modal name="allocate-payment" class="w-full max-w-lg">
+        <div class="space-y-6">
+            <flux:heading>Allocate Payment</flux:heading>
+
+            @php $allocatingPayment = $unreconciledPayments->firstWhere('id', $allocatingTransactionId); @endphp
+
+            {{-- Candidate list only renders while a payment is actively
+                 being allocated — always rendering the full roster here
+                 (even hidden behind the closed modal) would leak every
+                 candidate's name into the page source regardless of the
+                 search/voice-part/status filters above. --}}
+            @if ($allocatingPayment)
+                <flux:text size="sm" class="text-zinc-500">
+                    ${{ number_format($allocatingPayment->unallocatedAmount() / 100, 2) }} remaining to allocate out
+                    of ${{ number_format($allocatingPayment->amountInDollars(), 2) }} total.
+                </flux:text>
+
+                <flux:error name="allocationAmounts" />
+
+                <div class="space-y-3 max-h-80 overflow-y-auto">
+                    @foreach ($myCandidates as $candidate)
+                        <div class="flex items-center justify-between gap-3">
+                            <flux:text size="sm">{{ $candidate->student->user->last_name }}, {{ $candidate->student->user->first_name }}</flux:text>
+                            <flux:input
+                                wire:model="allocationAmounts.{{ $candidate->id }}"
+                                type="number" step="0.01" min="0" placeholder="0.00"
+                                class="max-w-32"
+                            />
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            <div class="flex justify-end gap-2">
+                <flux:modal.close>
+                    <flux:button variant="ghost">Cancel</flux:button>
+                </flux:modal.close>
+                <flux:button variant="primary" wire:click="saveAllocations">Save</flux:button>
+            </div>
+        </div>
+    </flux:modal>
 
 </div>

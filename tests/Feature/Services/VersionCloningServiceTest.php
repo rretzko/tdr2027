@@ -8,7 +8,6 @@ use App\Enums\VersionInvitationStatus;
 use App\Enums\VersionObligationStatus;
 use App\Models\County;
 use App\Models\Ensemble;
-use App\Models\EpaymentCredential;
 use App\Models\Event;
 use App\Models\ScoreCategory;
 use App\Models\Teacher;
@@ -18,6 +17,7 @@ use App\Models\VersionApplication;
 use App\Models\VersionCounty;
 use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
+use App\Models\VersionEpaymentConfig;
 use App\Models\VersionFee;
 use App\Models\VersionInvitation;
 use App\Models\VersionMembershipRequirement;
@@ -105,10 +105,10 @@ function buildFullyConfiguredVersion(): Version
         'published_by_user_id' => User::factory()->create()->id,
     ]);
 
-    EpaymentCredential::create([
+    VersionEpaymentConfig::create([
         'version_id' => $version->id,
-        'epayment_id' => 'epay-123',
-        'secret' => 'super-secret',
+        'epayment_student' => true,
+        'epayment_teacher' => true,
     ]);
 
     $inviter = User::factory()->create();
@@ -179,7 +179,7 @@ test('cloneFrom advances membershipRequirement valid_thru by one year', function
     expect($clone->membershipRequirement->membership_card)->toBeTrue();
 });
 
-test('cloneFrom copies fees, counties, ensemble order, pitch files, upload files, and epayment credential', function () {
+test('cloneFrom copies fees, counties, ensemble order, pitch files, upload files, and epayment accept-flags', function () {
     $source = buildFullyConfiguredVersion();
 
     $clone = app(VersionCloningService::class)->cloneFrom($source, [
@@ -196,8 +196,13 @@ test('cloneFrom copies fees, counties, ensemble order, pitch files, upload files
     expect($clone->pitchFiles->first()->name)->toBe('scales');
     expect($clone->uploadFiles)->toHaveCount(1);
     expect($clone->uploadFiles->first()->name)->toBe('solo');
-    expect($clone->epaymentCredential->epayment_id)->toBe('epay-123');
-    expect($clone->epaymentCredential->secret)->toBe('super-secret');
+    expect($clone->versionEpaymentConfig->epayment_student)->toBeTrue();
+    expect($clone->versionEpaymentConfig->epayment_teacher)->toBeTrue();
+
+    // The vendor credential itself is Event-scoped, not cloned — the clone
+    // shares its source's event_id, so it already has access to the same
+    // EventEpaymentConfig with nothing to copy (epayment-integration.md §1.2).
+    expect($clone->event_id)->toBe($source->event_id);
 });
 
 test('cloneFrom resets obligation and application to draft with no publish metadata', function () {
