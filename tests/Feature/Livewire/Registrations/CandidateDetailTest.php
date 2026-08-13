@@ -917,6 +917,8 @@ test('saveRecording flags an upload whose duration is a clear outlier against th
 });
 
 test('the Recordings section shows a Review Suggested badge and the reason text for a flagged upload', function () {
+    Storage::fake('s3');
+
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create(['audition_type' => AuditionType::Remote->value, 'upload_type' => UploadType::Audio->value]);
     $solo = VersionUploadFile::create(['version_id' => $version->id, 'name' => 'Solo', 'order_by' => 1]);
@@ -1177,6 +1179,8 @@ test('approveRecording and rejectRecording 404 for an upload belonging to a diff
 });
 
 test('the upload/approval checklist items only appear for a remote Version with configured slots, and require every slot', function () {
+    Storage::fake('s3');
+
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create([
         'audition_type' => AuditionType::Remote->value,
@@ -1233,6 +1237,8 @@ test('checklist labels are tailored to the Version\'s upload_type', function () 
 });
 
 test('the Upload checklist item renders amber when some but not all slots have an upload', function () {
+    Storage::fake('s3');
+
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create(['audition_type' => AuditionType::Remote->value, 'upload_type' => UploadType::Audio->value]);
     $scales = VersionUploadFile::create(['version_id' => $version->id, 'name' => 'Scales', 'order_by' => 1]);
@@ -1257,6 +1263,8 @@ test('the Upload checklist item renders amber when some but not all slots have a
 });
 
 test('the Approval checklist item renders amber when some but not all uploaded files have been approved', function () {
+    Storage::fake('s3');
+
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create(['audition_type' => AuditionType::Remote->value, 'upload_type' => UploadType::Video->value]);
     $scales = VersionUploadFile::create(['version_id' => $version->id, 'name' => 'Scales', 'order_by' => 1]);
