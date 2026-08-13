@@ -46,6 +46,20 @@
                     </flux:field>
 
                     <flux:field>
+                        <flux:label>Eligible Grades</flux:label>
+                        <flux:description>Grades eligible to register for this Version, translated to graduating class years using Senior Class Of above. Leave empty to allow any grade (subject to the Event's own eligible grades).</flux:description>
+                        <div class="flex flex-wrap gap-3">
+                            @foreach ($gradeOptions as $grade)
+                                <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+                                    <flux:checkbox wire:model="eligible_grades" value="{{ $grade }}" />
+                                    Grade {{ $grade }}
+                                </label>
+                            @endforeach
+                        </div>
+                        <flux:error name="eligible_grades" />
+                    </flux:field>
+
+                    <flux:field>
                         <flux:label>Status</flux:label>
                         <flux:select wire:model="status">
                             @foreach ($statuses as $s)

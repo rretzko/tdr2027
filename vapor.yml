@@ -25,6 +25,6 @@ environments:
         database: mfr-staging
         scheduler: false
         build:
-            - 'composer install'
+            - 'composer install --no-dev --optimize-autoloader'
             - 'php artisan event:cache'
             - 'npm ci && npm run build && rm -rf node_modules'

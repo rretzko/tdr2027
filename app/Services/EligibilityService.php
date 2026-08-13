@@ -50,9 +50,15 @@ class EligibilityService
      * - In one of the Event's eligible grades (event_grades), unrestricted
      *   if the Event has none configured — same "zero rows means
      *   unrestricted" convention as version_counties (§5.4)
+     * - In one of the Version's own eligible class years (version_class_ofs),
+     *   an additional AND filter on top of the Event-level grade check
+     *   above, also unrestricted when the Version has none configured
      *
      * Grade is a computed attribute (Student::grade), not a stored column,
-     * so it's filtered in PHP after the query rather than in SQL.
+     * so it's filtered in PHP after the query rather than in SQL. The
+     * class_of check compares the student's actual school_student.class_of
+     * directly (a real graduation year), not a value re-derived through the
+     * Version's senior_class_of — the two are independent per-school data.
      *
      * @return Collection<int, Student>
      */
@@ -92,11 +98,21 @@ class EligibilityService
 
         $eventGrades = $version->event->grades->pluck('grade');
 
-        if ($eventGrades->isEmpty()) {
+        if ($eventGrades->isNotEmpty()) {
+            $students = $students->filter(fn (Student $student): bool => $eventGrades->contains($student->grade))->values();
+        }
+
+        $versionClassOfs = $version->classOfs->pluck('class_of')->map(fn ($classOf) => (int) $classOf);
+
+        if ($versionClassOfs->isEmpty()) {
             return $students;
         }
 
-        return $students->filter(fn (Student $student): bool => $eventGrades->contains($student->grade))->values();
+        return $students->filter(function (Student $student) use ($versionClassOfs): bool {
+            $school = $student->getCurrentSchoolAttribute();
+
+            return $school !== null && $versionClassOfs->contains((int) $school->pivot->class_of);
+        })->values();
     }
 
     /**

@@ -166,6 +166,19 @@ class Version extends Model
     }
 
     /**
+     * Eligible graduating class years for this Version — an additional
+     * candidate-eligibility filter on top of the Event's grade-based
+     * event_grades (EligibilityService::eligibleStudents() applies both).
+     * Same "zero rows means unrestricted" convention as counties() above.
+     *
+     * @return HasMany<VersionClassOf, $this>
+     */
+    public function classOfs(): HasMany
+    {
+        return $this->hasMany(VersionClassOf::class);
+    }
+
+    /**
      * Per-Co-Registration-Manager county assignments — a county appears at
      * most once per Version (see the unique constraint), so this is the
      * source of truth for who's responsible for which county, distinct from

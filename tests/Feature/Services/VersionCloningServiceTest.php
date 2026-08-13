@@ -14,6 +14,7 @@ use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionApplication;
+use App\Models\VersionClassOf;
 use App\Models\VersionCounty;
 use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
@@ -68,6 +69,8 @@ function buildFullyConfiguredVersion(): Version
 
     $county = County::factory()->create();
     VersionCounty::create(['version_id' => $version->id, 'county_id' => $county->id]);
+
+    VersionClassOf::create(['version_id' => $version->id, 'class_of' => 2027]);
 
     $ensemble = Ensemble::factory()->create(['event_id' => $event->id]);
     VersionEnsembleOrder::create(['version_id' => $version->id, 'ensemble_id' => $ensemble->id, 'order_by' => 1]);
@@ -190,6 +193,8 @@ test('cloneFrom copies fees, counties, ensemble order, pitch files, upload files
     expect($clone->fees->participation)->toBe(5000);
     expect($clone->counties)->toHaveCount(1);
     expect($clone->counties->first()->county_id)->toBe($source->counties->first()->county_id);
+    expect($clone->classOfs)->toHaveCount(1);
+    expect($clone->classOfs->first()->class_of)->toBe(2028);
     expect($clone->ensembleOrder)->toHaveCount(1);
     expect($clone->ensembleOrder->first()->ensemble_id)->toBe($source->ensembleOrder->first()->ensemble_id);
     expect($clone->pitchFiles)->toHaveCount(1);

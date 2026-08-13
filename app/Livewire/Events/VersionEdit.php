@@ -21,6 +21,7 @@ use App\Models\EventEpaymentConfig;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionApplication;
+use App\Models\VersionClassOf;
 use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionEpaymentConfig;
@@ -32,6 +33,7 @@ use App\Services\EnsembleCutoffService;
 use App\Services\EnsembleHistoryService;
 use App\Services\VersionRoleAssignmentService;
 use App\Support\CandidateApplicationData;
+use App\Support\ClassOfCalculator;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Flux\Flux;
@@ -63,6 +65,16 @@ class VersionEdit extends Component
     public string $short_name = '';
 
     public string $senior_class_of = '';
+
+    /**
+     * Grades (6-12) eligible for this Version, translated to graduating
+     * class years (version_class_ofs) via senior_class_of on save — an
+     * additional filter on top of the Event's own eligible grades, see
+     * EligibilityService::eligibleStudents().
+     *
+     * @var list<int>
+     */
+    public array $eligible_grades = [];
 
     public string $status = '';
 
@@ -200,11 +212,14 @@ class VersionEdit extends Component
     {
         abort_unless($service->canManageEvent(Auth::user(), $version->event), 403);
 
-        $this->version = $version->load(['dates', 'fees', 'membershipRequirement', 'counties', 'uploadFiles', 'obligation', 'candidateApplication']);
+        $this->version = $version->load(['dates', 'fees', 'membershipRequirement', 'counties', 'classOfs', 'uploadFiles', 'obligation', 'candidateApplication']);
 
         $this->name = $version->name;
         $this->short_name = $version->short_name ?? '';
         $this->senior_class_of = (string) $version->senior_class_of;
+        $this->eligible_grades = $version->classOfs
+            ->map(fn (VersionClassOf $c) => ClassOfCalculator::gradeFromClassOf((int) $c->class_of, (int) $version->senior_class_of))
+            ->all();
         $this->status = $version->getRawOriginal('status');
         $this->audition_type = $version->getRawOriginal('audition_type');
         $this->audition_timeslot = (string) $version->audition_timeslot;
@@ -384,6 +399,8 @@ class VersionEdit extends Component
             'name' => ['required', 'string', 'max:255'],
             'short_name' => ['nullable', 'string', 'max:100'],
             'senior_class_of' => ['required', 'integer', 'min:2000', 'max:2100'],
+            'eligible_grades' => ['array'],
+            'eligible_grades.*' => ['integer', 'min:1', 'max:12'],
             'status' => ['required', 'string', 'in:'.implode(',', array_column(EventStatus::cases(), 'value'))],
             'audition_type' => ['required', 'string', 'in:'.implode(',', array_column(AuditionType::cases(), 'value'))],
             'audition_timeslot' => $this->audition_type === AuditionType::InPerson->value
@@ -417,6 +434,14 @@ class VersionEdit extends Component
             'max_registrants' => ($validated['max_registrants'] ?? '') !== '' && (int) $validated['max_registrants'] !== 0 ? (int) $validated['max_registrants'] : null,
             'max_upper_voice_registrants' => ($validated['max_upper_voice_registrants'] ?? '') !== '' ? (int) $validated['max_upper_voice_registrants'] : null,
         ]);
+
+        $this->version->classOfs()->delete();
+
+        foreach ($validated['eligible_grades'] as $grade) {
+            $this->version->classOfs()->create([
+                'class_of' => ClassOfCalculator::classOfFromGrade((int) $grade, (int) $validated['senior_class_of']),
+            ]);
+        }
 
         // Closing a Version is "Close Version processing" (Tab Room Module.docx's
         // Close Audition: "close the audition and version" is one action) —
@@ -848,6 +873,7 @@ class VersionEdit extends Component
             'cutoffStrategies' => CutoffStrategy::cases(),
             'pitchVisibilities' => PitchFileVisibility::cases(),
             'dateTypes' => VersionDateType::cases(),
+            'gradeOptions' => range(6, 12),
             'counties' => County::orderBy('name')->get(),
             'eventEnsembles' => $this->version->event->ensembles()->orderBy('name')->get()
                 ->sortBy(fn ($ensemble) => $this->ensemble_order[$ensemble->id] ?? PHP_INT_MAX)

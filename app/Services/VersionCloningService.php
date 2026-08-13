@@ -11,6 +11,7 @@ use App\Enums\VersionObligationStatus;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionApplication;
+use App\Models\VersionClassOf;
 use App\Models\VersionCounty;
 use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
@@ -32,9 +33,15 @@ class VersionCloningService
      * (dates, fees, counties, ensemble order, upload/pitch files,
      * membership requirement, obligation, application, e-payment
      * accept-flags, rooms with their voice-part and score-category
-     * assignments, and non-rejected invitations). Deliberately excludes
-     * version_timeslots, candidates, and version_invitation_requests —
-     * roster/season-specific data that a new Version must build fresh.
+     * assignments, eligible class years, and non-rejected invitations).
+     * Deliberately excludes version_timeslots, candidates, and
+     * version_invitation_requests — roster/season-specific data that a new
+     * Version must build fresh.
+     *
+     * Eligible class years (version_class_ofs) are each shifted +1, same as
+     * senior_class_of in $overrides — both represent the same "grades
+     * eligible" set one graduating year later, so the two increments must
+     * stay in lockstep.
      *
      * The e-payment vendor *credential* (EventEpaymentConfig) is
      * deliberately NOT cloned — it's Event-scoped, not Version-scoped
@@ -70,6 +77,7 @@ class VersionCloningService
 
             $this->cloneDates($source, $version);
             $this->cloneCounties($source, $version);
+            $this->cloneClassOfs($source, $version);
             $this->cloneEnsembleOrder($source, $version);
             $this->cloneFees($source, $version);
             $this->cloneMembershipRequirement($source, $version);
@@ -105,6 +113,16 @@ class VersionCloningService
             VersionCounty::create([
                 'version_id' => $version->id,
                 'county_id' => $county->county_id,
+            ]);
+        }
+    }
+
+    private function cloneClassOfs(Version $source, Version $version): void
+    {
+        foreach ($source->classOfs as $classOf) {
+            VersionClassOf::create([
+                'version_id' => $version->id,
+                'class_of' => $classOf->class_of + 1,
             ]);
         }
     }

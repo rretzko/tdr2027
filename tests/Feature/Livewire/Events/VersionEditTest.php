@@ -24,6 +24,7 @@ use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionApplication;
+use App\Models\VersionClassOf;
 use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionEpaymentConfig;
@@ -79,6 +80,63 @@ test('saveGeneral updates the Version record', function () {
 
     expect($version->fresh()->name)->toBe('New Name');
     expect($version->fresh()->status)->toBe(EventStatus::Active);
+});
+
+test('mount translates existing version_class_ofs rows into eligible_grades using senior_class_of', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['senior_class_of' => 2030]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    VersionClassOf::create(['version_id' => $version->id, 'class_of' => 2032]); // grade 10
+    VersionClassOf::create(['version_id' => $version->id, 'class_of' => 2030]); // grade 12
+
+    // classOfs() has no orderBy (same as counties()), so row order isn't
+    // guaranteed — sort before comparing.
+    $component = Livewire::actingAs($user)->test(VersionEdit::class, ['version' => $version]);
+
+    expect(collect($component->get('eligible_grades'))->sort()->values()->all())->toBe([10, 12]);
+});
+
+test('saveGeneral translates eligible_grades into version_class_ofs using senior_class_of', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['senior_class_of' => 2030]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('status', EventStatus::Active->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('audition_type', AuditionType::Remote->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->set('eligible_grades', [9, 12])
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    expect($version->fresh()->classOfs->pluck('class_of')->sort()->values()->all())->toBe([2030, 2033]);
+});
+
+test('saveGeneral clears version_class_ofs when eligible_grades is emptied', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['senior_class_of' => 2030]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    VersionClassOf::create(['version_id' => $version->id, 'class_of' => 2030]);
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('status', EventStatus::Active->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('audition_type', AuditionType::Remote->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->set('eligible_grades', [])
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    expect($version->fresh()->classOfs)->toBeEmpty();
 });
 
 test('saveGeneral persists share_results', function () {

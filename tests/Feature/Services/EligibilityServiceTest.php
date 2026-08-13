@@ -10,6 +10,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionClassOf;
 use App\Models\VersionInvitation;
 use App\Services\EligibilityService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -37,9 +38,9 @@ function inviteEligibilityTeacher(Teacher $teacher, Version $version): VersionIn
     ]);
 }
 
-function attachStudentToSchool(Student $student, School $school, bool $isActive = true): void
+function attachStudentToSchool(Student $student, School $school, bool $isActive = true, ?int $classOf = null): void
 {
-    $student->schools()->attach($school->id, ['is_active' => $isActive, 'class_of' => (int) date('Y') + 1]);
+    $student->schools()->attach($school->id, ['is_active' => $isActive, 'class_of' => $classOf ?? (int) date('Y') + 1]);
 }
 
 function linkStudentToTeacher(Student $student, Teacher $teacher, School $school, bool $isActive = true): void
@@ -213,6 +214,60 @@ test('eligibleStudents is unrestricted by grade when the Event has no event_grad
     $event = Event::factory()->create();
     // No EventGrade rows created at all.
     $version = Version::factory()->create(['event_id' => $event->id]);
+    inviteEligibilityTeacher($teacher, $version);
+
+    $result = (new EligibilityService)->eligibleStudents($version, $teacher);
+
+    expect($result->pluck('id'))->toContain($student->id);
+});
+
+test('eligibleStudents excludes a student whose class_of is outside the Version\'s configured version_class_ofs', function () {
+    $teacher = Teacher::factory()->create();
+    $school = School::factory()->create();
+    $student = Student::factory()->create();
+
+    attachTeacherToSchool($teacher, $school);
+    attachStudentToSchool($student, $school, classOf: 2030);
+    linkStudentToTeacher($student, $teacher, $school);
+
+    $version = Version::factory()->create();
+    VersionClassOf::create(['version_id' => $version->id, 'class_of' => 2029]);
+    inviteEligibilityTeacher($teacher, $version);
+
+    $result = (new EligibilityService)->eligibleStudents($version, $teacher);
+
+    expect($result->pluck('id'))->not->toContain($student->id);
+});
+
+test('eligibleStudents includes a student whose class_of matches one of the Version\'s configured version_class_ofs', function () {
+    $teacher = Teacher::factory()->create();
+    $school = School::factory()->create();
+    $student = Student::factory()->create();
+
+    attachTeacherToSchool($teacher, $school);
+    attachStudentToSchool($student, $school, classOf: 2029);
+    linkStudentToTeacher($student, $teacher, $school);
+
+    $version = Version::factory()->create();
+    VersionClassOf::create(['version_id' => $version->id, 'class_of' => 2029]);
+    inviteEligibilityTeacher($teacher, $version);
+
+    $result = (new EligibilityService)->eligibleStudents($version, $teacher);
+
+    expect($result->pluck('id'))->toContain($student->id);
+});
+
+test('eligibleStudents is unrestricted by class_of when the Version has no version_class_ofs configured', function () {
+    $teacher = Teacher::factory()->create();
+    $school = School::factory()->create();
+    $student = Student::factory()->create();
+
+    attachTeacherToSchool($teacher, $school);
+    attachStudentToSchool($student, $school, classOf: 2029);
+    linkStudentToTeacher($student, $teacher, $school);
+
+    $version = Version::factory()->create();
+    // No VersionClassOf rows created at all.
     inviteEligibilityTeacher($teacher, $version);
 
     $result = (new EligibilityService)->eligibleStudents($version, $teacher);
