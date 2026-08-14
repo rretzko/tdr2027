@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Enums\CandidateStatus;
+use App\Enums\EventStatus;
+use App\Enums\FeeType;
 use App\Enums\ObligationDecision;
 use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
@@ -24,6 +26,7 @@ use App\Models\VersionEpaymentConfig;
 use App\Models\VersionInvitation;
 use App\Models\VersionObligation;
 use App\Models\VersionObligationResponse;
+use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VoicePart;
 use App\Services\EligibilityService;
 use App\Services\Payments\Dto\CheckoutSession;
@@ -37,6 +40,7 @@ use Illuminate\Support\Collection;
 use Livewire\Livewire;
 
 use function Pest\Laravel\actingAs;
+use function Pest\Laravel\get;
 
 uses(RefreshDatabase::class);
 
@@ -52,12 +56,15 @@ class FakeSquareGateway implements PaymentGatewayContract
     /** @var Collection<int, Candidate>|null */
     public static ?Collection $lastCandidates = null;
 
+    public static ?FeeType $lastFeeType = null;
+
     /**
      * @param  Collection<int, Candidate>  $candidates
      */
-    public function createCheckoutSession(Version $version, Collection $candidates, Teacher $payer): CheckoutSession
+    public function createCheckoutSession(Version $version, Collection $candidates, Teacher $payer, FeeType $feeType): CheckoutSession
     {
         self::$lastCandidates = $candidates;
+        self::$lastFeeType = $feeType;
 
         $transaction = PaymentTransaction::create([
             'version_id' => $version->id,
@@ -68,6 +75,7 @@ class FakeSquareGateway implements PaymentGatewayContract
             'school_id' => $candidates->first()?->school_id,
             'amount' => 12345,
             'status' => PaymentTransactionStatus::Pending,
+            'fee_type' => $feeType,
         ]);
 
         return new CheckoutSession(redirectUrl: 'https://fake.example/checkout', paymentTransactionId: $transaction->id);
@@ -307,6 +315,40 @@ test('My Candidates is sorted by the student\'s alpha name order, not program_na
         ->assertSeeInOrder(['Adams, Aaron', 'Zeta, Zoe']);
 });
 
+test('the Paid column shows the sum of Completed payment_allocations for that candidate, net of refunds, and 0 for a candidate with no payments', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+
+    $paid = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    $unpaid = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+
+    $check = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'payer_teacher_id' => $teacher->id,
+        'amount' => 2000, 'status' => PaymentTransactionStatus::Completed, 'payment_type' => 'check', 'paid_at' => now(),
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $check->id, 'candidate_id' => $paid->id, 'amount' => 2000, 'allocated_at' => now()]);
+
+    $refund = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'payer_teacher_id' => $teacher->id,
+        'amount' => -500, 'status' => PaymentTransactionStatus::Completed, 'payment_type' => 'refund', 'paid_at' => now(),
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $refund->id, 'candidate_id' => $paid->id, 'amount' => -500, 'allocated_at' => now()]);
+
+    // Pending, not Completed — must not count toward Paid.
+    $pending = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'payer_teacher_id' => $teacher->id,
+        'amount' => 9999, 'status' => PaymentTransactionStatus::Pending, 'payment_type' => 'check',
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $pending->id, 'candidate_id' => $paid->id, 'amount' => 9999, 'allocated_at' => now()]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee('$15.00')
+        ->assertSee('$0.00');
+});
+
 test('the voice part summary table counts only Registered candidates per voice part, with a Registered total column', function () {
     $teacher = makeRegistrationTeacher();
     $version = Version::factory()->create();
@@ -443,6 +485,26 @@ test('search, voicePartFilter, and statusFilter combine, and an empty result sho
         ->assertSee('No candidates match your search/filters.');
 });
 
+test('toggleEpaymentOptIn flips the teacher+Version opt-in and is scoped per teacher', function () {
+    $teacher = makeRegistrationTeacher();
+    $otherTeacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => true, 'epayment_teacher' => false]);
+
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->call('toggleEpaymentOptIn');
+
+    $optIn = VersionTeacherEpaymentOptIn::where('version_id', $version->id)->where('teacher_id', $teacher->id)->first();
+    expect($optIn->opted_in)->toBeTrue();
+
+    // The other teacher's own state is untouched.
+    expect(VersionTeacherEpaymentOptIn::where('version_id', $version->id)->where('teacher_id', $otherTeacher->id)->exists())->toBeFalse();
+});
+
 test('payForSelected aborts with 403 when epayment_teacher is not ready', function () {
     $teacher = makeRegistrationTeacher();
     $version = Version::factory()->create();
@@ -453,7 +515,7 @@ test('payForSelected aborts with 403 when epayment_teacher is not ready', functi
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
         ->set('selectedCandidateIds', [$candidate->id])
-        ->call('payForSelected')
+        ->call('payForSelected', 'registration')
         ->assertStatus(403);
 });
 
@@ -466,7 +528,47 @@ test('payForSelected aborts with 422 when nothing is selected', function () {
 
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
-        ->call('payForSelected')
+        ->call('payForSelected', 'registration')
+        ->assertStatus(422);
+});
+
+test('payForSelected aborts with 403 when participation is requested before the Version is closed', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    makeReadyForGroupPayment($version);
+
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Accepted,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->set('selectedCandidateIds', [$candidate->id])
+        ->call('payForSelected', 'participation')
+        ->assertStatus(403);
+});
+
+test('payForSelected aborts with 422 when none of the selected candidates are Accepted for participation', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create(['status' => EventStatus::Closed]);
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    makeReadyForGroupPayment($version);
+
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::NotAccepted,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->set('selectedCandidateIds', [$candidate->id])
+        ->call('payForSelected', 'participation')
         ->assertStatus(422);
 });
 
@@ -485,14 +587,16 @@ test('payForSelected redirects to the gateway checkout URL, scoped to only this 
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
         ->set('selectedCandidateIds', [$mine1->id, $mine2->id, $notMine->id])
-        ->call('payForSelected')
+        ->call('payForSelected', 'registration')
         ->assertRedirect('https://fake.example/checkout');
 
     expect(FakeSquareGateway::$lastCandidates->pluck('id')->sort()->values()->all())
         ->toBe(collect([$mine1->id, $mine2->id])->sort()->values()->all());
+    expect(FakeSquareGateway::$lastFeeType)->toBe(FeeType::Registration);
 
     $transaction = PaymentTransaction::where('version_id', $version->id)->first();
     expect($transaction->getRawOriginal('source'))->toBe('teacher_epayment');
+    expect($transaction->getRawOriginal('fee_type'))->toBe('registration');
     expect($transaction->allocations)->toHaveCount(0);
 });
 
@@ -536,11 +640,18 @@ test('Your Unreconciled Payments shows only this teacher\'s own transactions wit
         'reference_number' => 'GROUP-OTHER',
     ]);
 
+    // Not assertDontSee('GROUP-2') for the "Your Unreconciled Payments"
+    // check below — GROUP-2 is fully allocated to $mine, so it now
+    // legitimately appears in the (separate) Payment Register section,
+    // which lists every payment regardless of reconciliation state. Scoping
+    // to the openAllocate(...) wire:click instead targets only the
+    // Unreconciled section's own "Allocate" button.
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
         ->assertSee('GROUP-1')
-        ->assertDontSee('GROUP-2')
-        ->assertDontSee('GROUP-OTHER');
+        ->assertDontSee('GROUP-OTHER')
+        ->assertSeeHtml("wire:click=\"openAllocate({$unreconciled->id})\"")
+        ->assertDontSeeHtml("wire:click=\"openAllocate({$fullyAllocated->id})\"");
 });
 
 test('openAllocate aborts with 404 for a transaction not owned by this teacher', function () {
@@ -665,4 +776,136 @@ test('refreshStatus recalculates the candidate status from the checklist', funct
     // program_name is done but emergency contact is not, so the candidate
     // should move from eligible to pending — not stay eligible.
     expect($candidate->refresh()->status)->toBe(CandidateStatus::Pending);
+});
+
+test('the action toolbar shows Payment Register, Estimate Form, and Group Payment', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    inviteRegistrationTeacher($teacher, $version);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee('Payment Register')
+        ->assertSee('Estimate Form')
+        ->assertSee('Group Payment');
+});
+
+test('Group Payment explains itself instead of offering selection when no fee window is open', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee('Group Payment is not available right now');
+});
+
+test('openPaymentRegister does not error', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    inviteRegistrationTeacher($teacher, $version);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->call('openPaymentRegister')
+        ->assertStatus(200);
+});
+
+test('paymentRegisterRows lists every allocation across this teacher\'s roster, ordered by candidate sort name then payment chronology, excluding other teachers\' candidates', function () {
+    $teacher = makeRegistrationTeacher();
+    $otherTeacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+
+    $zeta = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    $zeta->student->user->update(['first_name' => 'Zoe', 'last_name' => 'Zeta']);
+    $adams = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    $adams->student->user->update(['first_name' => 'Amy', 'last_name' => 'Adams']);
+    $notMine = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $otherTeacher->id]);
+
+    $zetaCheck = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'payer_teacher_id' => $teacher->id,
+        'amount' => 2000, 'status' => PaymentTransactionStatus::Completed, 'payment_type' => 'check',
+        'reference_number' => 'REF-1', 'paid_at' => now()->subDays(2),
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $zetaCheck->id, 'candidate_id' => $zeta->id, 'amount' => 2000, 'allocated_at' => now()]);
+
+    $adamsFirst = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'payer_teacher_id' => $teacher->id,
+        'amount' => 1000, 'status' => PaymentTransactionStatus::Completed, 'payment_type' => 'cash',
+        'paid_at' => now()->subDays(5),
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $adamsFirst->id, 'candidate_id' => $adams->id, 'amount' => 1000, 'allocated_at' => now()]);
+
+    $adamsSecond = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'payer_teacher_id' => $teacher->id,
+        'amount' => -500, 'status' => PaymentTransactionStatus::Completed, 'payment_type' => 'refund',
+        'paid_at' => now()->subDay(),
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $adamsSecond->id, 'candidate_id' => $adams->id, 'amount' => -500, 'allocated_at' => now()]);
+
+    $notMinePayment = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'payer_teacher_id' => $otherTeacher->id,
+        'amount' => 9999, 'status' => PaymentTransactionStatus::Completed, 'payment_type' => 'check', 'paid_at' => now(),
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $notMinePayment->id, 'candidate_id' => $notMine->id, 'amount' => 9999, 'allocated_at' => now()]);
+
+    $rows = VersionDashboard::paymentRegisterRows($version, $teacher);
+
+    expect($rows)->toHaveCount(3);
+    // Adams before Zeta (sort_name order), and within Adams, oldest payment first.
+    expect($rows[0]['candidate']->id)->toBe($adams->id);
+    expect($rows[0]['amountCents'])->toBe(1000);
+    expect($rows[1]['candidate']->id)->toBe($adams->id);
+    expect($rows[1]['amountCents'])->toBe(-500);
+    expect($rows[1]['type'])->toBe('Refund');
+    expect($rows[2]['candidate']->id)->toBe($zeta->id);
+    expect($rows[2]['referenceNumber'])->toBe('REF-1');
+    expect($rows[2]['status'])->toBe(PaymentTransactionStatus::Completed);
+});
+
+test('the Payment Register CSV export is scoped to this teacher\'s own candidates', function () {
+    $teacher = makeRegistrationTeacher();
+    $otherTeacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    $teacher->schools()->attach(School::factory()->create()->id, ['is_active' => true, 'verified_at' => now()]);
+
+    $mine = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    $notMine = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $otherTeacher->id]);
+
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'payer_teacher_id' => $teacher->id,
+        'amount' => 2000, 'status' => PaymentTransactionStatus::Completed, 'payment_type' => 'check', 'paid_at' => now(),
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $transaction->id, 'candidate_id' => $mine->id, 'amount' => 2000, 'allocated_at' => now()]);
+
+    $otherTransaction = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'payer_teacher_id' => $otherTeacher->id,
+        'amount' => 5000, 'status' => PaymentTransactionStatus::Completed, 'payment_type' => 'check', 'paid_at' => now(),
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $otherTransaction->id, 'candidate_id' => $notMine->id, 'amount' => 5000, 'allocated_at' => now()]);
+
+    $response = get(route('registrations.payment-register-csv', $version));
+
+    $response->assertOk();
+    $content = $response->streamedContent();
+    expect($content)->toContain($mine->student->user->sort_name);
+    expect($content)->not->toContain($notMine->student->user->sort_name);
+});
+
+test('the Payment Register PDF export is scoped to this teacher\'s own candidates', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    $teacher->schools()->attach(School::factory()->create()->id, ['is_active' => true, 'verified_at' => now()]);
+
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+
+    $response = get(route('registrations.payment-register-pdf', $version));
+
+    $response->assertOk();
+    expect($response->headers->get('content-type'))->toBe('application/pdf');
 });

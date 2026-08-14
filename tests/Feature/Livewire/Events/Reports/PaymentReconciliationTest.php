@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Enums\CandidateStatus;
+use App\Enums\EventStatus;
 use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
 use App\Livewire\Events\Reports\PaymentReconciliation;
@@ -79,11 +81,37 @@ test('school balances reflect completed allocations, not the raw transaction tot
     ]);
     PaymentAllocation::create(['payment_transaction_id' => $transaction->id, 'candidate_id' => $candidate->id, 'amount' => 1500, 'allocated_at' => now()]);
 
+    // Registration and participation are never combined — a still-Registered
+    // candidate on an open Version only owes registration; participation
+    // isn't assessed until the Version closes and the candidate is Accepted
+    // (see the "participation is only added once closed/Accepted" test below).
     Livewire::actingAs($founder)
         ->test(PaymentReconciliation::class, ['version' => $version])
         ->assertSee($school->name)
-        ->assertSee('25.00') // due: registration $20 + participation $5
+        ->assertSee('20.00') // due: registration only
         ->assertSee('15.00'); // paid
+});
+
+test('participation fee is only added to due once the Version is closed and the candidate is Accepted', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create(['status' => EventStatus::Closed]);
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000, 'participation' => 500]);
+
+    $county = County::factory()->create();
+    $school = School::factory()->create(['county_id' => $county->id]);
+    $teacher = Teacher::factory()->create();
+    Candidate::factory()->create([
+        'version_id' => $version->id,
+        'school_id' => $school->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Accepted,
+    ]);
+
+    Livewire::actingAs($founder)
+        ->test(PaymentReconciliation::class, ['version' => $version])
+        ->assertSee($school->name)
+        ->assertSee('25.00'); // due: registration $20 + participation $5
 });
 
 test('a fully allocated transaction is absent from Needs Reconciliation, an unallocated one is present', function () {

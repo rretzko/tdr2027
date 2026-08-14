@@ -64,4 +64,22 @@ enum CandidateStatus: string
     {
         return in_array($this, [self::Eligible, self::Pending, self::Registered], true);
     }
+
+    /**
+     * Every state that still owes the registration fee — everyone except an
+     * explicit withdrawal (Withdrew/TeacherWithdrawn). Broader than
+     * registrationStates() alone because Ensemble Cut-offs can resolve a
+     * Candidate to Accepted/NotAccepted/NoShow/Incomplete before the Version
+     * is formally closed (see CloseAudition), and none of those outcomes
+     * excuses an unpaid registration fee.
+     *
+     * @return list<self>
+     */
+    public static function registrationFeeEligibleStates(): array
+    {
+        return [
+            self::Eligible, self::Pending, self::Registered,
+            self::NoShow, self::Incomplete, self::Accepted, self::NotAccepted,
+        ];
+    }
 }

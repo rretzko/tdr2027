@@ -7,6 +7,7 @@ use App\Enums\AuditionType;
 use App\Enums\CandidateStatus;
 use App\Enums\CandidateUploadStatus;
 use App\Enums\EmergencyContactRelationship;
+use App\Enums\EventStatus;
 use App\Enums\ObligationDecision;
 use App\Enums\UploadType;
 use App\Enums\Vendor;
@@ -26,10 +27,10 @@ use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionApplication;
 use App\Models\VersionEpaymentConfig;
+use App\Models\VersionFee;
 use App\Models\VersionInvitation;
 use App\Models\VersionObligation;
 use App\Models\VersionObligationResponse;
-use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VersionUploadFile;
 use App\Models\VoicePart;
 use Carbon\Carbon;
@@ -1299,7 +1300,7 @@ test('the Approval checklist item renders amber when some but not all uploaded f
         ->assertSeeHtml('bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400');
 });
 
-test('the Payment card is always visible, but Pay Now and the opt-in checkbox are absent with nothing configured', function () {
+test('the Payment card is always visible, but Pay Registration Fee is absent with nothing configured', function () {
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create();
 
@@ -1310,23 +1311,24 @@ test('the Payment card is always visible, but Pay Now and the opt-in checkbox ar
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->assertSee('Payment')
         ->assertSee('Record Payment')
-        ->assertDontSee('Pay Now')
-        ->assertDontSee('Enable e-payment for all of your candidates');
+        ->assertDontSee('Pay Registration Fee')
+        ->assertDontSee('Pay Participation Fee');
 });
 
-test('Pay Now is visible only when epayment_teacher is on and the Event has a real vendor configured', function () {
+test('Pay Registration Fee is visible only when epayment_teacher is on and the Event has a real vendor configured', function () {
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create();
 
     actingAs($teacher->user);
     $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
 
     // epayment_teacher on, but no vendor configured on the Event yet.
     VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => false, 'epayment_teacher' => true]);
 
     Livewire::actingAs($teacher->user)
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
-        ->assertDontSee('Pay Now');
+        ->assertDontSee('Pay Registration Fee');
 
     EventEpaymentConfig::create([
         'event_id' => $version->event_id,
@@ -1344,27 +1346,155 @@ test('Pay Now is visible only when epayment_teacher is on and the Event has a re
     // starts from a fresh model instance.
     Livewire::actingAs($teacher->user)
         ->test(CandidateDetail::class, ['version' => $version->fresh(), 'candidate' => $candidate])
-        ->assertSee('Pay Now');
+        ->assertSee('Pay Registration Fee');
 });
 
-test('toggleEpaymentOptIn flips the teacher+Version opt-in and is scoped per teacher', function () {
+test('Pay Registration Fee is suppressed once the registration fee is fully paid or overpaid', function () {
     $teacher = makeCandidateDetailTeacher();
-    $otherTeacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create();
-    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => true, 'epayment_teacher' => false]);
 
     actingAs($teacher->user);
     $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => false, 'epayment_teacher' => true]);
+    EventEpaymentConfig::create([
+        'event_id' => $version->event_id,
+        'vendor' => Vendor::Square,
+        'vendor_account_id' => 'loc-123',
+        'secret' => 'token-123',
+    ]);
+
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => 'manual',
+        'payer_teacher_id' => $teacher->id,
+        'school_id' => $candidate->school_id,
+        'amount' => 2500,
+        'status' => 'completed',
+        'payment_type' => 'check',
+        'paid_at' => now(),
+    ]);
+
+    PaymentAllocation::create([
+        'payment_transaction_id' => $transaction->id,
+        'candidate_id' => $candidate->id,
+        'amount' => 2500,
+        'allocated_at' => now(),
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version->fresh(), 'candidate' => $candidate])
+        ->assertDontSee('Pay Registration Fee');
+});
+
+test('an overpayment advisory shows the overpaid amount to the teacher', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create();
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => 'manual',
+        'payer_teacher_id' => $teacher->id,
+        'school_id' => $candidate->school_id,
+        'amount' => 2500,
+        'status' => 'completed',
+        'payment_type' => 'check',
+        'paid_at' => now(),
+    ]);
+
+    PaymentAllocation::create([
+        'payment_transaction_id' => $transaction->id,
+        'candidate_id' => $candidate->id,
+        'amount' => 2500,
+        'allocated_at' => now(),
+    ]);
 
     Livewire::actingAs($teacher->user)
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
-        ->call('toggleEpaymentOptIn');
+        ->assertSee('Overpaid by $5.00');
+});
 
-    $optIn = VersionTeacherEpaymentOptIn::where('version_id', $version->id)->where('teacher_id', $teacher->id)->first();
-    expect($optIn->opted_in)->toBeTrue();
+test('Pay Participation Fee is visible only once the Version is closed and the candidate is Accepted', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create(['status' => EventStatus::Closed]);
 
-    // The other teacher's own state is untouched.
-    expect(VersionTeacherEpaymentOptIn::where('version_id', $version->id)->where('teacher_id', $otherTeacher->id)->exists())->toBeFalse();
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Accepted,
+    ]);
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000, 'participation' => 500]);
+
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => false, 'epayment_teacher' => true]);
+    EventEpaymentConfig::create([
+        'event_id' => $version->event_id,
+        'vendor' => Vendor::Square,
+        'vendor_account_id' => 'loc-123',
+        'secret' => 'token-123',
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->assertDontSee('Pay Registration Fee')
+        ->assertSee('Pay Participation Fee');
+});
+
+test('payNow aborts with 403 when the requested FeeType is not yet payable for this Version', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create(['status' => EventStatus::Closed]);
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Accepted,
+    ]);
+
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => false, 'epayment_teacher' => true]);
+    EventEpaymentConfig::create([
+        'event_id' => $version->event_id,
+        'vendor' => Vendor::Square,
+        'vendor_account_id' => 'loc-123',
+        'secret' => 'token-123',
+    ]);
+
+    // The Version is closed, so registration is no longer payable — even
+    // though epayment_teacher/vendor are otherwise ready.
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->call('payNow', 'registration')
+        ->assertStatus(403);
+});
+
+test('payNow aborts with 422 when the candidate is not Accepted for a participation fee', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create(['status' => EventStatus::Closed]);
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::NotAccepted,
+    ]);
+
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => false, 'epayment_teacher' => true]);
+    EventEpaymentConfig::create([
+        'event_id' => $version->event_id,
+        'vendor' => Vendor::Square,
+        'vendor_account_id' => 'loc-123',
+        'secret' => 'token-123',
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->call('payNow', 'participation')
+        ->assertStatus(422);
 });
 
 test('savePayment records a manual payment_transactions row, auto-allocated 100% to the candidate', function () {
@@ -1400,6 +1530,30 @@ test('savePayment records a manual payment_transactions row, auto-allocated 100%
     expect($allocation)->not->toBeNull();
     expect($allocation->candidate_id)->toBe($candidate->id);
     expect($allocation->amount)->toBe(12550);
+});
+
+test('savePayment stores a refund as a negative amount', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create();
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->call('recordPayment')
+        ->set('payment_type', 'refund')
+        ->set('payment_amount', '50.00')
+        ->set('payment_paid_at', now()->format('Y-m-d'))
+        ->call('savePayment')
+        ->assertHasNoErrors();
+
+    $transaction = PaymentTransaction::where('version_id', $version->id)->first();
+    expect($transaction->amount)->toBe(-5000);
+    expect($transaction->getRawOriginal('payment_type'))->toBe('refund');
+
+    $allocation = PaymentAllocation::where('payment_transaction_id', $transaction->id)->first();
+    expect($allocation->amount)->toBe(-5000);
 });
 
 test('savePayment requires a valid payment type, a positive amount, and a valid date', function () {

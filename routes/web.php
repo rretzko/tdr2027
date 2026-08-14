@@ -3,6 +3,8 @@
 use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\CandidateApplicationPdfController;
 use App\Http\Controllers\CandidateScoreReportPdfController;
+use App\Http\Controllers\PaymentRegisterCsvController;
+use App\Http\Controllers\PaymentRegisterPdfController;
 use App\Http\Controllers\Reports\AdjudicationBackupExportController;
 use App\Http\Controllers\Reports\CandidateCountsExportController;
 use App\Http\Controllers\Reports\ObligatedTeachersPdfController;
@@ -68,6 +70,7 @@ use App\Livewire\Founder\TeacherVerification as FounderTeacherVerification;
 use App\Livewire\Founder\TrackablePages as FounderTrackablePages;
 use App\Livewire\Onboarding\TeacherOnboardingWizard;
 use App\Livewire\Registrations\CandidateDetail;
+use App\Livewire\Registrations\EstimateForm;
 use App\Livewire\Registrations\Index as RegistrationsIndex;
 use App\Livewire\Registrations\RequestInvitation;
 use App\Livewire\Registrations\Results;
@@ -194,6 +197,9 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/registrations/{version}/results', Results::class)->name('registrations.results');
         Route::get('/registrations/{version}/results/schools/{school}/report.pdf', SchoolScoreReportPdfController::class)->name('registrations.results.school-report-pdf');
         Route::get('/registrations/{version}/results/shared-scores.pdf', SharedScoresPdfController::class)->name('registrations.results.shared-scores-pdf');
+        Route::get('/registrations/{version}/estimate-form', EstimateForm::class)->name('registrations.estimate-form');
+        Route::get('/registrations/{version}/payment-register.csv', PaymentRegisterCsvController::class)->name('registrations.payment-register-csv');
+        Route::get('/registrations/{version}/payment-register.pdf', PaymentRegisterPdfController::class)->name('registrations.payment-register-pdf');
         Route::get('/registrations/{version}/{candidate}', CandidateDetail::class)->name('registrations.candidate');
         Route::get('/registrations/{version}/{candidate}/application.pdf', CandidateApplicationPdfController::class)->name('registrations.candidate.application-pdf');
         Route::get('/registrations/{version}/{candidate}/score-report.pdf', CandidateScoreReportPdfController::class)->name('registrations.results.candidate-report-pdf');

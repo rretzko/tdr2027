@@ -230,8 +230,17 @@ class ParticipatingSchools extends Component
      */
     public static function baseRows(Version $version, ?array $countyIds): Collection
     {
+        // Broader than status=Registered alone — Ensemble Cut-offs can
+        // resolve a Candidate to Accepted/NotAccepted/NoShow/Incomplete
+        // before the Version is formally closed, and every one of those
+        // outcomes still owes at least the registration fee.
+        $feeEligibleStatusValues = array_map(
+            fn (CandidateStatus $s): string => $s->value,
+            CandidateStatus::registrationFeeEligibleStates(),
+        );
+
         $query = Candidate::where('version_id', $version->id)
-            ->where('status', CandidateStatus::Registered->value)
+            ->whereIn('status', $feeEligibleStatusValues)
             ->with(['teacher.user.phones', 'school']);
 
         if ($countyIds !== null) {
@@ -244,10 +253,26 @@ class ParticipatingSchools extends Component
         // (VersionCloningService only creates one when cloning from a prior
         // Version) — optional() avoids a Larastan false positive that treats
         // fees()->first() as never-null (see feedback_phpstan_quirks).
-        // Confirmed 2026-08-14, epayment-integration.md §5 item 1:
-        // registration + participation, not registration alone.
+        // Registration and participation are never combined into one figure
+        // — see FeeType. Participation is only added once the Version is
+        // closed, and only for a Candidate who was actually Accepted.
         $fees = optional($version->fees()->first());
-        $feeCentsPerCandidate = (int) ($fees->registration ?? 0) + (int) ($fees->participation ?? 0);
+        $registrationCents = (int) ($fees->registration ?? 0);
+        $participationCents = (int) ($fees->participation ?? 0);
+        $participationPayable = $version->participationFeePayable();
+
+        $dueForCandidate = function (Candidate $candidate) use ($registrationCents, $participationCents, $participationPayable): int {
+            $due = $registrationCents;
+
+            // getRawOriginal(), not the magic-cast property — Larastan can't
+            // infer the enum cast through this method-based casts() return
+            // here (cataloged Larastan quirk; see PHPStan-quirks memory).
+            if ($participationPayable && $candidate->getRawOriginal('status') === CandidateStatus::Accepted->value) {
+                $due += $participationCents;
+            }
+
+            return $due;
+        };
 
         $packets = VersionTeacherPacket::where('version_id', $version->id)->get()->keyBy(fn (VersionTeacherPacket $p): string => "{$p->school_id}:{$p->teacher_id}");
 
@@ -270,10 +295,10 @@ class ParticipatingSchools extends Component
             ->map(fn (Collection $g): int => (int) $g->sum('amount'));
 
         return $candidates->groupBy(fn (Candidate $c): string => "{$c->school_id}:{$c->teacher_id}")
-            ->map(function (Collection $group, string $key) use ($feeCentsPerCandidate, $packets, $candidateIdsByPair, $paidByCandidateId): array {
+            ->map(function (Collection $group, string $key) use ($dueForCandidate, $packets, $candidateIdsByPair, $paidByCandidateId): array {
                 $first = $group->first();
                 $count = $group->count();
-                $dueCents = $count * $feeCentsPerCandidate;
+                $dueCents = $group->sum($dueForCandidate);
 
                 $paidCents = 0;
                 foreach ($candidateIdsByPair->get($key, []) as $candidateId) {

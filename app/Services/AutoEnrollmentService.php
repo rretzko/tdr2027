@@ -12,15 +12,21 @@ use App\Models\VersionInvitation;
 
 /**
  * Proactively enrolls a teacher's eligible students as Candidates, rather
- * than waiting for the teacher to manually enroll each one. Two triggers
- * (see VersionInvitationObserver and StudentTeacherObserver):
+ * than waiting for the teacher to manually enroll each one. Triggers (see
+ * VersionInvitationObserver, StudentTeacherObserver, VersionObserver, and
+ * VersionRoleAssignmentService):
  * - A teacher is newly invited to a Version → enroll every student of
- *   theirs already eligible for it.
+ *   theirs already eligible for it (skipped while the Version is still
+ *   Sandbox — see VersionInvitationObserver).
  * - A student is newly added/reactivated on a teacher's roster → enroll
  *   that student into every Version the teacher currently holds an
  *   invitation for, for which registration is currently active.
+ * - A Version transitions into Active, or a version-scoped role is granted
+ *   → enrollAllInvitedTeachersForVersion() backfills every already-invited
+ *   teacher, so invitations created while the Version was still Sandbox
+ *   (e.g. cloned invitations) aren't stuck forever.
  *
- * Both funnel through the same EligibilityService::eligibleStudents() pool
+ * All funnel through the same EligibilityService::eligibleStudents() pool
  * used everywhere else (invitation status, shared active school, grade
  * match, not already a candidate) — this doesn't define a separate notion
  * of "eligible."
@@ -41,6 +47,31 @@ class AutoEnrollmentService
         foreach ($this->eligibility->eligibleStudents($version, $teacher) as $student) {
             $this->enrollOne($version, $student, $teacher);
         }
+    }
+
+    /**
+     * Runs enrollEligibleStudentsForVersion() for every teacher already
+     * holding a VersionInvitation on this Version, regardless of the
+     * Version's own status. Used to backfill invitations that were created
+     * while the Version wasn't yet Active — cloned invitations
+     * (VersionCloningService always clones into a Sandbox Version) and any
+     * other invitation issued before go-live — for two triggers:
+     * - VersionObserver::updated(), when the Version transitions into
+     *   Active, so ordinary participants aren't stuck waiting forever.
+     * - VersionRoleAssignmentService, when a version-scoped role is granted,
+     *   so an Event Manager/Registration Manager/etc. can review real
+     *   candidate data on the Candidate Management pages before the Version
+     *   goes Active.
+     * Safe to call repeatedly: eligibleStudents() already excludes students
+     * who are already a Candidate for the Version.
+     */
+    public function enrollAllInvitedTeachersForVersion(Version $version): void
+    {
+        VersionInvitation::where('version_id', $version->id)
+            ->get()
+            ->each(function (VersionInvitation $invitation) use ($version): void {
+                $this->enrollEligibleStudentsForVersion($version, $invitation->teacher);
+            });
     }
 
     /**

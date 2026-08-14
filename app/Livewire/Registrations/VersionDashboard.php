@@ -7,16 +7,25 @@ namespace App\Livewire\Registrations;
 use App\Concerns\GuardsAcceptedObligations;
 use App\Concerns\HasCandidateChecklist;
 use App\Enums\CandidateStatus;
+use App\Enums\FeeType;
+use App\Enums\PaymentSource;
+use App\Enums\PaymentTransactionStatus;
+use App\Enums\PaymentType;
+use App\Enums\Vendor;
+use App\Enums\VersionDateType;
 use App\Models\Candidate;
+use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
 use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionInvitation;
+use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VoicePart;
 use App\Services\CandidateService;
 use App\Services\PaymentAllocationService;
 use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\VersionInvitationEligibilityService;
+use Carbon\Carbon;
 use Flux\Flux;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -24,6 +33,7 @@ use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use RuntimeException;
 
 #[Layout('components.layouts.app')]
 class VersionDashboard extends Component
@@ -123,22 +133,69 @@ class VersionDashboard extends Component
      * covering every selected Candidate's total, unallocated until
      * reconciled. See epayment-integration.md §1.1/§3.
      */
-    public function payForSelected(PaymentGatewayFactory $factory): void
+    public function payForSelected(PaymentGatewayFactory $factory, string $feeType): void
     {
+        $feeType = FeeType::from($feeType);
+
         abort_unless($this->version->epaymentTeacherReady(), 403);
+        abort_unless(match ($feeType) {
+            FeeType::Registration => $this->version->registrationFeePayable(),
+            FeeType::Participation => $this->version->participationFeePayable(),
+        }, 403);
         abort_if($this->selectedCandidateIds === [], 422, 'Select at least one candidate to pay for.');
 
+        $eligibleStates = match ($feeType) {
+            FeeType::Registration => CandidateStatus::registrationFeeEligibleStates(),
+            FeeType::Participation => [CandidateStatus::Accepted],
+        };
+
+        // Defensive filter — the roster UI already only offers checkboxes for
+        // candidates eligible for the currently-active FeeType.
         $candidates = Candidate::whereIn('id', $this->selectedCandidateIds)
             ->where('version_id', $this->version->id)
             ->where('teacher_id', $this->teacher()->id)
-            ->get();
+            ->get()
+            // getRawOriginal(), not the magic-cast property — Larastan can't
+            // infer the enum cast through this method-based casts() return
+            // here (cataloged Larastan quirk; see PHPStan-quirks memory).
+            ->filter(fn (Candidate $candidate): bool => in_array(
+                CandidateStatus::from((string) $candidate->getRawOriginal('status')),
+                $eligibleStates,
+                true,
+            ))
+            ->values();
 
         abort_if($candidates->isEmpty(), 422);
 
         $gateway = $factory->make($this->version);
-        $session = $gateway->createCheckoutSession($this->version, $candidates, $this->teacher());
+        $session = $gateway->createCheckoutSession($this->version, $candidates, $this->teacher(), $feeType);
 
         $this->redirect($session->redirectUrl, navigate: false);
+    }
+
+    /**
+     * Roster-wide, not per-Candidate — toggles whether every Candidate this
+     * teacher manages in this Version may use e-payment, once a real gateway
+     * exists (see VersionTeacherEpaymentOptIn's own docblock). Gated on
+     * epayment_student, not epaymentCredential's old presence-as-gate — see
+     * epayment-integration.md §1.3.
+     */
+    public function toggleEpaymentOptIn(): void
+    {
+        if (! $this->version->epaymentStudentEnabled()) {
+            return;
+        }
+
+        $optIn = VersionTeacherEpaymentOptIn::firstOrNew([
+            'version_id' => $this->version->id,
+            'teacher_id' => $this->teacher()->id,
+        ]);
+        $optIn->opted_in = ! $optIn->opted_in;
+        $optIn->save();
+
+        Flux::toast($optIn->opted_in
+            ? 'E-payment enabled for all of your candidates in this Version.'
+            : 'E-payment disabled for all of your candidates in this Version.');
     }
 
     /**
@@ -158,6 +215,80 @@ class VersionDashboard extends Component
         $this->allocationAmounts = [];
         $this->resetErrorBag();
         $this->modal('allocate-payment')->show();
+    }
+
+    public function openPaymentRegister(): void
+    {
+        $this->modal('payment-register')->show();
+    }
+
+    /**
+     * Every payment_allocations row across this teacher's own roster in this
+     * Version — manual entries, refunds, and e-payments alike — ordered by
+     * the candidate's sort_name, then payment chronology within that
+     * candidate. paid_at falls back to created_at for the rare row that
+     * hasn't actually been paid yet (a pending checkout session). Reused by
+     * the CSV/PDF export controllers, the same pattern as
+     * PaymentReconciliation's own baseRows() (see that class's docblock).
+     *
+     * @return Collection<int, covariant array{candidate: Candidate, paidAt: \Carbon\Carbon, type: string, amountCents: int, referenceNumber: ?string, status: PaymentTransactionStatus}>
+     */
+    public static function paymentRegisterRows(Version $version, Teacher $teacher): Collection
+    {
+        $candidateIds = Candidate::where('version_id', $version->id)
+            ->where('teacher_id', $teacher->id)
+            ->pluck('id');
+
+        $allocations = PaymentAllocation::whereIn('candidate_id', $candidateIds)
+            ->with(['paymentTransaction', 'candidate.student.user'])
+            ->get();
+
+        $rows = [];
+
+        foreach ($allocations as $allocation) {
+            // Both relations are FK-guaranteed non-null (cascadeOnDelete,
+            // never orphaned) — the null-coalescing throw exists only to
+            // narrow the type for PHPStan/Larastan, which types belongsTo
+            // relation properties as nullable regardless.
+            $candidate = $allocation->candidate ?? throw new RuntimeException('Payment allocation missing its candidate.');
+            $transaction = $allocation->paymentTransaction ?? throw new RuntimeException('Payment allocation missing its transaction.');
+
+            // getRawOriginal(), not the magic-cast property — Larastan can't
+            // reliably infer casts through this model's method-based
+            // casts() return (cataloged PHPStan-quirks memory; applies
+            // beyond just the enum casts it names).
+            $paymentType = $transaction->getRawOriginal('payment_type');
+            $vendor = $transaction->getRawOriginal('vendor');
+            $source = PaymentSource::from((string) $transaction->getRawOriginal('source'));
+            $paidAtRaw = $transaction->getRawOriginal('paid_at');
+
+            $type = match (true) {
+                $paymentType !== null => PaymentType::from($paymentType)->label(),
+                $vendor !== null => Vendor::from($vendor)->label(),
+                default => $source->label(),
+            };
+
+            $rows[] = [
+                'candidate' => $candidate,
+                'paidAt' => Carbon::parse($paidAtRaw ?? (string) $transaction->getRawOriginal('created_at')),
+                'type' => $type,
+                'amountCents' => (int) $allocation->amount,
+                'referenceNumber' => $transaction->reference_number,
+                'status' => PaymentTransactionStatus::from((string) $transaction->getRawOriginal('status')),
+            ];
+        }
+
+        // usort, not Collection::sortBy() with a multi-criteria array — a
+        // 1-arg callback there silently misorders (cataloged PHPStan-quirks
+        // memory); a plain array-tuple <=> comparison sorts by sort_name
+        // then payment chronology correctly.
+        usort(
+            $rows,
+            fn (array $a, array $b): int => [mb_strtolower($a['candidate']->student->user->sort_name), $a['paidAt']->format('Y-m-d H:i:s')]
+                <=> [mb_strtolower($b['candidate']->student->user->sort_name), $b['paidAt']->format('Y-m-d H:i:s')],
+        );
+
+        return new Collection($rows);
     }
 
     public function saveAllocations(PaymentAllocationService $allocations): void
@@ -218,6 +349,16 @@ class VersionDashboard extends Component
 
         $filteredCandidates = $this->filterCandidates($myCandidates);
 
+        // "Paid" column — sum of Completed payment_allocations per
+        // candidate, refunds included (their negative amount nets out of
+        // the total), same computation as PaymentReconciliation::baseRows()'
+        // own $paidByCandidateId.
+        $paidByCandidateId = PaymentAllocation::whereIn('candidate_id', $myCandidates->pluck('id'))
+            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
+            ->get()
+            ->groupBy('candidate_id')
+            ->map(fn (Collection $allocations): int => (int) $allocations->sum('amount'));
+
         // Summary tables reflect the full roster (myCandidates), not the
         // filtered view — a stable overview regardless of the search/filter
         // row below it.
@@ -247,7 +388,8 @@ class VersionDashboard extends Component
 
         $upcomingDates = $this->version->dates()
             ->where('start_at', '>=', now())
-            ->orderBy('start_at')
+            ->whereNotIn('date_type', [VersionDateType::TabRoom->value, VersionDateType::Rehearsal->value])
+            ->orderByRaw('COALESCE(end_at, start_at)')
             ->limit(6)
             ->get();
 
@@ -256,6 +398,26 @@ class VersionDashboard extends Component
         $checklistDefs = $this->checklistDefs($this->version);
 
         $epaymentTeacherReady = $this->version->epaymentTeacherReady();
+
+        // Registration and participation are two mutually-exclusive windows
+        // (see Version::registrationFeePayable()/participationFeePayable()),
+        // so at most one FeeType is ever chargeable from this roster at a
+        // time — no fee-type selector is needed, just the right label/filter.
+        $activeFeeType = match (true) {
+            $epaymentTeacherReady && $this->version->registrationFeePayable() => FeeType::Registration,
+            $epaymentTeacherReady && $this->version->participationFeePayable() => FeeType::Participation,
+            default => null,
+        };
+        $feeEligibleStatuses = match ($activeFeeType) {
+            FeeType::Registration => CandidateStatus::registrationFeeEligibleStates(),
+            FeeType::Participation => [CandidateStatus::Accepted],
+            null => [],
+        };
+
+        $epaymentStudentEnabled = $this->version->epaymentStudentEnabled();
+        $epaymentOptedIn = $epaymentStudentEnabled && (bool) VersionTeacherEpaymentOptIn::where('version_id', $this->version->id)
+            ->where('teacher_id', $teacher->id)
+            ->value('opted_in');
 
         // "Your Unreconciled Payments" (§3) — this teacher's own
         // transactions with a remaining unallocated balance. Eager-loading
@@ -267,11 +429,14 @@ class VersionDashboard extends Component
             ->filter(fn (PaymentTransaction $transaction): bool => $transaction->needsReconciliation())
             ->values();
 
+        $paymentRegisterRows = self::paymentRegisterRows($this->version, $teacher);
+
         return view('livewire.registrations.version-dashboard', compact(
-            'myCandidates', 'filteredCandidates', 'voicePartCounts', 'voicePartTotal',
+            'myCandidates', 'filteredCandidates', 'paidByCandidateId', 'voicePartCounts', 'voicePartTotal',
             'statusCounts', 'statusTotal', 'statusOptions',
             'upcomingDates', 'voiceParts', 'checklistDefs',
-            'epaymentTeacherReady', 'unreconciledPayments',
+            'activeFeeType', 'feeEligibleStatuses', 'epaymentStudentEnabled', 'epaymentOptedIn', 'unreconciledPayments',
+            'paymentRegisterRows',
         ));
     }
 

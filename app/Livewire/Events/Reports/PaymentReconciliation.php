@@ -141,10 +141,13 @@ class PaymentReconciliation extends Component
     }
 
     /**
-     * One row per school with a registered candidate — due/paid/balance.
-     * "Paid" is sum(payment_allocations.amount) for Completed transactions
-     * only, resolved via each allocation's own candidate — never
-     * payment_transactions.school_id, which is a creation-time triage
+     * One row per school with a fee-eligible candidate — due/paid/balance.
+     * "Due" is registration (always) plus participation (only once the
+     * Version is closed, and only for a Candidate who was Accepted) — see
+     * FeeType; the two are never combined into one flat per-candidate
+     * figure. "Paid" is sum(payment_allocations.amount) for Completed
+     * transactions only, resolved via each allocation's own candidate —
+     * never payment_transactions.school_id, which is a creation-time triage
      * snapshot only (§1.1). Matches ParticipatingSchools' baseRows() exactly.
      *
      * @param  list<int>|null  $countyIds
@@ -152,32 +155,57 @@ class PaymentReconciliation extends Component
      */
     public static function baseRows(Version $version, ?array $countyIds): Collection
     {
+        // Broader than status=Registered alone — Ensemble Cut-offs can
+        // resolve a Candidate to Accepted/NotAccepted/NoShow/Incomplete
+        // before the Version is formally closed, and every one of those
+        // outcomes still owes at least the registration fee.
+        $feeEligibleStatusValues = array_map(
+            fn (CandidateStatus $s): string => $s->value,
+            CandidateStatus::registrationFeeEligibleStates(),
+        );
+
         $query = Candidate::where('version_id', $version->id)
-            ->where('status', CandidateStatus::Registered->value)
+            ->whereIn('status', $feeEligibleStatusValues)
             ->with(['school', 'teacher.user']);
 
         if ($countyIds !== null) {
             $query->whereHas('school', fn ($q) => $q->whereIn('county_id', $countyIds));
         }
 
-        $registeredCandidates = $query->get();
+        $feeEligibleCandidates = $query->get();
 
-        // Confirmed 2026-08-14, epayment-integration.md §5 item 1:
-        // registration + participation, no housing.
+        // Registration and participation are never combined into one figure
+        // — see FeeType. Participation is only added once the Version is
+        // closed, and only for a Candidate who was actually Accepted.
         $fees = optional($version->fees()->first());
-        $feeCentsPerCandidate = (int) ($fees->registration ?? 0) + (int) ($fees->participation ?? 0);
+        $registrationCents = (int) ($fees->registration ?? 0);
+        $participationCents = (int) ($fees->participation ?? 0);
+        $participationPayable = $version->participationFeePayable();
 
-        $paidByCandidateId = PaymentAllocation::whereIn('candidate_id', $registeredCandidates->pluck('id'))
+        $dueForCandidate = function (Candidate $candidate) use ($registrationCents, $participationCents, $participationPayable): int {
+            $due = $registrationCents;
+
+            // getRawOriginal(), not the magic-cast property — Larastan can't
+            // infer the enum cast through this method-based casts() return
+            // here (cataloged Larastan quirk; see PHPStan-quirks memory).
+            if ($participationPayable && $candidate->getRawOriginal('status') === CandidateStatus::Accepted->value) {
+                $due += $participationCents;
+            }
+
+            return $due;
+        };
+
+        $paidByCandidateId = PaymentAllocation::whereIn('candidate_id', $feeEligibleCandidates->pluck('id'))
             ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
             ->get()
             ->groupBy('candidate_id')
             ->map(fn (Collection $g): int => (int) $g->sum('amount'));
 
-        return $registeredCandidates
+        return $feeEligibleCandidates
             ->groupBy('school_id')
-            ->map(function (Collection $group) use ($feeCentsPerCandidate, $paidByCandidateId): array {
+            ->map(function (Collection $group) use ($dueForCandidate, $paidByCandidateId): array {
                 $first = $group->first();
-                $dueCents = $group->count() * $feeCentsPerCandidate;
+                $dueCents = $group->sum($dueForCandidate);
                 $paidCents = $group->sum(fn (Candidate $c): int => $paidByCandidateId->get($c->id, 0));
 
                 return [

@@ -281,21 +281,20 @@
         <flux:card>
             <flux:heading size="sm" class="mb-1">Payment</flux:heading>
 
-            @if ($epaymentStudentEnabled)
-                <flux:checkbox
-                    :checked="$epaymentOptedIn"
-                    wire:click="toggleEpaymentOptIn"
-                    label="Enable e-payment for all of your candidates in this Version"
-                    description="This applies to your whole roster, not just {{ $candidate->program_name ?: 'this candidate' }}."
-                    class="mb-4"
-                />
+            @if ($overpaymentCents > 0)
+                <div class="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40 px-3 py-2 mb-2 text-sm text-amber-800 dark:text-amber-300">
+                    <flux:icon.exclamation-triangle variant="micro" class="shrink-0" />
+                    Overpaid by ${{ number_format($overpaymentCents / 100, 2) }}.
+                </div>
             @endif
 
             <div class="flex items-center justify-between mb-2">
                 <flux:heading size="xs" class="text-zinc-500">Payment History</flux:heading>
                 <div class="flex items-center gap-2">
-                    @if ($epaymentTeacherReady)
-                        <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow">Pay Now</flux:button>
+                    @if ($registrationFeeDue)
+                        <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('registration')">Pay Registration Fee</flux:button>
+                    @elseif ($participationFeeDue)
+                        <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('participation')">Pay Participation Fee</flux:button>
                     @endif
                     <flux:button size="sm" variant="ghost" icon="plus" wire:click="recordPayment">Record Payment</flux:button>
                 </div>
@@ -307,7 +306,7 @@
                         @php $allocatedAmount = $payment->allocations->first()?->amountInDollars() ?? $payment->amountInDollars(); @endphp
                         <div class="flex items-center justify-between text-sm border-b border-zinc-100 dark:border-zinc-800 pb-2 last:border-0 last:pb-0">
                             <div>
-                                <span class="font-medium">${{ number_format($allocatedAmount, 2) }}</span>
+                                <span class="font-medium">{{ $allocatedAmount < 0 ? '-' : '' }}${{ number_format(abs($allocatedAmount), 2) }}</span>
                                 @if ($payment->paid_at)
                                     <span class="text-zinc-500"> — {{ $payment->paid_at->format('M j, Y') }}</span>
                                 @endif
@@ -610,12 +609,14 @@
                     <flux:select.option value="purchase_order">Purchase Order</flux:select.option>
                     <flux:select.option value="cash">Cash</flux:select.option>
                     <flux:select.option value="other">Other</flux:select.option>
+                    <flux:select.option value="refund">Refund</flux:select.option>
                 </flux:select>
                 <flux:error name="payment_type" />
             </flux:field>
 
             <flux:field>
                 <flux:label>Amount ($)</flux:label>
+                <flux:description>For a refund, enter the amount returned — it's recorded as a negative amount.</flux:description>
                 <flux:input wire:model="payment_amount" type="number" step="0.01" min="0.01" placeholder="0.00" />
                 <flux:error name="payment_amount" />
             </flux:field>

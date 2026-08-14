@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\FeeType;
 use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
 use App\Enums\PaymentType;
@@ -23,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'version_id', 'source', 'vendor', 'vendor_transaction_id',
     'payer_teacher_id', 'payer_student_id', 'school_id', 'amount', 'status',
-    'payment_type', 'reference_number', 'comments', 'raw_payload',
+    'payment_type', 'fee_type', 'reference_number', 'comments', 'raw_payload',
     'recorded_by_user_id', 'paid_at',
 ])]
 class PaymentTransaction extends Model
@@ -41,6 +42,7 @@ class PaymentTransaction extends Model
             'vendor' => Vendor::class,
             'status' => PaymentTransactionStatus::class,
             'payment_type' => PaymentType::class,
+            'fee_type' => FeeType::class,
             'raw_payload' => 'array',
             'paid_at' => 'datetime',
         ];

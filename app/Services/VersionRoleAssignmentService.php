@@ -69,7 +69,10 @@ final class VersionRoleAssignmentService
      */
     private array $judgeVersionIdsByUser = [];
 
-    public function __construct(private readonly VersionRoleService $versionRoles) {}
+    public function __construct(
+        private readonly VersionRoleService $versionRoles,
+        private readonly AutoEnrollmentService $autoEnrollment,
+    ) {}
 
     /**
      * @return list<string>
@@ -125,7 +128,11 @@ final class VersionRoleAssignmentService
      * Grants "Event Manager" on a brand-new Version with no prior authorization
      * check — used only by the self-service event-creation flow, where the
      * creator has no standing role yet because the Version they're being
-     * granted the role on didn't exist a moment ago.
+     * granted the role on didn't exist a moment ago. Also backfills
+     * enrollment for every already-invited teacher (see
+     * AutoEnrollmentService::enrollAllInvitedTeachersForVersion()), so a
+     * version-scoped manager can review real Candidate Management data even
+     * while the Version is still Sandbox, ahead of going Active.
      */
     public function bootstrapEventManager(User $user, Version $version): void
     {
@@ -134,6 +141,7 @@ final class VersionRoleAssignmentService
         });
 
         $this->inviteToVersion($user, $version, $user);
+        $this->autoEnrollment->enrollAllInvitedTeachersForVersion($version);
     }
 
     public function canManageVersionRoles(User $user, Version $version): bool
@@ -383,6 +391,7 @@ final class VersionRoleAssignmentService
         });
 
         $this->inviteToVersion($targetUser, $version, $actingUser);
+        $this->autoEnrollment->enrollAllInvitedTeachersForVersion($version);
     }
 
     public function revokeRole(User $actingUser, Version $version, User $targetUser, string $roleName): void
@@ -432,6 +441,7 @@ final class VersionRoleAssignmentService
             }
 
             $this->inviteToVersion($targetUser, $version, $actingUser);
+            $this->autoEnrollment->enrollAllInvitedTeachersForVersion($version);
         });
     }
 

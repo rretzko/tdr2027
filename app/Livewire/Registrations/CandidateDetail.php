@@ -8,8 +8,10 @@ use App\Concerns\GuardsAcceptedObligations;
 use App\Concerns\HasCandidateChecklist;
 use App\Enums\ApplicationType;
 use App\Enums\AuditionType;
+use App\Enums\CandidateStatus;
 use App\Enums\CandidateUploadStatus;
 use App\Enums\EmergencyContactRelationship;
+use App\Enums\FeeType;
 use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
 use App\Enums\PaymentType;
@@ -24,7 +26,6 @@ use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionApplication;
 use App\Models\VersionInvitation;
-use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VersionUploadFile;
 use App\Services\CandidateService;
 use App\Services\Payments\PaymentGatewayFactory;
@@ -554,41 +555,34 @@ class CandidateDetail extends Component
     }
 
     /**
-     * Roster-wide, not per-Candidate — toggles whether every Candidate this
-     * teacher manages in this Version may use e-payment, once a real gateway
-     * exists (see VersionTeacherEpaymentOptIn's own docblock). Gated on
-     * epayment_student, not epaymentCredential's old presence-as-gate — see
-     * epayment-integration.md §1.3.
-     */
-    public function toggleEpaymentOptIn(): void
-    {
-        if (! $this->version->epaymentStudentEnabled()) {
-            return;
-        }
-
-        $optIn = VersionTeacherEpaymentOptIn::firstOrNew([
-            'version_id' => $this->version->id,
-            'teacher_id' => $this->teacher()->id,
-        ]);
-        $optIn->opted_in = ! $optIn->opted_in;
-        $optIn->save();
-
-        Flux::toast($optIn->opted_in
-            ? 'E-payment enabled for all of your candidates in this Version.'
-            : 'E-payment disabled for all of your candidates in this Version.');
-    }
-
-    /**
      * Redirects to the vendor's hosted checkout for this one Candidate — see
      * epayment-integration.md §2.1/§3. Gated on epayment_teacher and a real
-     * vendor being configured on this Version's Event.
+     * vendor being configured on this Version's Event, plus the requested
+     * FeeType's own timing/eligibility gate — registration and participation
+     * are never combined into one checkout amount.
      */
-    public function payNow(PaymentGatewayFactory $factory): void
+    public function payNow(PaymentGatewayFactory $factory, string $feeType): void
     {
+        $feeType = FeeType::from($feeType);
+
         abort_unless($this->version->epaymentTeacherReady(), 403);
+        abort_unless(match ($feeType) {
+            FeeType::Registration => $this->version->registrationFeePayable(),
+            FeeType::Participation => $this->version->participationFeePayable(),
+        }, 403);
+
+        $eligibleStates = match ($feeType) {
+            FeeType::Registration => CandidateStatus::registrationFeeEligibleStates(),
+            FeeType::Participation => [CandidateStatus::Accepted],
+        };
+        // getRawOriginal(), not the magic-cast property — Larastan can't
+        // infer the enum cast through this method-based casts() return here
+        // (cataloged Larastan quirk; see PHPStan-quirks memory).
+        $candidateStatus = CandidateStatus::from((string) $this->candidate->getRawOriginal('status'));
+        abort_unless(in_array($candidateStatus, $eligibleStates, true), 422);
 
         $gateway = $factory->make($this->version);
-        $session = $gateway->createCheckoutSession($this->version, collect([$this->candidate]), $this->teacher());
+        $session = $gateway->createCheckoutSession($this->version, collect([$this->candidate]), $this->teacher(), $feeType);
 
         $this->redirect($session->redirectUrl, navigate: false);
     }
@@ -615,7 +609,7 @@ class CandidateDetail extends Component
      */
     public function savePayment(): void
     {
-        $modalPaymentTypes = [PaymentType::Check->value, PaymentType::PurchaseOrder->value, PaymentType::Cash->value, PaymentType::Other->value];
+        $modalPaymentTypes = [PaymentType::Check->value, PaymentType::PurchaseOrder->value, PaymentType::Cash->value, PaymentType::Other->value, PaymentType::Refund->value];
 
         $validated = $this->validate([
             'payment_type' => ['required', 'string', Rule::in($modalPaymentTypes)],
@@ -625,7 +619,14 @@ class CandidateDetail extends Component
             'payment_paid_at' => ['required', 'date', 'before_or_equal:today'],
         ]);
 
+        // The form always collects a positive amount — a refund is stored as
+        // a negative amount so it nets against the candidate's paid total
+        // (see the balance-due math in render()) rather than needing its own
+        // sign-aware bookkeeping everywhere else.
         $amountCents = (int) round(((float) $this->payment_amount) * 100);
+        if ($validated['payment_type'] === PaymentType::Refund->value) {
+            $amountCents = -$amountCents;
+        }
 
         $transaction = PaymentTransaction::create([
             'version_id' => $this->version->id,
@@ -676,8 +677,40 @@ class CandidateDetail extends Component
 
         $checklistDefs = $this->checklistDefs($this->version);
 
-        $epaymentStudentEnabled = $this->version->epaymentStudentEnabled();
         $epaymentTeacherReady = $this->version->epaymentTeacherReady();
+
+        // getRawOriginal(), not the magic-cast property — Larastan can't
+        // infer the enum cast through this method-based casts() return here
+        // (cataloged Larastan quirk; see PHPStan-quirks memory).
+        $candidateStatus = CandidateStatus::from((string) $this->candidate->getRawOriginal('status'));
+
+        // Balance due mirrors PaymentReconciliation::baseRows() — due accrues
+        // the registration fee once fee-eligible, plus the participation fee
+        // once that window opens and the candidate was Accepted; paid is
+        // every Completed allocation on this candidate regardless of which
+        // fee it satisfied (registration/participation are never both
+        // payable at once — see FeeType). A zero or negative balance
+        // (fully paid, or an overpayment) suppresses the button.
+        $fees = $this->version->fees()->first();
+        $dueCents = (int) ($fees->registration ?? 0);
+        if ($this->version->participationFeePayable() && $candidateStatus === CandidateStatus::Accepted) {
+            $dueCents += (int) ($fees->participation ?? 0);
+        }
+        $paidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
+            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
+            ->sum('amount');
+        $balanceDue = $dueCents - $paidCents > 0;
+        $overpaymentCents = max(0, $paidCents - $dueCents);
+
+        $registrationFeeDue = $epaymentTeacherReady
+            && $this->version->registrationFeePayable()
+            && in_array($candidateStatus, CandidateStatus::registrationFeeEligibleStates(), true)
+            && $balanceDue;
+
+        $participationFeeDue = $epaymentTeacherReady
+            && $this->version->participationFeePayable()
+            && $candidateStatus === CandidateStatus::Accepted
+            && $balanceDue;
 
         return view('livewire.registrations.candidate-detail', [
             'checklistDefs' => $checklistDefs,
@@ -687,11 +720,9 @@ class CandidateDetail extends Component
                 ? $this->version->uploadFiles
                 : collect(),
             'candidateUploads' => $this->candidate->uploadFiles->keyBy('version_upload_file_id'),
-            'epaymentStudentEnabled' => $epaymentStudentEnabled,
-            'epaymentTeacherReady' => $epaymentTeacherReady,
-            'epaymentOptedIn' => $epaymentStudentEnabled && (bool) VersionTeacherEpaymentOptIn::where('version_id', $this->version->id)
-                ->where('teacher_id', $this->teacher()->id)
-                ->value('opted_in'),
+            'registrationFeeDue' => $registrationFeeDue,
+            'participationFeeDue' => $participationFeeDue,
+            'overpaymentCents' => $overpaymentCents,
             'candidatePayments' => PaymentTransaction::whereHas(
                 'allocations',
                 fn ($q) => $q->where('candidate_id', $this->candidate->id),

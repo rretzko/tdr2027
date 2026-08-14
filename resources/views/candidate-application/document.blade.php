@@ -44,6 +44,22 @@
             word-wrap: break-word;
             overflow-wrap: anywhere;
         }
+
+        .ca-conditions p {
+            margin: 0;
+        }
+
+        .ca-conditions ul, .ca-conditions ol {
+            margin: 0.25rem 0;
+        }
+
+        .ca-conditions li {
+            margin: 0;
+        }
+
+        .ca-conditions li p {
+            display: inline;
+        }
     </style>
 
     {{-- HEADER --}}

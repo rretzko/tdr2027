@@ -17,6 +17,7 @@ enum PaymentType: string
     case Cash = 'cash';
     case Other = 'other';
     case Electronic = 'electronic';
+    case Refund = 'refund';
 
     public function label(): string
     {
@@ -26,6 +27,7 @@ enum PaymentType: string
             self::Cash => 'Cash',
             self::Other => 'Other',
             self::Electronic => 'Electronic',
+            self::Refund => 'Refund',
         };
     }
 }

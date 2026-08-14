@@ -11,8 +11,10 @@ use App\Enums\EventStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
+use App\Observers\VersionObserver;
 use Database\Factories\VersionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +33,7 @@ use Illuminate\Support\Collection;
     'pitch_file_visibility',
     'score_order', 'cutoff_strategy', 'results_released_at', 'share_results', 'shirt_size', 'teacher_cell', 'upload_type',
 ])]
+#[ObservedBy(VersionObserver::class)]
 class Version extends Model
 {
     /** @use HasFactory<VersionFactory> */
@@ -147,6 +150,27 @@ class Version extends Model
         $versionConfig = $this->versionEpaymentConfig;
 
         return $versionConfig !== null && $versionConfig->epayment_student;
+    }
+
+    /**
+     * Registration is owed by any active candidate and collected before/
+     * during the audition process — chargeable any time up until the
+     * Version is formally closed. Never combined with participation()'s
+     * checkout amount; see FeeType.
+     */
+    public function registrationFeePayable(): bool
+    {
+        return $this->getRawOriginal('status') !== EventStatus::Closed->value;
+    }
+
+    /**
+     * Participation is only assessed on successful (Accepted) candidates,
+     * and only once the Version is formally closed — see CloseAudition,
+     * which is the one place `status` transitions to Closed.
+     */
+    public function participationFeePayable(): bool
+    {
+        return $this->getRawOriginal('status') === EventStatus::Closed->value;
     }
 
     /**

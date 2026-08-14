@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Payments;
 
+use App\Enums\FeeType;
 use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
 use App\Enums\Vendor;
@@ -39,7 +40,7 @@ class SquarePaymentGateway implements PaymentGatewayContract
     /**
      * @param  Collection<int, Candidate>  $candidates
      */
-    public function createCheckoutSession(Version $version, Collection $candidates, Teacher $payer): CheckoutSession
+    public function createCheckoutSession(Version $version, Collection $candidates, Teacher $payer, FeeType $feeType): CheckoutSession
     {
         abort_if($candidates->isEmpty(), 422, 'At least one candidate is required to create a checkout session.');
 
@@ -59,15 +60,14 @@ class SquarePaymentGateway implements PaymentGatewayContract
         $fees = $version->fees;
         abort_if($fees === null, 422, 'This Version has no fees configured.');
 
-        // Confirmed 2026-08-14, epayment-integration.md §5 item 1: balance
-        // owed is always registration + participation (no housing); the
-        // surcharge is an extra line item at electronic checkout only, never
-        // part of what's "owed" — so it's added once per transaction here,
-        // not per candidate, and the resulting 100%-allocated single-
-        // candidate row below will show as a small over-payment by exactly
-        // the surcharge amount. That's expected, not a bug.
-        $perCandidate = $fees->registration + $fees->participation;
-        $amount = ($perCandidate * $candidates->count()) + $fees->epayment_surcharge;
+        // Registration and participation are never combined into one
+        // checkout amount — see FeeType. The surcharge is an extra line item
+        // at electronic checkout only, never part of what's "owed" — so it's
+        // added once per transaction here, not per candidate, and the
+        // resulting 100%-allocated single-candidate row below will show as a
+        // small over-payment by exactly the surcharge amount. That's
+        // expected, not a bug.
+        $amount = $fees->amountForCheckout($feeType, $candidates->count());
 
         /** @var Candidate $firstCandidate */
         $firstCandidate = $candidates->first();
@@ -111,6 +111,7 @@ class SquarePaymentGateway implements PaymentGatewayContract
             'school_id' => $firstCandidate->school_id,
             'amount' => $amount,
             'status' => PaymentTransactionStatus::Pending,
+            'fee_type' => $feeType,
             'paid_at' => null,
         ]);
 

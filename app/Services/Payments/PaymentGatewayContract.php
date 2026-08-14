@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Payments;
 
+use App\Enums\FeeType;
 use App\Models\Candidate;
 use App\Models\Event;
 use App\Models\Teacher;
@@ -29,8 +30,10 @@ interface PaymentGatewayContract
      *                                                  candidate_epayment; more than one for a teacher_epayment
      *                                                  lump-sum group payment (§0/§1.1) — the transaction amount is
      *                                                  always the sum across every candidate here.
+     * @param  FeeType  $feeType  Registration and participation are never
+     *                            combined into one checkout amount — see FeeType.
      */
-    public function createCheckoutSession(Version $version, Collection $candidates, Teacher $payer): CheckoutSession;
+    public function createCheckoutSession(Version $version, Collection $candidates, Teacher $payer, FeeType $feeType): CheckoutSession;
 
     /**
      * $event identifies which business's webhook subscription this request

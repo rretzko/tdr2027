@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\CandidateStatus;
 use App\Models\Candidate;
 use App\Models\Ensemble;
 use App\Models\Event;
@@ -14,6 +15,7 @@ use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionInvitation;
 use App\Models\VoicePart;
+use App\Services\VersionRoleAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 use function Pest\Laravel\actingAs;
@@ -233,6 +235,62 @@ test('voice part resolution falls back to the first available voice part when th
 
     $candidate = Candidate::where('version_id', $version->id)->where('student_id', $student->id)->first();
     expect($candidate->voice_part_id)->toBe($soprano->id);
+});
+
+test('a Version transitioning from Sandbox into Active backfills enrollment for its already-invited teachers', function () {
+    [$teacher, $school] = makeAutoEnrollTeacherWithSchool();
+    $version = makeAutoEnrollVersion(active: false);
+    attachAutoEnrollVoicePart($version);
+
+    actingAs($teacher->user);
+    $student = linkAutoEnrollStudent($teacher, $school);
+
+    inviteAutoEnrollTeacher($teacher, $version);
+    expect(Candidate::where('version_id', $version->id)->where('student_id', $student->id)->exists())->toBeFalse();
+
+    $version->update(['status' => 'active']);
+
+    expect(Candidate::where('version_id', $version->id)->where('student_id', $student->id)->exists())->toBeTrue();
+});
+
+test('a Version update that leaves status unchanged does not re-run enrollment backfill', function () {
+    [$teacher, $school] = makeAutoEnrollTeacherWithSchool();
+    $version = makeAutoEnrollVersion(active: true);
+    attachAutoEnrollVoicePart($version);
+
+    actingAs($teacher->user);
+    $student = linkAutoEnrollStudent($teacher, $school);
+    inviteAutoEnrollTeacher($teacher, $version);
+
+    $candidate = Candidate::where('version_id', $version->id)->where('student_id', $student->id)->firstOrFail();
+    $candidate->update(['status' => 'teacher_withdrawn']);
+
+    $version->update(['name' => 'Renamed']);
+
+    // A withdrawn candidate would be re-created by a bogus backfill run
+    // (eligibleStudents() only excludes an existing Candidate row, and
+    // withdrawal doesn't delete it — so a spurious re-run would instead
+    // fail on the unique(version_id, student_id) constraint). Asserting
+    // the status is still withdrawn confirms no backfill ran at all.
+    expect($candidate->refresh()->status)->toBe(CandidateStatus::TeacherWithdrawn);
+});
+
+test('assigning a version-scoped role backfills enrollment for teachers already invited to a Sandbox Version', function () {
+    [$teacher, $school] = makeAutoEnrollTeacherWithSchool();
+    $version = makeAutoEnrollVersion(active: false);
+    attachAutoEnrollVoicePart($version);
+
+    actingAs($teacher->user);
+    $student = linkAutoEnrollStudent($teacher, $school);
+    inviteAutoEnrollTeacher($teacher, $version);
+
+    expect(Candidate::where('version_id', $version->id)->where('student_id', $student->id)->exists())->toBeFalse();
+
+    $founder = makeFounder();
+    $newHire = User::factory()->create();
+    app(VersionRoleAssignmentService::class)->assignRole($founder, $version, $newHire, 'Registration Manager');
+
+    expect(Candidate::where('version_id', $version->id)->where('student_id', $student->id)->exists())->toBeTrue();
 });
 
 test('auto-enrollment is skipped when the Version\'s Event has no ensemble voice parts configured', function () {
