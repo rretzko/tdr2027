@@ -68,24 +68,24 @@
             <flux:table.column>Auditions</flux:table.column>
             <flux:table.column>Ensembles</flux:table.column>
             <flux:table.column>Status</flux:table.column>
-            <flux:table.column>Adjudicate</flux:table.column>
-            <flux:table.column></flux:table.column>
+            <flux:table.column class="w-24">Adjudicate</flux:table.column>
+            <flux:table.column class="w-32"></flux:table.column>
         </flux:table.columns>
 
         <flux:table.rows>
             @forelse ($events as $event)
                 <flux:table.row>
-                    <flux:table.cell class="font-medium">
+                    <flux:table.cell class="font-medium align-top">
                         {{ $event->name }}
                         @if ($event->short_name)
                             <flux:text size="sm" class="text-zinc-400">{{ $event->short_name }}</flux:text>
                         @endif
                     </flux:table.cell>
-                    <flux:table.cell>{{ $event->organization->name }}</flux:table.cell>
-                    <flux:table.cell class="capitalize">{{ $event->getRawOriginal('frequency') }}</flux:table.cell>
-                    <flux:table.cell>{{ $event->audition_count }}</flux:table.cell>
-                    <flux:table.cell>{{ $event->ensemble_count }}</flux:table.cell>
-                    <flux:table.cell>
+                    <flux:table.cell class="align-top">{{ $event->organization->name }}</flux:table.cell>
+                    <flux:table.cell class="capitalize align-top">{{ $event->getRawOriginal('frequency') }}</flux:table.cell>
+                    <flux:table.cell class="align-top">{{ $event->audition_count }}</flux:table.cell>
+                    <flux:table.cell class="align-top">{{ $event->ensemble_count }}</flux:table.cell>
+                    <flux:table.cell class="align-top">
                         @php $raw = $event->getRawOriginal('status'); @endphp
                         @if ($raw === 'active')
                             <flux:badge color="green" size="sm">Active</flux:badge>
@@ -97,15 +97,15 @@
                             <flux:badge color="red" size="sm">Closed</flux:badge>
                         @endif
                     </flux:table.cell>
-                    <flux:table.cell>
+                    <flux:table.cell class="whitespace-normal align-top">
                         @if ($adjudicatableVersions[$event->id] ?? null)
                             <flux:badge :href="route('events.versions.adjudicate', $adjudicatableVersions[$event->id])" wire:navigate color="teal" size="sm">
                                 Adjudicate
                             </flux:badge>
                         @endif
                     </flux:table.cell>
-                    <flux:table.cell>
-                        <div class="flex gap-2 justify-end">
+                    <flux:table.cell class="whitespace-normal align-top">
+                        <div class="flex flex-wrap gap-2 justify-end">
                             @if ($isFounder || ($hasVersionRole[$event->id] ?? false))
                                 <flux:button size="sm" :href="route('events.show', $event)" wire:navigate>
                                     Versions

@@ -124,17 +124,16 @@
                     <flux:table.column>Type</flux:table.column>
                     <flux:table.column>Upload</flux:table.column>
                     <flux:table.column>Status</flux:table.column>
-                    <flux:table.column></flux:table.column>
                 </flux:table.columns>
 
                 <flux:table.rows>
                     @forelse ($versions as $version)
                         <flux:table.row>
-                            <flux:table.cell class="font-medium">{{ $version->name }}</flux:table.cell>
-                            <flux:table.cell>{{ $version->senior_class_of }}</flux:table.cell>
-                            <flux:table.cell class="capitalize">{{ $version->getRawOriginal('audition_type') }}</flux:table.cell>
-                            <flux:table.cell class="capitalize">{{ $version->getRawOriginal('upload_type') }}</flux:table.cell>
-                            <flux:table.cell>
+                            <flux:table.cell class="font-medium align-top">{{ $version->name }}</flux:table.cell>
+                            <flux:table.cell class="align-top">{{ $version->senior_class_of }}</flux:table.cell>
+                            <flux:table.cell class="capitalize align-top">{{ $version->getRawOriginal('audition_type') }}</flux:table.cell>
+                            <flux:table.cell class="capitalize align-top">{{ $version->getRawOriginal('upload_type') }}</flux:table.cell>
+                            <flux:table.cell class="align-top">
                                 @php $vs = $version->getRawOriginal('status'); @endphp
                                 @if ($vs === 'active')
                                     <flux:badge color="green" size="sm">Active</flux:badge>
@@ -146,8 +145,10 @@
                                     <flux:badge color="red" size="sm">Closed</flux:badge>
                                 @endif
                             </flux:table.cell>
-                            <flux:table.cell>
-                                <div class="flex justify-end gap-2">
+                        </flux:table.row>
+                        <flux:table.row>
+                            <flux:table.cell colspan="5" class="!border-t-0 pt-0 pb-4 whitespace-normal">
+                                <div class="flex flex-wrap gap-2">
                                     @if ($canManageEvent)
                                         <flux:button size="sm" variant="filled" :href="route('events.versions.edit', $version)" wire:navigate>
                                             Configure
@@ -192,7 +193,7 @@
                         </flux:table.row>
                     @empty
                         <flux:table.row>
-                            <flux:table.cell colspan="6" class="text-center text-zinc-500 py-6">
+                            <flux:table.cell colspan="5" class="text-center text-zinc-500 py-6">
                                 No versions yet. Add one above.
                             </flux:table.cell>
                         </flux:table.row>
