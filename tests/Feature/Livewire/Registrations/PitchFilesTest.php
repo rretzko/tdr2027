@@ -15,11 +15,19 @@ use App\Models\VersionObligation;
 use App\Models\VersionPitchFile;
 use App\Models\VoicePart;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    Storage::fake('s3');
+    Storage::disk('s3')->buildTemporaryUrlsUsing(
+        fn (string $path, $expiration, array $options = []) => "https://fake-s3.test/{$path}"
+    );
+});
 
 function makePitchFilesTeacher(): Teacher
 {
