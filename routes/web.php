@@ -29,6 +29,7 @@ use App\Http\Controllers\VersionRoomRosterPdfController;
 use App\Http\Controllers\Webhooks\PaypalReturnController;
 use App\Http\Controllers\Webhooks\PaypalWebhookController;
 use App\Http\Controllers\Webhooks\SquareWebhookController;
+use App\Livewire\Auth\SfdiLogin;
 use App\Livewire\Auth\SocialPhoneCheck;
 use App\Livewire\Auth\SocialProfileComplete;
 use App\Livewire\Auth\StudentRegister;
@@ -82,12 +83,23 @@ use App\Livewire\Registrations\VersionObligations;
 use App\Livewire\Schools\Index as SchoolsIndex;
 use App\Livewire\Settings\Password;
 use App\Livewire\Settings\Profile;
+use App\Livewire\Sfdi\EmergencyContacts as SfdiEmergencyContacts;
+use App\Livewire\Sfdi\School as SfdiSchool;
+use App\Livewire\Sfdi\StudentDetails as SfdiStudentDetails;
 use App\Livewire\Students\Index as StudentsIndex;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('welcome-tdr');
 });
+
+// Path-based StudentFolder.info splash, ahead of real domain-based routing
+// (project_architecture_decisions.md item 7, still deferred) — /sfdi now
+// serves the same welcome-sfdi view the eventual studentfolder.info domain
+// will use.
+Route::get('/sfdi', function () {
+    return view('welcome-sfdi');
+})->name('sfdi.welcome');
 
 // Vendor e-payment webhooks (epayment-integration.md §2.2/§2.4) — public,
 // unauthenticated, CSRF-excluded (see bootstrap/app.php's validateCsrfTokens
@@ -116,6 +128,7 @@ Route::get('/payments/paypal/return', PaypalReturnController::class)
 Route::middleware('guest')->group(function () {
     Route::get('/tdr/register', TeacherRegister::class)->name('tdr.register');
     Route::get('/sfdi/register', StudentRegister::class)->name('sfdi.register');
+    Route::get('/sfdi/login', SfdiLogin::class)->name('sfdi.login');
 
     Route::get('/auth/{provider}/redirect', [SocialAuthController::class, 'redirect'])
         ->name('social.redirect');
@@ -182,7 +195,17 @@ Route::middleware(['auth'])->post('/founder/stop-impersonating', StopImpersonati
     ->name('founder.stop-impersonating');
 
 Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function () {
-    Route::view('/dashboard', 'dashboard')->name('dashboard');
+    Route::view('/dashboard', 'dashboard')->name('dashboard')->middleware('student.has.active.school');
+
+    // StudentFolder.info student portal (studentfolder-module.md). School
+    // is reachable without an active school — it's how a student gets one —
+    // and doubles as the mandatory first-run destination the middleware
+    // above redirects to. Student Details/Emergency Contacts are always
+    // reachable regardless of school status, same as Settings/Profile is
+    // for a teacher.
+    Route::get('/sfdi/school', SfdiSchool::class)->name('sfdi.school');
+    Route::get('/sfdi/student-details', SfdiStudentDetails::class)->name('sfdi.student-details');
+    Route::get('/sfdi/emergency-contacts', SfdiEmergencyContacts::class)->name('sfdi.emergency-contacts');
 
     Route::get('/schools', SchoolsIndex::class)->name('schools.index');
     Route::view('/organizations', 'organizations')->name('organizations.index');

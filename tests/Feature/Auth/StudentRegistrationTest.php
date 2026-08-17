@@ -71,7 +71,10 @@ test('students registering with a school email are exempt from verification', fu
 
     Notification::assertNotSentTo($user, VerifyEmail::class);
 
-    get(route('dashboard'))->assertOk();
+    // Not blocked by email verification — lands on the mandatory
+    // active-school gate instead (EnsureStudentHasActiveSchool), not the
+    // verification notice.
+    get(route('dashboard'))->assertRedirect(route('sfdi.school'));
 });
 
 test('students can register without an email', function () {

@@ -117,7 +117,9 @@ test('the Schools card sorts by status (Active, Pending, Inactive) and then by n
 test('a student sees no Schools card on the dashboard', function () {
     $user = User::factory()->create();
     $user->markEmailAsVerified();
-    Student::factory()->create(['user_id' => $user->id]);
+    $student = Student::factory()->create(['user_id' => $user->id]);
+    $school = School::factory()->create();
+    $student->schools()->attach($school->id, ['is_active' => true, 'class_of' => 2030]);
 
     actingAs($user)->get(route('dashboard'))
         ->assertOk()

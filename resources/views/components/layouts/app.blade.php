@@ -4,9 +4,11 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        <title>{{ $title ?? config('app.name') }}</title>
+        @php $isSfdiUser = auth()->user()?->student !== null; @endphp
 
-        @include('partials.favicon')
+        <title>{{ $title ?? \App\Support\PortalBranding::appName(sfdi: $isSfdiUser) }}</title>
+
+        @include('partials.favicon', ['logo' => $isSfdiUser ? 'sfdi-logo.svg' : 'tdr-logo.svg'])
 
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link rel="stylesheet" href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600">
@@ -22,11 +24,11 @@
             <flux:sidebar.header>
                 <flux:sidebar.brand
                     href="{{ route('dashboard') }}"
-                    :name="config('app.name')"
+                    :name="\App\Support\PortalBranding::appName(sfdi: $isSfdiUser)"
                     class="pointer-coarse:in-data-flux-sidebar-collapsed-desktop:absolute! pointer-coarse:in-data-flux-sidebar-collapsed-desktop:opacity-0!"
                 >
                     <x-slot name="logo">
-                        <img src="{{ asset('images/tdr-logo.svg') }}" alt="">
+                        <img src="{{ asset('images/'.($isSfdiUser ? 'sfdi-logo.svg' : 'tdr-logo.svg')) }}" alt="" class="h-6 w-6 object-contain">
                     </x-slot>
                 </flux:sidebar.brand>
 
@@ -123,6 +125,23 @@
                         </flux:sidebar.item>
                     </div>
                 @endif
+            @endif
+
+            @php
+                $student = auth()->user()->student;
+            @endphp
+            @if ($student)
+                <flux:sidebar.item icon="identification" :href="route('sfdi.student-details')" :current="request()->routeIs('sfdi.student-details')">
+                    Student Details
+                </flux:sidebar.item>
+
+                <flux:sidebar.item icon="building-library" :href="route('sfdi.school')" :current="request()->routeIs('sfdi.school')">
+                    School
+                </flux:sidebar.item>
+
+                <flux:sidebar.item icon="phone" :href="route('sfdi.emergency-contacts')" :current="request()->routeIs('sfdi.emergency-contacts')">
+                    Emergency Contacts
+                </flux:sidebar.item>
             @endif
 
             @if (auth()->user()->isFounder())

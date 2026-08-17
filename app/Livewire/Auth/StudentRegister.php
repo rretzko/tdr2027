@@ -17,7 +17,7 @@ use Laravel\Fortify\Contracts\CreatesNewUsers;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
-#[Layout('components.layouts.auth')]
+#[Layout('components.layouts.auth-sfdi')]
 class StudentRegister extends Component
 {
     use PasswordValidationRules;

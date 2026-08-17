@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640" role="img" aria-labelledby="title desc">
+  <title id="title">SFDI Monogram — Raised F Crossbar</title>
+  <desc id="desc">Outlined StudentFolder.info monogram (S, F, I) with F crossbar raised above S and I with spacing, matching the TDR monogram's construction. Transparent background, blue palette.</desc>
+  <style>
+    :root {
+      --f: #2979FF;
+      --s: #1E88E5;
+      --i: #0D47A1;
+    }
+    .stroke { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-width: 28; }
+    .f { stroke: var(--f); }
+    .s { stroke: var(--s); }
+    .i { stroke: var(--i); }
+  </style>
+
+  <g transform="translate(40,40)">
+    <!-- I -->
+    <g class="stroke i">
+      <path d="M290,100 H370" />
+      <path d="M330,100 V308" />
+      <path d="M290,308 H370" />
+    </g>
+
+    <!-- S (stencil-style, straight orthogonal segments only — a cursive
+    bezier curve rendered as an unrecognizable blob at small icon sizes) -->
+    <g class="stroke s">
+      <path d="M155,100 H70 V190 H155 V308 H70" />
+    </g>
+
+    <!-- F (crossbar raised above, spanning S and I — mirrors the TDR monogram's raised T crossbar) -->
+    <g class="stroke f">
+      <path d="M40,40 H370" /> <!-- raised crossbar -->
+      <path d="M225,40 V308" />
+      <path d="M225,180 H310" /> <!-- middle arm, distinguishes F from a plain T shape -->
+    </g>
+  </g>
+</svg>
