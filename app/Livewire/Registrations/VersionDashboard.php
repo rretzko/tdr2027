@@ -223,6 +223,22 @@ class VersionDashboard extends Component
     }
 
     /**
+     * Marks the first-visit spotlight tour as seen for this user — a single
+     * flag covers every Version's dashboard (not scoped per Version), since
+     * the page layout is the same everywhere a teacher sees it and a
+     * returning teacher who's already taken the tour once shouldn't have it
+     * auto-launch again on a different Version. Called from the client-side
+     * tour engine (resources/views/livewire/registrations/version-dashboard.blade.php)
+     * via a hidden wire:click trigger when the tour finishes or is skipped —
+     * it does not stop the tour from being relaunched manually at any time
+     * via the always-visible "Take a tour" button, which ignores this flag.
+     */
+    public function dismissOrientation(): void
+    {
+        Auth::user()->update(['dismissed_registration_orientation_at' => now()]);
+    }
+
+    /**
      * Every payment_allocations row across this teacher's own roster in this
      * Version — manual entries, refunds, and e-payments alike — ordered by
      * the candidate's sort_name, then payment chronology within that
@@ -431,12 +447,14 @@ class VersionDashboard extends Component
 
         $paymentRegisterRows = self::paymentRegisterRows($this->version, $teacher);
 
+        $showOrientation = Auth::user()->dismissed_registration_orientation_at === null;
+
         return view('livewire.registrations.version-dashboard', compact(
             'myCandidates', 'filteredCandidates', 'paidByCandidateId', 'voicePartCounts', 'voicePartTotal',
             'statusCounts', 'statusTotal', 'statusOptions',
             'upcomingDates', 'voiceParts', 'checklistDefs',
             'activeFeeType', 'feeEligibleStatuses', 'epaymentStudentEnabled', 'epaymentOptedIn', 'unreconciledPayments',
-            'paymentRegisterRows',
+            'paymentRegisterRows', 'showOrientation',
         ));
     }
 

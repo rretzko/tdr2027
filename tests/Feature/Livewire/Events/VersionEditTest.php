@@ -20,6 +20,7 @@ use App\Models\Ensemble;
 use App\Models\EnsembleHistory;
 use App\Models\Event;
 use App\Models\EventEpaymentConfig;
+use App\Models\Geostate;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
@@ -29,6 +30,7 @@ use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionEpaymentConfig;
 use App\Models\VersionFee;
+use App\Models\VersionMailToAddress;
 use App\Models\VersionMembershipRequirement;
 use App\Models\VersionObligation;
 use App\Models\VersionUploadFile;
@@ -816,6 +818,106 @@ test('assignRole shows a field error and assigns nothing when no role is selecte
             ->flatten()
             ->pluck('id'),
     )->not->toContain($targetUser->id);
+});
+
+test('assignRole shows a friendly field error when Registration Manager is already assigned (§5.12)', function () {
+    $eventManager = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    $firstManager = User::factory()->create();
+    grantVersionRole($firstManager, $version, 'Registration Manager');
+
+    $secondCandidate = User::factory()->create();
+
+    Livewire::actingAs($eventManager)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('assign_user_id', $secondCandidate->id)
+        ->set('assign_role', 'Registration Manager')
+        ->call('assignRole')
+        ->assertHasErrors('assign_role');
+
+    expect(
+        app(VersionRoleAssignmentService::class)
+            ->assignmentsForVersion($version)
+            ->get('Registration Manager')
+            ->pluck('id')
+            ->all(),
+    )->toBe([$firstManager->id]);
+});
+
+test('editMailToAddress prefills from the user\'s own name when no address exists yet, and saveMailToAddress persists it', function () {
+    $eventManager = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    $manager = User::factory()->create(['first_name' => 'Kristen', 'last_name' => 'Markowski']);
+    grantVersionRole($manager, $version, 'Registration Manager');
+
+    $geostate = Geostate::factory()->create();
+
+    Livewire::actingAs($eventManager)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->call('editMailToAddress', $manager->id)
+        ->assertSet('mailto_recipient_name', 'Kristen Markowski')
+        ->set('mailto_organization_line', 'Morris Knolls High School')
+        ->set('mailto_address_line1', '50 Knoll Drive')
+        ->set('mailto_city', 'Rockaway')
+        ->set('mailto_geostate_id', $geostate->id)
+        ->set('mailto_zip', '07866')
+        ->call('saveMailToAddress')
+        ->assertHasNoErrors();
+
+    $address = VersionMailToAddress::where('version_id', $version->id)->where('user_id', $manager->id)->first();
+    expect($address)->not->toBeNull();
+    expect($address->recipient_name)->toBe('Kristen Markowski');
+    expect($address->address_line1)->toBe('50 Knoll Drive');
+    expect($address->city)->toBe('Rockaway');
+    expect($address->zip)->toBe('07866');
+});
+
+test('saveMailToAddress requires the core fields', function () {
+    $eventManager = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    $manager = User::factory()->create();
+    grantVersionRole($manager, $version, 'Registration Manager');
+
+    Livewire::actingAs($eventManager)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->call('editMailToAddress', $manager->id)
+        ->call('saveMailToAddress')
+        ->assertHasErrors(['mailto_address_line1', 'mailto_city', 'mailto_geostate_id', 'mailto_zip']);
+});
+
+test('editMailToAddress prefills from an existing version_mail_to_addresses row on a second open', function () {
+    $eventManager = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    $manager = User::factory()->create();
+    grantVersionRole($manager, $version, 'Registration Manager');
+
+    $geostate = Geostate::factory()->create();
+    VersionMailToAddress::factory()->create([
+        'version_id' => $version->id,
+        'user_id' => $manager->id,
+        'recipient_name' => 'Existing Name',
+        'address_line1' => '1 Main St',
+        'city' => 'Anytown',
+        'geostate_id' => $geostate->id,
+        'zip' => '00000',
+    ]);
+
+    Livewire::actingAs($eventManager)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->call('editMailToAddress', $manager->id)
+        ->assertSet('mailto_recipient_name', 'Existing Name')
+        ->assertSet('mailto_address_line1', '1 Main St')
+        ->assertSet('mailto_city', 'Anytown')
+        ->assertSet('mailto_geostate_id', $geostate->id)
+        ->assertSet('mailto_zip', '00000');
 });
 
 test('assignSearchResults matches by users.name', function () {

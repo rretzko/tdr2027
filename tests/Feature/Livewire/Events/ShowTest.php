@@ -53,6 +53,64 @@ test('mount allows a user holding Event Manager on any sibling Version of the Ev
         ->assertOk();
 });
 
+test('the Take a tour button auto-starts for a user who has never taken it', function () {
+    $founder = makeFounder();
+    $event = Event::factory()->create();
+
+    Livewire::actingAs($founder)
+        ->test(Show::class, ['event' => $event])
+        ->assertSee('Take a tour')
+        ->assertSeeHtml('data-auto-start="1"');
+});
+
+test('the Take a tour button does not auto-start once the tour has already been taken', function () {
+    $founder = makeFounder();
+    $founder->update(['dismissed_event_orientation_at' => now()]);
+    $event = Event::factory()->create();
+
+    Livewire::actingAs($founder)
+        ->test(Show::class, ['event' => $event])
+        ->assertSeeHtml('data-auto-start="0"');
+});
+
+test('dismissOrientation persists the dismissal for the acting user', function () {
+    $founder = makeFounder();
+    $event = Event::factory()->create();
+
+    Livewire::actingAs($founder)
+        ->test(Show::class, ['event' => $event])
+        ->call('dismissOrientation');
+
+    expect($founder->fresh()->dismissed_event_orientation_at)->not->toBeNull();
+});
+
+test('the tour anchors for both tabs render for a Founder with a Version and an Ensemble', function () {
+    $founder = makeFounder();
+    $event = Event::factory()->create();
+    Version::factory()->create(['event_id' => $event->id]);
+    Ensemble::factory()->create(['event_id' => $event->id]);
+
+    $component = Livewire::actingAs($founder)->test(Show::class, ['event' => $event]);
+
+    foreach ([
+        'id="tour-event-badges"',
+        'id="tour-event-tabs"',
+        'id="tour-tab-versions"',
+        'id="tour-tab-ensembles"',
+        'id="tour-add-version"',
+        'id="tour-version-list-desktop"',
+        'id="tour-version-list-mobile"',
+        'id="tour-version-actions-desktop"',
+        'id="tour-version-actions-mobile"',
+        'id="tour-add-ensemble"',
+        'id="tour-ensemble-card"',
+        'id="tour-ensemble-grades"',
+        'id="tour-ensemble-voiceparts"',
+    ] as $needle) {
+        $component->assertSeeHtml($needle);
+    }
+});
+
 test('mount allows a Registration-Manager-only holder to view the Event', function () {
     $user = makeShowTestUser();
     $event = Event::factory()->create();

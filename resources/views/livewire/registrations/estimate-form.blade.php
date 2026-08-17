@@ -9,10 +9,58 @@
 
     <flux:heading size="xl" class="mb-6">Estimate Form</flux:heading>
 
-    <flux:callout variant="info" icon="information-circle">
-        <flux:callout.text>
-            This form isn't built yet. Every Event requires an Estimate form submitted to the Version's
-            Registration Manager — check back soon.
-        </flux:callout.text>
-    </flux:callout>
+    @if ($schools->isEmpty())
+        <flux:callout variant="info" icon="information-circle">
+            <flux:callout.text>You have no candidates registered for this Version yet.</flux:callout.text>
+        </flux:callout>
+    @elseif ($schools->count() === 1)
+        @php $school = $schools->first(); @endphp
+        <flux:card class="max-w-xl">
+            <flux:heading size="lg">{{ $school->name }}</flux:heading>
+            <flux:text size="sm" class="text-zinc-500 mb-4">{{ $registeredCounts->get($school->id, 0) }} registered candidate(s)</flux:text>
+
+            <div class="space-y-1 mb-4">
+                <div class="flex justify-between text-sm">
+                    <span class="text-zinc-500">Fee subtotal</span>
+                    <span>${{ number_format($singleSchoolData->feeSubtotalCents / 100, 2) }}</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-zinc-500">ePayments</span>
+                    <span>${{ number_format($singleSchoolData->ePaymentsCents / 100, 2) }}</span>
+                </div>
+                <div class="flex justify-between font-medium">
+                    <span>Balance due</span>
+                    <span>{{ $singleSchoolData->balanceDueCents < 0 ? '-' : '' }}${{ number_format(abs($singleSchoolData->balanceDueCents) / 100, 2) }}</span>
+                </div>
+            </div>
+
+            @if ($singleSchoolData->truncated)
+                <flux:callout variant="warning" icon="exclamation-triangle" class="mb-4">
+                    <flux:callout.text>Only the first {{ $version->max_registrants }} registered candidates (this Version's maximum) appear on the Estimate Form — contact your Event Manager if this doesn't look right.</flux:callout.text>
+                </flux:callout>
+            @endif
+
+            <flux:button variant="primary" icon="arrow-down-tray" :href="route('registrations.estimate-form-pdf', [$version, $school])">
+                Download PDF
+            </flux:button>
+        </flux:card>
+    @else
+        <flux:text size="sm" class="text-zinc-500 mb-4">You have registered candidates at more than one school for this Version — download a separate Estimate Form for each.</flux:text>
+
+        <div class="space-y-3 max-w-xl">
+            @foreach ($schools as $school)
+                <flux:card size="sm">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <flux:heading size="base">{{ $school->name }}</flux:heading>
+                            <flux:text size="sm" class="text-zinc-500">{{ $registeredCounts->get($school->id, 0) }} registered candidate(s)</flux:text>
+                        </div>
+                        <flux:button size="sm" icon="arrow-down-tray" :href="route('registrations.estimate-form-pdf', [$version, $school])">
+                            Download PDF
+                        </flux:button>
+                    </div>
+                </flux:card>
+            @endforeach
+        </div>
+    @endif
 </div>

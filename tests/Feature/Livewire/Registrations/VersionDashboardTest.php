@@ -160,6 +160,59 @@ test('mount displays the version name', function () {
         ->assertSee('Fall Auditions');
 });
 
+test('the Take a tour button auto-starts for a teacher who has never taken it', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    inviteRegistrationTeacher($teacher, $version);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee('Take a tour')
+        ->assertSeeHtml('data-auto-start="1"');
+});
+
+test('the Take a tour button does not auto-start once the tour has already been taken', function () {
+    $teacher = makeRegistrationTeacher();
+    $teacher->user->update(['dismissed_registration_orientation_at' => now()]);
+    $version = Version::factory()->create();
+    inviteRegistrationTeacher($teacher, $version);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee('Take a tour')
+        ->assertSeeHtml('data-auto-start="0"');
+});
+
+test('dismissOrientation persists the dismissal and stops the tour from auto-starting on a re-render', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    inviteRegistrationTeacher($teacher, $version);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSeeHtml('data-auto-start="1"')
+        ->call('dismissOrientation')
+        ->assertSeeHtml('data-auto-start="0"');
+
+    expect($teacher->user->fresh()->dismissed_registration_orientation_at)->not->toBeNull();
+});
+
+test('dismissing the tour on one Version also stops it auto-starting on another', function () {
+    $teacher = makeRegistrationTeacher();
+    $versionA = Version::factory()->create();
+    $versionB = Version::factory()->create();
+    inviteRegistrationTeacher($teacher, $versionA);
+    inviteRegistrationTeacher($teacher, $versionB);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $versionA])
+        ->call('dismissOrientation');
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $versionB])
+        ->assertSeeHtml('data-auto-start="0"');
+});
+
 test('mount redirects an eligible but uninvited teacher to the Request Invitation page', function () {
     $teacher = makeRegistrationTeacher();
     $school = School::factory()->create();

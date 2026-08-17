@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Livewire\Events;
 
 use App\Models\CoRegistrationManagerCounty;
+use App\Models\Geostate;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionMailToAddress;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -30,6 +33,21 @@ class VersionCoRegistrationManagers extends Component
     /** @var list<int> */
     public array $countyIds = [];
 
+    // Mail-to address (§5.12)
+    public string $mailto_recipient_name = '';
+
+    public string $mailto_organization_line = '';
+
+    public string $mailto_address_line1 = '';
+
+    public string $mailto_address_line2 = '';
+
+    public string $mailto_city = '';
+
+    public ?int $mailto_geostate_id = null;
+
+    public string $mailto_zip = '';
+
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
     {
         abort_unless($roles->canManageCoRegistrationManagers(Auth::user(), $version), 403);
@@ -43,6 +61,7 @@ class VersionCoRegistrationManagers extends Component
         $this->search = '';
         $this->selectedUserId = null;
         $this->countyIds = [];
+        $this->resetMailToAddress();
         $this->resetErrorBag();
     }
 
@@ -56,7 +75,51 @@ class VersionCoRegistrationManagers extends Component
             ->pluck('county_id')
             ->map(fn ($id): int => (int) $id)
             ->all();
+        $this->hydrateMailToAddress($userId);
         $this->resetErrorBag();
+    }
+
+    /**
+     * Pre-fills the mail-to address fields from any existing
+     * version_mail_to_addresses row for $userId, defaulting recipient name
+     * to the user's own name (everything else blank) if none exists yet —
+     * same default rule as VersionEdit::editMailToAddress(). See §5.12.
+     */
+    private function hydrateMailToAddress(int $userId): void
+    {
+        $targetUser = User::findOrFail($userId);
+        $existing = VersionMailToAddress::where('version_id', $this->version->id)
+            ->where('user_id', $userId)
+            ->first();
+
+        if ($existing !== null) {
+            $this->mailto_recipient_name = $existing->recipient_name;
+            $this->mailto_organization_line = $existing->organization_line ?? '';
+            $this->mailto_address_line1 = $existing->address_line1;
+            $this->mailto_address_line2 = $existing->address_line2 ?? '';
+            $this->mailto_city = $existing->city;
+            $this->mailto_geostate_id = $existing->geostate_id;
+            $this->mailto_zip = $existing->zip;
+        } else {
+            $this->mailto_recipient_name = $targetUser->name;
+            $this->mailto_organization_line = '';
+            $this->mailto_address_line1 = '';
+            $this->mailto_address_line2 = '';
+            $this->mailto_city = '';
+            $this->mailto_geostate_id = null;
+            $this->mailto_zip = '';
+        }
+    }
+
+    private function resetMailToAddress(): void
+    {
+        $this->mailto_recipient_name = '';
+        $this->mailto_organization_line = '';
+        $this->mailto_address_line1 = '';
+        $this->mailto_address_line2 = '';
+        $this->mailto_city = '';
+        $this->mailto_geostate_id = null;
+        $this->mailto_zip = '';
     }
 
     /**
@@ -83,6 +146,7 @@ class VersionCoRegistrationManagers extends Component
 
         $this->selectedUserId = $user->id;
         $this->search = $user->name;
+        $this->hydrateMailToAddress($userId);
     }
 
     public function clearSelection(): void
@@ -95,15 +159,55 @@ class VersionCoRegistrationManagers extends Component
     {
         $assignableCountyIds = $this->assignableCountyIds();
 
+        // The mail-to address is optional at save time — filling it in is
+        // bundled into this same form for convenience (§5.12), but an Event
+        // Manager/Registration Manager may still just be assigning the role
+        // itself and come back to the address later, so it's only validated
+        // (and only required in full) when address_line1 is actually filled
+        // in. See mailToAddressProvided() below.
+        $addressProvided = trim($this->mailto_address_line1) !== '';
+
         $validated = $this->validate([
             'selectedUserId' => ['required', 'integer', 'exists:users,id'],
             'countyIds' => ['array'],
             'countyIds.*' => ['integer', Rule::in($assignableCountyIds)],
+            'mailto_recipient_name' => [$addressProvided ? 'required' : 'nullable', 'string', 'max:255'],
+            'mailto_organization_line' => ['nullable', 'string', 'max:255'],
+            'mailto_address_line1' => ['nullable', 'string', 'max:255'],
+            'mailto_address_line2' => ['nullable', 'string', 'max:255'],
+            'mailto_city' => [$addressProvided ? 'required' : 'nullable', 'string', 'max:255'],
+            'mailto_geostate_id' => [$addressProvided ? 'required' : 'nullable', 'integer', 'exists:geostates,id'],
+            'mailto_zip' => [$addressProvided ? 'required' : 'nullable', 'string', 'max:20'],
         ]);
 
         $targetUser = User::findOrFail($validated['selectedUserId']);
 
-        $roles->assignCoRegistrationManager(Auth::user(), $this->version, $targetUser, $validated['countyIds']);
+        DB::transaction(function () use ($roles, $targetUser, $validated, $addressProvided): void {
+            $roles->assignCoRegistrationManager(Auth::user(), $this->version, $targetUser, $validated['countyIds']);
+
+            if ($addressProvided) {
+                VersionMailToAddress::updateOrCreate(
+                    ['version_id' => $this->version->id, 'user_id' => $targetUser->id],
+                    [
+                        'recipient_name' => $validated['mailto_recipient_name'],
+                        'organization_line' => ($validated['mailto_organization_line'] ?? '') !== '' ? $validated['mailto_organization_line'] : null,
+                        'address_line1' => $validated['mailto_address_line1'],
+                        'address_line2' => ($validated['mailto_address_line2'] ?? '') !== '' ? $validated['mailto_address_line2'] : null,
+                        'city' => $validated['mailto_city'],
+                        'geostate_id' => $validated['mailto_geostate_id'],
+                        'zip' => $validated['mailto_zip'],
+                    ],
+                );
+            } else {
+                // Address line 1 was cleared out (or never filled in) —
+                // treat that as "no address configured", including removing
+                // one that existed before this save, rather than leaving a
+                // stale row behind.
+                VersionMailToAddress::where('version_id', $this->version->id)
+                    ->where('user_id', $targetUser->id)
+                    ->delete();
+            }
+        });
 
         $this->editingUserId = null;
         $this->modal('co-registration-manager-form')->close();
@@ -156,6 +260,7 @@ class VersionCoRegistrationManagers extends Component
                 ->sortBy('name')
                 ->values(),
             'assignableCountyIds' => $this->assignableCountyIds(),
+            'geostates' => Geostate::orderBy('name')->get(),
         ]);
     }
 }

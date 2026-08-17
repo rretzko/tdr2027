@@ -33,7 +33,7 @@
                 <flux:sidebar.collapse class="hidden lg:flex pointer-coarse:opacity-100!" />
             </flux:sidebar.header>
 
-            <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')">
+            <flux:sidebar.item id="tour-sidebar-dashboard" icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')">
                 Dashboard
             </flux:sidebar.item>
 
@@ -41,7 +41,7 @@
                 $fastPassRecent = \App\Support\FastPass::recentFor(auth()->user());
                 $fastPassTop = \App\Support\FastPass::topFor(auth()->user());
             @endphp
-            <div class="px-2">
+            <div id="tour-sidebar-fastpass" class="px-2">
                 <flux:dropdown position="bottom" align="start">
                     <flux:button variant="ghost" icon="bolt" class="w-full justify-start in-data-flux-sidebar-collapsed-desktop:justify-center">
                         <span class="in-data-flux-sidebar-collapsed-desktop:hidden">Fast Pass</span>
@@ -78,24 +78,24 @@
                 $canAccessEvents = app(\App\Services\VersionRoleAssignmentService::class)->canAccessEventsSection(auth()->user());
             @endphp
             @if ($teacher?->onboarding_completed_at !== null)
-                <flux:sidebar.item icon="building-library" :href="route('schools.index')" :current="request()->routeIs('schools.*')">
+                <flux:sidebar.item id="tour-sidebar-schools" icon="building-library" :href="route('schools.index')" :current="request()->routeIs('schools.*')">
                     Schools
                 </flux:sidebar.item>
 
                 @if ($teacher->hasActiveSchool())
-                    <flux:sidebar.item icon="users" :href="route('students.index')" :current="request()->routeIs('students.*')">
+                    <flux:sidebar.item id="tour-sidebar-students" icon="users" :href="route('students.index')" :current="request()->routeIs('students.*')">
                         Students
                     </flux:sidebar.item>
                 @endif
 
                 <flux:separator />
 
-                <flux:sidebar.item icon="building-office-2" :href="route('organizations.index')" :current="request()->routeIs('organizations.*')">
+                <flux:sidebar.item id="tour-sidebar-organizations" icon="building-office-2" :href="route('organizations.index')" :current="request()->routeIs('organizations.*')">
                     Organizations
                 </flux:sidebar.item>
 
                 @if ($canAccessEvents)
-                    <div class="ps-4">
+                    <div id="tour-sidebar-events" class="ps-4">
                         <flux:sidebar.item icon="calendar" :href="route('events.index')" :current="request()->routeIs('events.*')">
                             Events
                         </flux:sidebar.item>
@@ -103,7 +103,7 @@
                 @endif
 
                 @if ($hasRegistrationAccess)
-                    <div class="ps-8">
+                    <div id="tour-sidebar-registrations" class="ps-8">
                         <flux:sidebar.item
                             icon="clipboard-document-list"
                             :href="route('registrations.index')"
@@ -113,7 +113,7 @@
                         </flux:sidebar.item>
                     </div>
 
-                    <div class="ps-12">
+                    <div id="tour-sidebar-results" class="ps-12">
                         <flux:sidebar.item
                             icon="chart-bar"
                             :href="route('registrations.results-index')"
@@ -146,14 +146,14 @@
 
             <flux:spacer />
 
-            <flux:sidebar.item icon="user" :href="route('settings.profile')" :current="request()->routeIs('settings.profile')">
+            <flux:sidebar.item id="tour-sidebar-profile" icon="user" :href="route('settings.profile')" :current="request()->routeIs('settings.profile')">
                 Profile
             </flux:sidebar.item>
-            <flux:sidebar.item icon="key" :href="route('settings.password')" :current="request()->routeIs('settings.password')">
+            <flux:sidebar.item id="tour-sidebar-password" icon="key" :href="route('settings.password')" :current="request()->routeIs('settings.password')">
                 Password
             </flux:sidebar.item>
 
-            <div class="flex items-center gap-2 px-2 py-2 in-data-flux-sidebar-collapsed-desktop:justify-center" x-data="{ dark: document.documentElement.classList.contains('dark') }">
+            <div id="tour-sidebar-appearance" class="flex items-center gap-2 px-2 py-2 in-data-flux-sidebar-collapsed-desktop:justify-center" x-data="{ dark: document.documentElement.classList.contains('dark') }">
                 <flux:icon.sun variant="micro" class="text-zinc-400" />
                 <flux:switch x-model="dark" x-on:change="$flux.appearance = dark ? 'dark' : 'light'" class="in-data-flux-sidebar-collapsed-desktop:hidden" />
                 <flux:icon.moon variant="micro" class="text-zinc-400 in-data-flux-sidebar-collapsed-desktop:hidden" />
@@ -169,7 +169,7 @@
                 <span class="text-sm text-zinc-600 dark:text-zinc-300 in-data-flux-sidebar-collapsed-desktop:hidden">{{ auth()->user()->sort_name }}</span>
             </div>
 
-            <form method="POST" action="{{ route('logout') }}">
+            <form id="tour-sidebar-logout" method="POST" action="{{ route('logout') }}">
                 @csrf
                 <flux:button type="submit" variant="ghost" icon="arrow-right-start-on-rectangle" class="w-full justify-start in-data-flux-sidebar-collapsed-desktop:justify-center">
                     <span class="in-data-flux-sidebar-collapsed-desktop:hidden">Log out</span>

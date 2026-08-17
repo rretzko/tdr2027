@@ -386,12 +386,34 @@ final class VersionRoleAssignmentService
         abort_unless($this->canManageVersionRoles($actingUser, $version), 403);
         abort_unless(in_array($roleName, self::GENERAL_ROLES_TAB_ROLES, true), 400);
 
+        if ($roleName === 'Registration Manager') {
+            // Service-level backstop for the single-Registration-Manager-per-
+            // Version invariant (event-version-orientation.md §5.12) — makes
+            // the Estimate Form's Mail-To fallback address unambiguous.
+            // VersionEdit::assignRole() already checks this via
+            // hasRegistrationManager() for a friendly inline error; this is
+            // defense-in-depth, not a UI nicety.
+            abort_if($this->hasRegistrationManager($version, exceptUserId: $targetUser->id), 422);
+        }
+
         $this->versionRoles->withVersion($version, function () use ($targetUser, $roleName): void {
             $targetUser->assignRole($roleName);
         });
 
         $this->inviteToVersion($targetUser, $version, $actingUser);
         $this->autoEnrollment->enrollAllInvitedTeachersForVersion($version);
+    }
+
+    /**
+     * Whether a Version already has a user other than $exceptUserId holding
+     * "Registration Manager" — see assignRole() above.
+     */
+    public function hasRegistrationManager(Version $version, ?int $exceptUserId = null): bool
+    {
+        return $this->assignmentsForVersion($version)
+            ->get('Registration Manager', collect())
+            ->reject(fn (User $user): bool => $user->id === $exceptUserId)
+            ->isNotEmpty();
     }
 
     public function revokeRole(User $actingUser, Version $version, User $targetUser, string $roleName): void

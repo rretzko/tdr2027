@@ -128,6 +128,19 @@ class Show extends Component
         return $this->event->versions()->orderByDesc('senior_class_of')->first();
     }
 
+    /**
+     * Marks the first-visit spotlight tour as seen for this user — a single
+     * flag covers every Event's Show page, mirroring
+     * VersionDashboard::dismissOrientation(). Called from the client-side
+     * tour engine (resources/views/livewire/events/show.blade.php) via a
+     * hidden wire:click trigger when the tour finishes or is skipped; the
+     * always-visible "Take a tour" button ignores this flag entirely.
+     */
+    public function dismissOrientation(): void
+    {
+        Auth::user()->update(['dismissed_event_orientation_at' => now()]);
+    }
+
     // --- Ensembles ---
 
     public function openAddEnsemble(): void

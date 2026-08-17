@@ -12,21 +12,25 @@
             <flux:text size="sm" class="text-zinc-500">{{ $version->event->name }}</flux:text>
         </div>
 
-        @php $vs = $version->getRawOriginal('status'); @endphp
-        @if ($vs === 'active')
-            <flux:badge color="green">Active</flux:badge>
-        @elseif ($vs === 'sandbox')
-            <flux:badge color="amber">Sandbox</flux:badge>
-        @else
-            <flux:badge color="zinc" class="capitalize">{{ $vs }}</flux:badge>
-        @endif
+        <div class="flex items-center gap-2">
+            @php $vs = $version->getRawOriginal('status'); @endphp
+            @if ($vs === 'active')
+                <flux:badge color="green">Active</flux:badge>
+            @elseif ($vs === 'sandbox')
+                <flux:badge color="amber">Sandbox</flux:badge>
+            @else
+                <flux:badge color="zinc" class="capitalize">{{ $vs }}</flux:badge>
+            @endif
+
+            <flux:button id="tour-start" data-auto-start="{{ $showOrientation ? '1' : '0' }}" size="sm" variant="ghost" icon="sparkles" type="button">Take a tour</flux:button>
+        </div>
     </div>
 
     {{-- Upcoming dates / Registration summary --}}
     @if ($upcomingDates->isNotEmpty() || $myCandidates->isNotEmpty())
         <div class="mb-6 pb-6 border-b border-zinc-200 dark:border-zinc-700 grid grid-cols-1 md:grid-cols-2 gap-6">
             @if ($upcomingDates->isNotEmpty())
-                <div>
+                <div id="tour-upcoming-deadlines">
                     <flux:heading size="sm" class="mb-4">Upcoming Deadlines</flux:heading>
                     <div class="ml-1.5 space-y-5 border-l-2 border-zinc-200 dark:border-zinc-700">
                         @foreach ($upcomingDates as $date)
@@ -54,7 +58,7 @@
             @endif
 
             @if ($myCandidates->isNotEmpty())
-                <div>
+                <div id="tour-registration-summary">
                     <flux:heading size="sm" class="mb-4">Registration Summary</flux:heading>
                     <div class="space-y-4">
                         <flux:table class="min-w-0 w-fit">
@@ -107,18 +111,21 @@
 
         <div class="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/40 px-4 py-3 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             @if ($epaymentStudentEnabled)
-                <flux:checkbox
-                    :checked="$epaymentOptedIn"
-                    wire:click="toggleEpaymentOptIn"
-                    label="Enable e-payment for all of your candidates in this Version"
-                    description="Applies to your whole roster, not just one candidate."
-                />
+                <div id="tour-epayment-checkbox">
+                    <flux:checkbox
+                        :checked="$epaymentOptedIn"
+                        wire:click="toggleEpaymentOptIn"
+                        label="Enable e-payment for all of your candidates in this Version"
+                        description="Applies to your whole roster, not just one candidate."
+                    />
+                </div>
             @endif
 
             <div class="flex flex-wrap gap-2">
-                <flux:button size="sm" variant="ghost" icon="table-cells" wire:click="openPaymentRegister">Payment Register</flux:button>
-                <flux:button size="sm" variant="ghost" icon="document-text" :href="route('registrations.estimate-form', $version)" wire:navigate>Estimate Form</flux:button>
+                <flux:button id="tour-link-pitch-files" size="sm" variant="ghost" icon="musical-note" :href="route('registrations.pitch-files', $version)" wire:navigate>Pitch Files</flux:button>
+                <flux:button id="tour-link-estimate-form" size="sm" variant="ghost" icon="document-text" :href="route('registrations.estimate-form', $version)" wire:navigate>Estimate Form</flux:button>
                 <flux:button
+                    id="tour-link-group-payment"
                     size="sm" variant="ghost" icon="user-group"
                     x-on:click="
                         const el = document.getElementById('group-payment');
@@ -128,6 +135,7 @@
                         setTimeout(() => el.classList.remove('ring-2', 'ring-blue-400', 'rounded-lg'), 1500);
                     "
                 >Group Payment</flux:button>
+                <flux:button id="tour-link-payment-register" size="sm" variant="ghost" icon="table-cells" wire:click="openPaymentRegister">Payment Register</flux:button>
             </div>
         </div>
 
@@ -135,24 +143,28 @@
             <flux:text class="text-zinc-500">No candidates yet. Eligible students are enrolled automatically once you're invited and once they're added to your roster.</flux:text>
         @else
             <div class="flex flex-col sm:flex-row gap-3 mb-4">
-                <flux:input
-                    wire:model.live.debounce.300ms="search"
-                    placeholder="Search by name..."
-                    icon="magnifying-glass"
-                    class="sm:max-w-xs"
-                />
-                <flux:select wire:model.live="voicePartFilter" placeholder="All voice parts" class="sm:max-w-2xs">
-                    <flux:select.option value="">All voice parts</flux:select.option>
-                    @foreach ($voiceParts as $voicePart)
-                        <flux:select.option value="{{ $voicePart->id }}">{{ $voicePart->name }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-                <flux:select wire:model.live="statusFilter" placeholder="All statuses" class="sm:max-w-2xs">
-                    <flux:select.option value="">All statuses</flux:select.option>
-                    @foreach ($statusOptions as $status)
-                        <flux:select.option value="{{ $status->value }}">{{ $status->label() }}</flux:select.option>
-                    @endforeach
-                </flux:select>
+                <div id="tour-search-box">
+                    <flux:input
+                        wire:model.live.debounce.300ms="search"
+                        placeholder="Search by name..."
+                        icon="magnifying-glass"
+                        class="sm:max-w-xs"
+                    />
+                </div>
+                <div id="tour-filters" class="flex flex-col sm:flex-row gap-3">
+                    <flux:select wire:model.live="voicePartFilter" placeholder="All voice parts" class="sm:max-w-2xs">
+                        <flux:select.option value="">All voice parts</flux:select.option>
+                        @foreach ($voiceParts as $voicePart)
+                            <flux:select.option value="{{ $voicePart->id }}">{{ $voicePart->name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                    <flux:select wire:model.live="statusFilter" placeholder="All statuses" class="sm:max-w-2xs">
+                        <flux:select.option value="">All statuses</flux:select.option>
+                        @foreach ($statusOptions as $status)
+                            <flux:select.option value="{{ $status->value }}">{{ $status->label() }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                </div>
             </div>
 
             {{-- Your Unreconciled Payments + Group Payment selection — moved
@@ -237,26 +249,28 @@
                                 <flux:heading size="base">{{ $displayName }}</flux:heading>
                             </div>
                             <div class="flex flex-col items-end gap-1">
-                                @if ($rawStatus === 'eligible')
-                                    <flux:badge color="zinc" size="sm">Eligible</flux:badge>
-                                @elseif ($rawStatus === 'pending')
-                                    <flux:badge color="amber" size="sm">Pending</flux:badge>
-                                @elseif ($rawStatus === 'registered')
-                                    <flux:badge color="green" size="sm">Registered</flux:badge>
-                                @elseif ($rawStatus === 'teacher_withdrawn')
-                                    <flux:badge color="red" size="sm">Withdrawn</flux:badge>
-                                @else
-                                    <flux:badge color="zinc" size="sm" class="capitalize">{{ str_replace('_', ' ', $rawStatus) }}</flux:badge>
-                                @endif
+                                <div id="{{ $loop->first ? 'tour-row-status-mobile' : '' }}">
+                                    @if ($rawStatus === 'eligible')
+                                        <flux:badge color="zinc" size="sm">Eligible</flux:badge>
+                                    @elseif ($rawStatus === 'pending')
+                                        <flux:badge color="amber" size="sm">Pending</flux:badge>
+                                    @elseif ($rawStatus === 'registered')
+                                        <flux:badge color="green" size="sm">Registered</flux:badge>
+                                    @elseif ($rawStatus === 'teacher_withdrawn')
+                                        <flux:badge color="red" size="sm">Withdrawn</flux:badge>
+                                    @else
+                                        <flux:badge color="zinc" size="sm" class="capitalize">{{ str_replace('_', ' ', $rawStatus) }}</flux:badge>
+                                    @endif
+                                </div>
                                 @php $paidCents = $paidByCandidateId->get($candidate->id, 0); @endphp
-                                <span class="text-sm text-zinc-500">
+                                <span id="{{ $loop->first ? 'tour-row-paid-mobile' : '' }}" class="text-sm text-zinc-500">
                                     Paid: {{ $paidCents < 0 ? '-' : '' }}${{ number_format(abs($paidCents) / 100, 2) }}
                                 </span>
                             </div>
                         </div>
 
                         {{-- Poka-yoke checklist --}}
-                        <div class="flex flex-wrap gap-2 mb-3">
+                        <div id="{{ $loop->first ? 'tour-row-checklist-mobile' : '' }}" class="flex flex-wrap gap-2 mb-3">
                             @foreach ($checklistDefs as $def)
                                 @php
                                     $done = ($def['check'])($candidate);
@@ -277,18 +291,18 @@
                         </div>
 
                         <div class="flex gap-2">
-                            <flux:button size="sm" variant="ghost"
+                            <flux:button id="{{ $loop->first ? 'tour-row-manage-mobile' : '' }}" size="sm" variant="ghost"
                                 :href="route('registrations.candidate', [$version, $candidate])"
                                 wire:navigate>
                                 Manage
                             </flux:button>
                             @if (in_array($rawStatus, ['eligible', 'pending', 'registered']))
-                                <flux:button size="sm" variant="ghost" icon="arrow-path"
+                                <flux:button id="{{ $loop->first ? 'tour-row-refresh-mobile' : '' }}" size="sm" variant="ghost" icon="arrow-path"
                                     wire:click="refreshStatus({{ $candidate->id }})">
                                     Refresh
                                 </flux:button>
                             @endif
-                            <flux:button size="sm" variant="ghost"
+                            <flux:button id="{{ $loop->first ? 'tour-row-withdraw-mobile' : '' }}" size="sm" variant="ghost"
                                 wire:click="withdraw({{ $candidate->id }})"
                                 wire:confirm="Withdraw {{ $candidate->program_name }}? Their status will be set to Teacher Withdrawn.">
                                 Withdraw
@@ -329,7 +343,7 @@
                             @endif
                             <flux:table.cell class="font-medium">{{ $displayName }}</flux:table.cell>
                             <flux:table.cell>{{ $candidate->voicePart?->name ?? '—' }}</flux:table.cell>
-                            <flux:table.cell>
+                            <flux:table.cell id="{{ $loop->first ? 'tour-row-checklist' : '' }}">
                                 <div class="flex flex-wrap gap-1.5">
                                     @foreach ($checklistDefs as $def)
                                         @php
@@ -350,7 +364,7 @@
                                     @endforeach
                                 </div>
                             </flux:table.cell>
-                            <flux:table.cell>
+                            <flux:table.cell id="{{ $loop->first ? 'tour-row-status' : '' }}">
                                 @if ($rawStatus === 'eligible')
                                     <flux:badge color="zinc" size="sm">Eligible</flux:badge>
                                 @elseif ($rawStatus === 'pending')
@@ -363,24 +377,24 @@
                                     <flux:badge color="zinc" size="sm" class="capitalize">{{ str_replace('_', ' ', $rawStatus) }}</flux:badge>
                                 @endif
                             </flux:table.cell>
-                            <flux:table.cell>
+                            <flux:table.cell id="{{ $loop->first ? 'tour-row-paid' : '' }}">
                                 @php $paidCents = $paidByCandidateId->get($candidate->id, 0); @endphp
                                 {{ $paidCents < 0 ? '-' : '' }}${{ number_format(abs($paidCents) / 100, 2) }}
                             </flux:table.cell>
                             <flux:table.cell>
                                 <div class="flex justify-end gap-2">
-                                    <flux:button size="sm" variant="ghost"
+                                    <flux:button id="{{ $loop->first ? 'tour-row-manage' : '' }}" size="sm" variant="ghost"
                                         :href="route('registrations.candidate', [$version, $candidate])"
                                         wire:navigate>
                                         Manage
                                     </flux:button>
                                     @if (in_array($rawStatus, ['eligible', 'pending', 'registered']))
-                                        <flux:button size="sm" variant="ghost" icon="arrow-path"
+                                        <flux:button id="{{ $loop->first ? 'tour-row-refresh' : '' }}" size="sm" variant="ghost" icon="arrow-path"
                                             wire:click="refreshStatus({{ $candidate->id }})">
                                             Refresh
                                         </flux:button>
                                     @endif
-                                    <flux:button size="sm" variant="ghost"
+                                    <flux:button id="{{ $loop->first ? 'tour-row-withdraw' : '' }}" size="sm" variant="ghost"
                                         wire:click="withdraw({{ $candidate->id }})"
                                         wire:confirm="Withdraw {{ $candidate->program_name }}? Their status will be set to Teacher Withdrawn.">
                                         Withdraw
@@ -509,4 +523,212 @@
         </div>
     </flux:modal>
 
+    {{-- Spotlight tour (event-version-orientation.md §6.2 orientation pass).
+         Fires the Livewire action below via a hidden wire:click trigger
+         rather than calling $wire directly from plain <script>, so it reuses
+         the same delegated-click plumbing every other wire:click in this
+         file already relies on. --}}
+    <button type="button" id="tour-dismiss-trigger" wire:click="dismissOrientation" class="hidden" aria-hidden="true" tabindex="-1"></button>
+
+    <div id="tour-scrim" class="hidden fixed inset-0 z-[59]"></div>
+    <div id="tour-cutout" class="hidden fixed z-[60] rounded-lg pointer-events-none transition-[top,left,width,height] duration-300 ease-out"></div>
+    <div
+        id="tour-card"
+        class="hidden fixed z-[61] w-72 max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-xl p-4 transition-[top,left] duration-300 ease-out"
+        role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body"
+    >
+        <div class="h-1 rounded-full bg-zinc-100 dark:bg-zinc-700 overflow-hidden mb-3">
+            <div id="tour-progress" class="h-full bg-orange-600 dark:bg-orange-400 rounded-full transition-[width] duration-200"></div>
+        </div>
+        <div id="tour-stepcount" class="text-[11px] font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400 mb-1"></div>
+        <h3 id="tour-title" class="text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-1"></h3>
+        <p id="tour-body" class="text-sm text-zinc-500 dark:text-zinc-400 mb-3"></p>
+        <div class="flex items-center justify-between gap-2">
+            <button type="button" id="tour-skip" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">Skip tour</button>
+            <div class="flex gap-2">
+                <button type="button" id="tour-prev" class="text-sm font-medium px-3 py-1.5 rounded-md border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-700 disabled:opacity-40">Back</button>
+                <button type="button" id="tour-next" class="text-sm font-medium px-3 py-1.5 rounded-md border border-orange-600 bg-orange-600 text-white hover:brightness-110 dark:border-orange-400 dark:bg-orange-400 dark:text-zinc-900">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        #tour-cutout { box-shadow: 0 0 0 9999px rgba(15, 13, 12, 0.6); }
+        :root[data-theme="dark"] #tour-cutout { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.72); }
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) #tour-cutout { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.72); }
+        }
+        #tour-cutout::after {
+            content: "";
+            position: absolute;
+            inset: -4px;
+            border-radius: 11px;
+            border: 2px solid rgb(234 88 12);
+            box-shadow: 0 0 0 4px rgba(234, 88, 12, 0.5);
+            animation: tour-pulse 1.8s ease-in-out infinite;
+        }
+        @keyframes tour-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.45; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #tour-cutout, #tour-card { transition: none !important; }
+            #tour-cutout::after { animation: none !important; }
+        }
+    </style>
+
+    <script>
+        (function () {
+                var steps = [
+                    { ids: ['tour-upcoming-deadlines'], title: 'Upcoming Deadlines', body: "What's due next for the Event — registration windows, postmark cutoffs, adjudication dates — soonest first." },
+                    { ids: ['tour-registration-summary'], title: 'Registration Summary', body: 'A live count of your registered candidates by voice part and by status, so you can see progress at a glance without scrolling the table.' },
+                    { ids: ['tour-epayment-checkbox'], title: 'E-payment checkbox', body: 'Turn on electronic payment for every candidate on your roster.' },
+                    { ids: ['tour-link-pitch-files'], title: 'Pitch Files', body: 'Find audio and PDFs for the Event, filterable by voice part — the same library your candidates can browse.' },
+                    { ids: ['tour-link-estimate-form'], title: 'Estimate Form', body: "Download a printable PDF invoice for one of your schools: every registered candidate, their fee, and what's still owed." },
+                    { ids: ['tour-link-group-payment'], title: 'Group Payment', body: 'Select several candidates in the roster below and pay their registration or participation fee in a single checkout.' },
+                    { ids: ['tour-link-payment-register'], title: 'Payment Register', body: 'A full history of every payment recorded against your roster — manual and electronic alike.' },
+                    { ids: ['tour-search-box'], title: 'Search box', body: 'Find one candidate by name without scrolling the full roster.' },
+                    { ids: ['tour-filters'], title: 'Filters', body: 'Narrow the roster down to one voice part or one status at a time.' },
+                    { ids: ['tour-row-checklist', 'tour-row-checklist-mobile'], title: 'Checklist', body: 'See the status of registration requirements — birthday, emergency contact, application, and so on. Green means done, amber means partial, red means not started.' },
+                    { ids: ['tour-row-status', 'tour-row-status-mobile'], title: 'Status', body: 'Where the candidate sits in the registration lifecycle: Eligible, Pending, Registered, or Withdrawn.' },
+                    { ids: ['tour-row-paid', 'tour-row-paid-mobile'], title: 'Paid', body: 'How much has actually been allocated to this candidate so far, net of any refunds.' },
+                    { ids: ['tour-row-manage', 'tour-row-manage-mobile'], title: 'Manage', body: "Open this candidate's full record to edit details, review their application, or record a payment." },
+                    { ids: ['tour-row-refresh', 'tour-row-refresh-mobile'], title: 'Refresh', body: "Recheck this candidate's status against the checklist — handy right after you fix something that was missing." },
+                    { ids: ['tour-row-withdraw', 'tour-row-withdraw-mobile'], title: 'Withdraw', body: 'Remove this candidate from the Version. Their status becomes Teacher Withdrawn.' }
+                ];
+
+                var activeSteps = [];
+                var current = -1;
+                var running = false;
+                var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                var raf = null;
+
+                var scrim = document.getElementById('tour-scrim');
+                var cutout = document.getElementById('tour-cutout');
+                var card = document.getElementById('tour-card');
+                var startBtn = document.getElementById('tour-start');
+                var dismissTrigger = document.getElementById('tour-dismiss-trigger');
+                var prevBtn = document.getElementById('tour-prev');
+                var nextBtn = document.getElementById('tour-next');
+                var skipBtn = document.getElementById('tour-skip');
+                var titleEl = document.getElementById('tour-title');
+                var bodyEl = document.getElementById('tour-body');
+                var stepCountEl = document.getElementById('tour-stepcount');
+                var progressEl = document.getElementById('tour-progress');
+
+                if (!startBtn || !scrim || !cutout || !card) return;
+
+                function resolveEl(ids) {
+                    for (var i = 0; i < ids.length; i++) {
+                        var el = document.getElementById(ids[i]);
+                        if (el && el.offsetParent !== null) return el;
+                    }
+                    return null;
+                }
+
+                function start() {
+                    activeSteps = steps.filter(function (s) { return resolveEl(s.ids) !== null; });
+                    if (activeSteps.length === 0) return;
+
+                    running = true;
+                    current = 0;
+                    scrim.classList.remove('hidden');
+                    cutout.classList.remove('hidden');
+                    card.classList.remove('hidden');
+                    document.addEventListener('keydown', onKeydown);
+                    window.addEventListener('resize', onReposition);
+                    window.addEventListener('scroll', onReposition, true);
+                    render();
+                }
+
+                function end() {
+                    running = false;
+                    scrim.classList.add('hidden');
+                    cutout.classList.add('hidden');
+                    card.classList.add('hidden');
+                    document.removeEventListener('keydown', onKeydown);
+                    window.removeEventListener('resize', onReposition);
+                    window.removeEventListener('scroll', onReposition, true);
+                    if (dismissTrigger) dismissTrigger.click();
+                    startBtn.focus();
+                }
+
+                function go(delta) {
+                    var target = current + delta;
+                    if (target < 0) return;
+                    if (target >= activeSteps.length) { end(); return; }
+                    current = target;
+                    render();
+                }
+
+                function render() {
+                    var step = activeSteps[current];
+                    var el = resolveEl(step.ids);
+                    if (!el) { go(1); return; }
+
+                    titleEl.textContent = step.title;
+                    bodyEl.textContent = step.body;
+                    stepCountEl.textContent = 'Step ' + (current + 1) + ' of ' + activeSteps.length;
+                    progressEl.style.width = (((current + 1) / activeSteps.length) * 100) + '%';
+                    prevBtn.disabled = current === 0;
+                    nextBtn.textContent = current === activeSteps.length - 1 ? 'Finish' : 'Next';
+
+                    el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+
+                    window.setTimeout(function () { position(el); }, reduceMotion ? 0 : 260);
+                    nextBtn.focus();
+                }
+
+                function position(el) {
+                    var pad = 6;
+                    var r = el.getBoundingClientRect();
+
+                    cutout.style.top = (r.top - pad) + 'px';
+                    cutout.style.left = (r.left - pad) + 'px';
+                    cutout.style.width = (r.width + pad * 2) + 'px';
+                    cutout.style.height = (r.height + pad * 2) + 'px';
+
+                    var cardW = card.offsetWidth || 288;
+                    var cardH = card.offsetHeight || 160;
+                    var margin = 14;
+                    var vw = window.innerWidth;
+                    var vh = window.innerHeight;
+
+                    var top = r.bottom + margin;
+                    if (top + cardH > vh) {
+                        top = r.top - cardH - margin;
+                        if (top < 8) top = Math.max(8, Math.min(vh - cardH - 8, r.top));
+                    }
+
+                    var left = r.left;
+                    if (left + cardW > vw - 8) left = vw - cardW - 8;
+                    if (left < 8) left = 8;
+
+                    card.style.top = top + 'px';
+                    card.style.left = left + 'px';
+                }
+
+                function onReposition() {
+                    if (!running) return;
+                    if (raf) cancelAnimationFrame(raf);
+                    raf = requestAnimationFrame(function () {
+                        var el = resolveEl(activeSteps[current].ids);
+                        if (el) position(el);
+                    });
+                }
+
+                function onKeydown(e) {
+                    if (e.key === 'Escape') { end(); return; }
+                    if (e.key === 'ArrowRight' || e.key === 'Enter') { go(1); return; }
+                    if (e.key === 'ArrowLeft') { go(-1); return; }
+                }
+
+                startBtn.addEventListener('click', start);
+                nextBtn.addEventListener('click', function () { go(1); });
+                prevBtn.addEventListener('click', function () { go(-1); });
+                skipBtn.addEventListener('click', end);
+
+                if (startBtn.dataset.autoStart === '1') start();
+        })();
+    </script>
 </div>

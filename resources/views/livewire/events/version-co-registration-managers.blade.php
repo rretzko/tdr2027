@@ -170,6 +170,60 @@
                 <flux:error name="countyIds" />
             </div>
 
+            <div class="space-y-4 border-t border-zinc-200 pt-4 dark:border-zinc-700">
+                <flux:heading size="sm">Mail-To Address</flux:heading>
+                <flux:description>Printed on the Estimate Form's Mail-To page for schools in this manager's assigned counties.</flux:description>
+
+                <flux:field>
+                    <flux:label>Recipient name</flux:label>
+                    <flux:input wire:model="mailto_recipient_name" />
+                    <flux:error name="mailto_recipient_name" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>Organization / school line</flux:label>
+                    <flux:input wire:model="mailto_organization_line" />
+                    <flux:error name="mailto_organization_line" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>Address line 1</flux:label>
+                    <flux:input wire:model="mailto_address_line1" />
+                    <flux:error name="mailto_address_line1" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>Address line 2</flux:label>
+                    <flux:input wire:model="mailto_address_line2" />
+                    <flux:error name="mailto_address_line2" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>City</flux:label>
+                    <flux:input wire:model="mailto_city" />
+                    <flux:error name="mailto_city" />
+                </flux:field>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <flux:field>
+                        <flux:label>State</flux:label>
+                        <flux:select wire:model="mailto_geostate_id">
+                            <flux:select.option value="">— select —</flux:select.option>
+                            @foreach ($geostates as $geostate)
+                                <flux:select.option value="{{ $geostate->id }}">{{ $geostate->name }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                        <flux:error name="mailto_geostate_id" />
+                    </flux:field>
+
+                    <flux:field>
+                        <flux:label>Zip</flux:label>
+                        <flux:input wire:model="mailto_zip" />
+                        <flux:error name="mailto_zip" />
+                    </flux:field>
+                </div>
+            </div>
+
             @if ($errors->any())
                 <flux:callout variant="danger" icon="exclamation-triangle">
                     <flux:callout.text>Please correct the errors above before saving.</flux:callout.text>

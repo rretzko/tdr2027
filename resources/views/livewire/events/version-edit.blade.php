@@ -783,13 +783,24 @@
                                     <div class="flex items-center justify-between gap-3">
                                         <span class="text-sm">{{ $user->name }} <span class="text-zinc-400">({{ $user->email }})</span></span>
                                         @if ($canManageRoles)
-                                            <flux:button
-                                                size="sm" variant="ghost" icon="x-mark"
-                                                wire:click="revokeRole({{ $user->id }}, '{{ $role }}')"
-                                                wire:confirm="Remove {{ $user->name }} as {{ $role }}?"
-                                            >
-                                                Remove
-                                            </flux:button>
+                                            <div class="flex items-center gap-1">
+                                                @if ($role === 'Registration Manager')
+                                                    <flux:button
+                                                        size="sm" variant="ghost" icon="envelope"
+                                                        type="button"
+                                                        x-on:click="$wire.editMailToAddress({{ $user->id }}).then(() => $dispatch('modal-show', { name: 'mailto-address-form' }))"
+                                                    >
+                                                        Edit mail-to address
+                                                    </flux:button>
+                                                @endif
+                                                <flux:button
+                                                    size="sm" variant="ghost" icon="x-mark"
+                                                    wire:click="revokeRole({{ $user->id }}, '{{ $role }}')"
+                                                    wire:confirm="Remove {{ $user->name }} as {{ $role }}?"
+                                                >
+                                                    Remove
+                                                </flux:button>
+                                            </div>
                                         @endif
                                     </div>
                                 @endforeach
@@ -850,6 +861,78 @@
                     </div>
                 @endif
             </div>
+
+            <flux:modal name="mailto-address-form" class="md:w-[28rem]">
+                <form wire:submit="saveMailToAddress" class="space-y-6">
+                    <div>
+                        <flux:heading size="lg">Registration Manager Mail-To Address</flux:heading>
+                        <flux:subheading>Printed on the Estimate Form's Mail-To page.</flux:subheading>
+                    </div>
+
+                    <flux:field>
+                        <flux:label>Recipient name</flux:label>
+                        <flux:input wire:model="mailto_recipient_name" />
+                        <flux:error name="mailto_recipient_name" />
+                    </flux:field>
+
+                    <flux:field>
+                        <flux:label>Organization / school line</flux:label>
+                        <flux:input wire:model="mailto_organization_line" />
+                        <flux:error name="mailto_organization_line" />
+                    </flux:field>
+
+                    <flux:field>
+                        <flux:label>Address line 1</flux:label>
+                        <flux:input wire:model="mailto_address_line1" />
+                        <flux:error name="mailto_address_line1" />
+                    </flux:field>
+
+                    <flux:field>
+                        <flux:label>Address line 2</flux:label>
+                        <flux:input wire:model="mailto_address_line2" />
+                        <flux:error name="mailto_address_line2" />
+                    </flux:field>
+
+                    <flux:field>
+                        <flux:label>City</flux:label>
+                        <flux:input wire:model="mailto_city" />
+                        <flux:error name="mailto_city" />
+                    </flux:field>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <flux:field>
+                            <flux:label>State</flux:label>
+                            <flux:select wire:model="mailto_geostate_id">
+                                <flux:select.option value="">— select —</flux:select.option>
+                                @foreach ($geostates as $geostate)
+                                    <flux:select.option value="{{ $geostate->id }}">{{ $geostate->name }}</flux:select.option>
+                                @endforeach
+                            </flux:select>
+                            <flux:error name="mailto_geostate_id" />
+                        </flux:field>
+
+                        <flux:field>
+                            <flux:label>Zip</flux:label>
+                            <flux:input wire:model="mailto_zip" />
+                            <flux:error name="mailto_zip" />
+                        </flux:field>
+                    </div>
+
+                    @if ($errors->any())
+                        <flux:callout variant="danger" icon="exclamation-triangle">
+                            <flux:callout.text>Please correct the errors above before saving.</flux:callout.text>
+                        </flux:callout>
+                    @endif
+
+                    <div class="flex gap-2">
+                        <flux:spacer />
+                        <flux:modal.close>
+                            <flux:button variant="ghost">Cancel</flux:button>
+                        </flux:modal.close>
+                        <flux:button type="submit" variant="primary">Save</flux:button>
+                    </div>
+                </form>
+            </flux:modal>
         </flux:tab.panel>
     </flux:tab.group>
 </div>

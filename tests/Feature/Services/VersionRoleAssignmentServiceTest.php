@@ -527,6 +527,63 @@ test('assignRole aborts with 400 when the role is Co-Registration Manager, since
         ->toThrow(HttpException::class);
 });
 
+test('assignRole aborts with 422 when a second Registration Manager is assigned to the same Version (§5.12)', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+    $firstManager = User::factory()->create();
+    $secondManager = User::factory()->create();
+
+    $service->assignRole($founder, $version, $firstManager, 'Registration Manager');
+
+    expect(fn () => $service->assignRole($founder, $version, $secondManager, 'Registration Manager'))
+        ->toThrow(HttpException::class);
+
+    $registrationManagerIds = $service->assignmentsForVersion($version)->get('Registration Manager')->pluck('id');
+    expect($registrationManagerIds)->toContain($firstManager->id);
+    expect($registrationManagerIds)->not->toContain($secondManager->id);
+});
+
+test('assignRole allows re-assigning Registration Manager to the same user already holding it', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+    $manager = User::factory()->create();
+
+    $service->assignRole($founder, $version, $manager, 'Registration Manager');
+
+    expect(fn () => $service->assignRole($founder, $version, $manager, 'Registration Manager'))
+        ->not->toThrow(HttpException::class);
+});
+
+test('assignRole allows Registration Manager on a sibling Version once revoked from this one', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $event = Event::factory()->create();
+    $versionA = Version::factory()->create(['event_id' => $event->id]);
+    $versionB = Version::factory()->create(['event_id' => $event->id]);
+    $manager = User::factory()->create();
+
+    $service->assignRole($founder, $versionA, $manager, 'Registration Manager');
+
+    expect(fn () => $service->assignRole($founder, $versionB, $manager, 'Registration Manager'))
+        ->not->toThrow(HttpException::class);
+});
+
+test('hasRegistrationManager reflects assignment state and honors exceptUserId', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $founder = makeFounder();
+    $version = Version::factory()->create();
+    $manager = User::factory()->create();
+
+    expect($service->hasRegistrationManager($version))->toBeFalse();
+
+    $service->assignRole($founder, $version, $manager, 'Registration Manager');
+
+    expect($service->hasRegistrationManager($version))->toBeTrue();
+    expect($service->hasRegistrationManager($version, exceptUserId: $manager->id))->toBeFalse();
+});
+
 test('canManageCoRegistrationManagers is true for Registration Manager held specifically on that Version', function () {
     $service = app(VersionRoleAssignmentService::class);
     $user = User::factory()->create();

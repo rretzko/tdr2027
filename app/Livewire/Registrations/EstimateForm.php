@@ -5,21 +5,26 @@ declare(strict_types=1);
 namespace App\Livewire\Registrations;
 
 use App\Concerns\GuardsAcceptedObligations;
+use App\Enums\CandidateStatus;
+use App\Models\Candidate;
+use App\Models\School;
 use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionInvitation;
+use App\Services\MailToAddressResolver;
+use App\Support\EstimateFormData;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
 /**
- * Placeholder only — every Event requires the teacher to submit an Estimate
- * form to the Version's Registration Manager, but the form itself isn't
- * built yet. A real route/page (not just an inert button) so a Founder can
- * register it in Trackable Pages (App\Support\FastPass) ahead of the real
- * implementation — the route takes a single {version} parameter, matching
- * TrackablePages::isTrackable()'s requirement.
+ * Real implementation — event-version-orientation.md §5.13. Route deliberately
+ * kept {version}-only (not {version}/{school}) so it stays trackable via
+ * App\Livewire\Founder\TrackablePages::isTrackable(); the per-school PDF
+ * download carries {school} on its own controller route instead (see
+ * EstimateFormPdfController).
  */
 #[Layout('components.layouts.app')]
 class EstimateForm extends Component
@@ -45,9 +50,60 @@ class EstimateForm extends Component
         $this->version = $version;
     }
 
-    public function render(): View
+    public function render(MailToAddressResolver $mailToResolver): View
     {
-        return view('livewire.registrations.estimate-form');
+        $teacher = $this->teacher();
+        $schools = $this->schoolsWithCandidates($teacher);
+
+        return view('livewire.registrations.estimate-form', [
+            'schools' => $schools,
+            'registeredCounts' => $this->registeredCountsBySchool($teacher, $schools),
+            // Only built for the single-school case — the multi-school picker
+            // shows counts only, per §5.13 ("no inline on-screen summary per
+            // school in the multi-school case").
+            'singleSchoolData' => $schools->count() === 1
+                ? EstimateFormData::build($this->version, $schools->first(), $teacher, $mailToResolver)
+                : null,
+        ]);
+    }
+
+    /**
+     * The teacher's active+verified schools that have at least one
+     * registered Candidate on this Version — one Estimate Form per school,
+     * per §5.13's multi-school resolution.
+     *
+     * @return Collection<int, School>
+     */
+    private function schoolsWithCandidates(Teacher $teacher): Collection
+    {
+        $activeSchoolIds = $teacher->schools()
+            ->wherePivot('is_active', true)
+            ->wherePivot('verified_at', '!=', null)
+            ->pluck('schools.id');
+
+        $schoolIdsWithCandidates = Candidate::where('version_id', $this->version->id)
+            ->where('teacher_id', $teacher->id)
+            ->where('status', CandidateStatus::Registered->value)
+            ->whereIn('school_id', $activeSchoolIds)
+            ->distinct()
+            ->pluck('school_id');
+
+        return School::whereIn('id', $schoolIdsWithCandidates)->orderBy('name')->get();
+    }
+
+    /**
+     * @param  Collection<int, School>  $schools
+     * @return Collection<int, int> school_id => registered candidate count
+     */
+    private function registeredCountsBySchool(Teacher $teacher, Collection $schools): Collection
+    {
+        return Candidate::where('version_id', $this->version->id)
+            ->where('teacher_id', $teacher->id)
+            ->where('status', CandidateStatus::Registered->value)
+            ->whereIn('school_id', $schools->pluck('id'))
+            ->selectRaw('school_id, count(*) as candidate_count')
+            ->groupBy('school_id')
+            ->pluck('candidate_count', 'school_id');
     }
 
     private function teacher(): Teacher

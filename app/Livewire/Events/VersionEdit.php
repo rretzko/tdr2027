@@ -18,6 +18,7 @@ use App\Enums\VersionDateType;
 use App\Enums\VersionObligationStatus;
 use App\Models\County;
 use App\Models\EventEpaymentConfig;
+use App\Models\Geostate;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionApplication;
@@ -26,6 +27,7 @@ use App\Models\VersionDate;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionEpaymentConfig;
 use App\Models\VersionFee;
+use App\Models\VersionMailToAddress;
 use App\Models\VersionMembershipRequirement;
 use App\Models\VersionObligation;
 use App\Models\VersionUploadFile;
@@ -207,6 +209,23 @@ class VersionEdit extends Component
     public ?int $assign_user_id = null;
 
     public string $assign_role = '';
+
+    // Roles tab — Registration Manager mail-to address (§5.12)
+    public ?int $mailto_user_id = null;
+
+    public string $mailto_recipient_name = '';
+
+    public string $mailto_organization_line = '';
+
+    public string $mailto_address_line1 = '';
+
+    public string $mailto_address_line2 = '';
+
+    public string $mailto_city = '';
+
+    public ?int $mailto_geostate_id = null;
+
+    public string $mailto_zip = '';
 
     public function mount(Version $version, VersionRoleAssignmentService $service): void
     {
@@ -809,6 +828,12 @@ class VersionEdit extends Component
 
         $targetUser = User::findOrFail($validated['assign_user_id']);
 
+        if ($validated['assign_role'] === 'Registration Manager' && $service->hasRegistrationManager($this->version, exceptUserId: $targetUser->id)) {
+            $this->addError('assign_role', 'A Registration Manager is already assigned to this Version — remove them first.');
+
+            return;
+        }
+
         $service->assignRole(Auth::user(), $this->version, $targetUser, $validated['assign_role']);
 
         $this->assign_search = '';
@@ -860,6 +885,76 @@ class VersionEdit extends Component
         Flux::toast("{$targetUser->name} removed as {$role}.");
     }
 
+    /**
+     * Opens the mail-to address modal for the Registration Manager
+     * $userId — pre-filled from any existing version_mail_to_addresses row,
+     * or defaulted (recipient name = the user's own name, everything else
+     * blank) if none exists yet. See §5.12.
+     */
+    public function editMailToAddress(int $userId): void
+    {
+        $targetUser = User::findOrFail($userId);
+        $existing = VersionMailToAddress::where('version_id', $this->version->id)
+            ->where('user_id', $userId)
+            ->first();
+
+        $this->mailto_user_id = $userId;
+
+        if ($existing !== null) {
+            $this->mailto_recipient_name = $existing->recipient_name;
+            $this->mailto_organization_line = $existing->organization_line ?? '';
+            $this->mailto_address_line1 = $existing->address_line1;
+            $this->mailto_address_line2 = $existing->address_line2 ?? '';
+            $this->mailto_city = $existing->city;
+            $this->mailto_geostate_id = $existing->geostate_id;
+            $this->mailto_zip = $existing->zip;
+        } else {
+            $this->mailto_recipient_name = $targetUser->name;
+            $this->mailto_organization_line = '';
+            $this->mailto_address_line1 = '';
+            $this->mailto_address_line2 = '';
+            $this->mailto_city = '';
+            $this->mailto_geostate_id = null;
+            $this->mailto_zip = '';
+        }
+
+        $this->resetErrorBag();
+    }
+
+    public function saveMailToAddress(VersionRoleAssignmentService $service): void
+    {
+        abort_unless($service->canManageVersionRoles(Auth::user(), $this->version), 403);
+        abort_if($this->mailto_user_id === null, 400);
+
+        $validated = $this->validate([
+            'mailto_recipient_name' => ['required', 'string', 'max:255'],
+            'mailto_organization_line' => ['nullable', 'string', 'max:255'],
+            'mailto_address_line1' => ['required', 'string', 'max:255'],
+            'mailto_address_line2' => ['nullable', 'string', 'max:255'],
+            'mailto_city' => ['required', 'string', 'max:255'],
+            'mailto_geostate_id' => ['required', 'integer', 'exists:geostates,id'],
+            'mailto_zip' => ['required', 'string', 'max:20'],
+        ]);
+
+        VersionMailToAddress::updateOrCreate(
+            ['version_id' => $this->version->id, 'user_id' => $this->mailto_user_id],
+            [
+                'recipient_name' => $validated['mailto_recipient_name'],
+                'organization_line' => $validated['mailto_organization_line'] !== '' ? $validated['mailto_organization_line'] : null,
+                'address_line1' => $validated['mailto_address_line1'],
+                'address_line2' => $validated['mailto_address_line2'] !== '' ? $validated['mailto_address_line2'] : null,
+                'city' => $validated['mailto_city'],
+                'geostate_id' => $validated['mailto_geostate_id'],
+                'zip' => $validated['mailto_zip'],
+            ],
+        );
+
+        $this->mailto_user_id = null;
+        $this->modal('mailto-address-form')->close();
+
+        Flux::toast('Mail-to address saved.', variant: 'success');
+    }
+
     public function render(VersionRoleAssignmentService $service): View
     {
         $applicationPreviewData = CandidateApplicationData::placeholder($this->version);
@@ -875,6 +970,7 @@ class VersionEdit extends Component
             'dateTypes' => VersionDateType::cases(),
             'gradeOptions' => range(6, 12),
             'counties' => County::orderBy('name')->get(),
+            'geostates' => Geostate::orderBy('name')->get(),
             'eventEnsembles' => $this->version->event->ensembles()->orderBy('name')->get()
                 ->sortBy(fn ($ensemble) => $this->ensemble_order[$ensemble->id] ?? PHP_INT_MAX)
                 ->values(),
