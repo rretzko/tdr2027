@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureStudentHasActiveSchool;
 use App\Http\Middleware\EnsureTeacherCanAccessEvents;
 use App\Http\Middleware\EnsureTeacherHasActiveSchool;
 use App\Http\Middleware\EnsureTeacherOnboardingComplete;
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'onboarding.complete' => EnsureTeacherOnboardingComplete::class,
             'has.active.school' => EnsureTeacherHasActiveSchool::class,
+            'student.has.active.school' => EnsureStudentHasActiveSchool::class,
             'can.access.events' => EnsureTeacherCanAccessEvents::class,
             'founder' => EnsureUserIsFounder::class,
         ]);

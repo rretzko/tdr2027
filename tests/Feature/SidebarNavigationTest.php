@@ -33,7 +33,9 @@ test('a teacher who completed onboarding sees the Schools/Students/Organizations
 test('a student does not see the Schools/Students/Organizations/Events nav links', function () {
     $user = User::factory()->create();
     $user->markEmailAsVerified();
-    Student::factory()->create(['user_id' => $user->id]);
+    $student = Student::factory()->create(['user_id' => $user->id]);
+    $school = School::factory()->create();
+    $student->schools()->attach($school->id, ['is_active' => true, 'class_of' => 2030]);
 
     actingAs($user)->get(route('dashboard'))
         ->assertOk()
