@@ -14,8 +14,20 @@
     @var string|null $scheduleBody
     @var string|null $policiesBody
     @var bool $showTeacherSection
+    @var \Illuminate\Support\Carbon|null $candidateSignedAt  -- EApplication mode only; omitted/null renders a blank signature line
+    @var \Illuminate\Support\Carbon|null $parentSignedAt     -- EApplication mode only; omitted/null renders a blank signature line
 --}}
-<div class="mt-4" style="font-family: sans-serif;">
+{{--
+    Explicit white background + black text on the root element below —
+    this represents an actual paper/PDF document (dompdf renders it
+    identically), so it must always look like paper regardless of the
+    app's light/dark theme, not adapt to it. Without this, the in-app View
+    modal (unlike the PDF, which has no theme at all) inherited the app's
+    dark-mode text color while the section-header/table backgrounds below
+    stayed hardcoded light (lightblue/lightgray), which made that text
+    unreadable in dark mode (found 2026-08-18).
+--}}
+<div class="mt-4" style="font-family: sans-serif; background-color: #ffffff; color: #000000; padding: 1rem; border-radius: 0.375rem;">
     <style>
         .ca-sectionHeader {
             background-color: lightblue;
@@ -59,6 +71,18 @@
 
         .ca-conditions li p {
             display: inline;
+        }
+
+        .ca-signature {
+            font-family: 'Brush Script MT', cursive;
+            font-style: italic;
+            font-size: 1.25rem;
+            margin-left: 0.5rem;
+        }
+
+        .ca-signature-note {
+            font-size: 0.7rem;
+            color: #555;
         }
     </style>
 
@@ -133,10 +157,22 @@
         <div class="ca-conditions">{!! $studentBody !!}</div>
         <table style="width: 100%; margin-top: 0.5rem;">
             <tr>
-                <td style="text-align: left;">{{ $data->candidateFullName }} Signature: ________________________</td>
-                <td style="text-align: right;">Date: _________</td>
+                <td style="text-align: left;">
+                    {{ $data->candidateFullName }} Signature:
+                    @if (($candidateSignedAt ?? null) !== null)
+                        <span class="ca-signature">{{ $data->candidateFullName }}</span>
+                    @else
+                        ________________________
+                    @endif
+                </td>
+                <td style="text-align: right;">
+                    Date: {{ ($candidateSignedAt ?? null) !== null ? $candidateSignedAt->format('M j, Y') : '_________' }}
+                </td>
             </tr>
         </table>
+        @if (($candidateSignedAt ?? null) !== null)
+            <div class="ca-signature-note">Electronically signed {{ $candidateSignedAt->format('M j, Y g:ia') }}.</div>
+        @endif
     </section>
 
     {{-- PARENT/GUARDIAN ENDORSEMENT --}}
@@ -145,10 +181,22 @@
         <div class="ca-conditions">{!! $parentBody !!}</div>
         <table style="width: 100%; margin-top: 0.5rem;">
             <tr>
-                <td style="text-align: left;">Signature of {{ $data->emergencyContactName }}: ________________________</td>
-                <td style="text-align: right;">Date: _________</td>
+                <td style="text-align: left;">
+                    Signature of {{ $data->emergencyContactName }}:
+                    @if (($parentSignedAt ?? null) !== null)
+                        <span class="ca-signature">{{ $data->emergencyContactName }}</span>
+                    @else
+                        ________________________
+                    @endif
+                </td>
+                <td style="text-align: right;">
+                    Date: {{ ($parentSignedAt ?? null) !== null ? $parentSignedAt->format('M j, Y') : '_________' }}
+                </td>
             </tr>
         </table>
+        @if (($parentSignedAt ?? null) !== null)
+            <div class="ca-signature-note">Electronically signed {{ $parentSignedAt->format('M j, Y g:ia') }} (by the candidate, on the parent/guardian's behalf).</div>
+        @endif
     </section>
 
     {{-- TEACHER/PRINCIPAL ENDORSEMENT (Pdf mode only) --}}

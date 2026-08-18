@@ -174,3 +174,34 @@ test('shows the empty-state message when the Version has no pitch files', functi
     Livewire::test(PitchFiles::class, ['version' => $version])
         ->assertSee('No pitch files have been added to this Version yet.');
 });
+
+// --- pitch_file_visibility (studentfolder-module.md §5.5, second pass 2026-08-18) ---
+
+test('a Version set to Candidate-only visibility shows no pitch files to the teacher', function () {
+    $teacher = makePitchFilesTeacher();
+    $version = makeRegistrationsPitchFilesVersion();
+    $version->update(['pitch_file_visibility' => 'candidate']);
+    actingAs($teacher->user);
+    invitePitchFilesTeacher($teacher, $version);
+
+    $soprano = attachVoicePartToPitchFilesVersion($version, 'Soprano');
+    VersionPitchFile::create(['version_id' => $version->id, 'voice_part_id' => $soprano->id, 'name' => 'scales', 'url' => 'x', 'order_by' => 1]);
+
+    Livewire::test(PitchFiles::class, ['version' => $version])
+        ->assertDontSee('scales')
+        ->assertSee('only shown to candidates');
+});
+
+test('a Version set to Teacher-only or Both visibility still shows pitch files to the teacher', function (string $visibility) {
+    $teacher = makePitchFilesTeacher();
+    $version = makeRegistrationsPitchFilesVersion();
+    $version->update(['pitch_file_visibility' => $visibility]);
+    actingAs($teacher->user);
+    invitePitchFilesTeacher($teacher, $version);
+
+    $soprano = attachVoicePartToPitchFilesVersion($version, 'Soprano');
+    VersionPitchFile::create(['version_id' => $version->id, 'voice_part_id' => $soprano->id, 'name' => 'scales', 'url' => 'x', 'order_by' => 1]);
+
+    Livewire::test(PitchFiles::class, ['version' => $version])
+        ->assertSee('scales');
+})->with(['teacher', 'both']);

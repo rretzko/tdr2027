@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\Registrations;
 
 use App\Concerns\GuardsAcceptedObligations;
+use App\Enums\PitchFileVisibility;
 use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionInvitation;
@@ -23,6 +24,13 @@ use Livewire\Component;
  * Filterable by Voice Part and Name; a pitch file whose Voice Part is the
  * seeded 'ALL' voice part (VoicePartSeeder) always displays regardless of
  * the Voice Part filter, since it's meant to apply across every part.
+ *
+ * Gated on `versions.pitch_file_visibility` since studentfolder-module.md
+ * §5.5's second clarifying pass (2026-08-18) — `Teacher`/`Both` shows every
+ * pitch file to the teacher as before; `Candidate`-only now shows none,
+ * a real behavior change to this already-shipped page (it previously
+ * ignored the setting entirely). The student-facing equivalent
+ * (`App\Livewire\Sfdi\Events\PitchFiles`) enforces the mirror-image rule.
  */
 #[Layout('components.layouts.app')]
 class PitchFiles extends Component
@@ -56,12 +64,21 @@ class PitchFiles extends Component
 
     public function render(): View
     {
-        $allPitchFiles = $this->version->pitchFiles()->with('voicePart')->get();
+        $visibleToTeacher = in_array(
+            $this->version->getRawOriginal('pitch_file_visibility'),
+            [PitchFileVisibility::Both->value, PitchFileVisibility::Teacher->value],
+            true,
+        );
+
+        $allPitchFiles = $visibleToTeacher
+            ? $this->version->pitchFiles()->with('voicePart')->get()
+            : new Collection;
 
         return view('livewire.registrations.pitch-files', [
             'pitchFiles' => $this->filter($allPitchFiles),
             'availableVoiceParts' => $this->version->availableVoiceParts(),
             'nameOptions' => $allPitchFiles->pluck('name')->unique()->sort()->values(),
+            'visibleToTeacher' => $visibleToTeacher,
         ]);
     }
 

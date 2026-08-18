@@ -69,10 +69,27 @@ class RecordingReviewService
      * binary required) — returns null rather than throwing on anything it
      * can't parse, since a failed extraction should just skip the duration
      * check, not break the upload.
+     *
+     * Diagnosed 2026-08-18: getID3::analyze() on a real (non-fake) audio
+     * file reliably crashes the whole PHP worker with a Windows access
+     * violation (0xC0000005) — but only under Apache's threaded mod_php
+     * (PHP_SAPI 'apache2handler', ZTS build); the identical file analyzes
+     * fine under the CLI SAPI (proven directly, and by this class's own
+     * Pest coverage, which always runs CLI). A segfault can't be caught by
+     * PHP (no try/catch, no shutdown function survives it), so the only
+     * way to keep this "never blocks" as its docblock already promises is
+     * to skip the call entirely under the one SAPI known to crash on it —
+     * 'apache2handler' is XAMPP-on-Windows-local-dev only; this project
+     * deploys on Vapor/Lambda, which never runs that SAPI, so production
+     * (and this class's own tests) are unaffected.
      */
     public function extractDurationSeconds(string|false $absolutePath): ?int
     {
         if ($absolutePath === false || $absolutePath === '' || ! is_readable($absolutePath)) {
+            return null;
+        }
+
+        if (PHP_SAPI === 'apache2handler') {
             return null;
         }
 

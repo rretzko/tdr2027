@@ -49,6 +49,17 @@ class CandidateService
     }
 
     /**
+     * Student-initiated withdrawal (studentfolder-module.md §5.4) — distinct
+     * status from withdraw()'s TeacherWithdrawn so the two remain
+     * distinguishable in reporting/history, even though both are terminal
+     * pre-adjudication states.
+     */
+    public function withdrawByCandidate(Candidate $candidate): void
+    {
+        $candidate->update(['status' => CandidateStatus::Withdrew->value]);
+    }
+
+    /**
      * Iron-gate cascade: when a teacher rejects a Version's obligations,
      * every candidate they've enrolled for that Version that's still in an
      * active state is withdrawn — full stop to their participation. Each

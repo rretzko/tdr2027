@@ -1,5 +1,8 @@
 <x-layouts.app>
-    @php $teacher = auth()->user()->teacher; @endphp
+    @php
+        $teacher = auth()->user()->teacher;
+        $student = auth()->user()->student;
+    @endphp
 
     <div class="flex flex-col gap-6">
         <div class="flex items-center justify-between gap-3">
@@ -356,5 +359,43 @@
             if (startBtn.dataset.autoStart === '1') start();
         })();
     </script>
+    @elseif ($student)
+        {{-- StudentFolder.info side (studentfolder-module.md §5.1) — a
+             summary card linking to the real "My Events" list
+             (App\Livewire\Sfdi\Events\Index), which owns the full
+             read/checklist view. Queried inline here the same way the
+             teacher Events card above inlines $openEvents, rather than
+             invoking that Livewire component from a plain Route::view. --}}
+        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <a href="{{ route('sfdi.events.index') }}" wire:navigate class="block h-full transition hover:shadow-md">
+                <flux:card class="flex h-full flex-col gap-4 border-l-4 border-l-teal-500 sm:border-2 sm:border-teal-500">
+                    <flux:heading size="lg">My Events</flux:heading>
+
+                    @php
+                        $myCandidates = \App\Models\Candidate::where('student_id', $student->id)
+                            ->whereHas('version', fn ($q) => $q->where('status', 'active'))
+                            ->with(['version.event'])
+                            ->get();
+                    @endphp
+
+                    @if ($myCandidates->isNotEmpty())
+                        <div class="flex flex-col gap-2">
+                            @foreach ($myCandidates->take(5) as $candidate)
+                                <div class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                                    <flux:text class="font-medium">{{ $candidate->version->name }}</flux:text>
+                                    <flux:text size="sm" class="text-zinc-500">{{ $candidate->version->event->name }}</flux:text>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        @if ($myCandidates->count() > 5)
+                            <flux:text size="sm" class="text-zinc-500">+ {{ $myCandidates->count() - 5 }} more</flux:text>
+                        @endif
+                    @else
+                        <flux:text size="sm" class="text-zinc-500">No open events yet.</flux:text>
+                    @endif
+                </flux:card>
+            </a>
+        </div>
     @endif
 </x-layouts.app>

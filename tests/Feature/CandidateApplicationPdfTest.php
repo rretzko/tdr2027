@@ -6,6 +6,7 @@ use App\Enums\ApplicationType;
 use App\Enums\VersionApplicationStatus;
 use App\Models\Candidate;
 use App\Models\School;
+use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
@@ -26,6 +27,13 @@ function makePdfTestTeacher(): Teacher
     $teacher->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
 
     return $teacher;
+}
+
+function makePdfTestStudent(): Student
+{
+    $user = User::factory()->create(['email_verified_at' => now()]);
+
+    return Student::factory()->create(['user_id' => $user->id]);
 }
 
 function publishApplicationForPdfTest(Version $version): VersionApplication
@@ -116,4 +124,49 @@ test('returns a PDF with real candidate data for an EApplication-mode Version, o
     get(route('registrations.candidate.application-pdf', [$version, $candidate]))
         ->assertOk()
         ->assertHeader('Content-Type', 'application/pdf');
+});
+
+// --- Student ownership (studentfolder-module.md §5.6) ---
+
+test('the owning student can download the PDF', function () {
+    $teacher = makePdfTestTeacher();
+    actingAs($teacher->user);
+    $version = Version::factory()->create(['application_type' => ApplicationType::EApplication->value]);
+
+    $student = makePdfTestStudent();
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'student_id' => $student->id,
+        'program_name' => 'Jane Q. Student',
+    ]);
+
+    publishApplicationForPdfTest($version);
+
+    actingAs($student->user);
+
+    get(route('registrations.candidate.application-pdf', [$version, $candidate]))
+        ->assertOk()
+        ->assertHeader('Content-Type', 'application/pdf');
+});
+
+test('a student who does not own the candidate is forbidden', function () {
+    $teacher = makePdfTestTeacher();
+    actingAs($teacher->user);
+    $version = Version::factory()->create(['application_type' => ApplicationType::EApplication->value]);
+
+    $owningStudent = makePdfTestStudent();
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'student_id' => $owningStudent->id,
+    ]);
+
+    publishApplicationForPdfTest($version);
+
+    $otherStudent = makePdfTestStudent();
+    actingAs($otherStudent->user);
+
+    get(route('registrations.candidate.application-pdf', [$version, $candidate]))
+        ->assertForbidden();
 });

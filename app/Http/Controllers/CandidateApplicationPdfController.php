@@ -19,8 +19,16 @@ class CandidateApplicationPdfController extends Controller
     {
         abort_if($candidate->version_id !== $version->id, 404);
 
+        // Owning teacher or owning student (studentfolder-module.md §5.6) —
+        // the PDF download is a read-only convenience available to both
+        // roles regardless of status/obligations state.
         $teacher = Auth::user()->teacher;
-        abort_if($teacher === null || $candidate->teacher_id !== $teacher->id, 403);
+        $isOwningTeacher = $teacher !== null && $candidate->teacher_id === $teacher->id;
+
+        $student = Auth::user()->student;
+        $isOwningStudent = $student !== null && $candidate->student_id === $student->id;
+
+        abort_if(! $isOwningTeacher && ! $isOwningStudent, 403);
 
         $application = $version->candidateApplication;
         abort_if($application === null || ! $application->isPublished(), 404);
@@ -50,6 +58,11 @@ class CandidateApplicationPdfController extends Controller
             'scheduleBody' => $scheduleBody,
             'policiesBody' => $policiesBody,
             'showTeacherSection' => $version->getRawOriginal('application_type') === ApplicationType::Pdf->value,
+            // Rendered as a simulated signature in the shared document
+            // partial (product-owner direction, 2026-08-18) — null for
+            // Pdf-mode Versions, which have no self-attest timestamp.
+            'candidateSignedAt' => $candidate->application_candidate_signed_at,
+            'parentSignedAt' => $candidate->application_parent_signed_at,
         ])->download("application-{$candidate->ref}.pdf");
     }
 }

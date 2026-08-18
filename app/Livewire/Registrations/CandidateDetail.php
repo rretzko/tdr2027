@@ -32,6 +32,7 @@ use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\RecordingReviewService;
 use App\Support\CandidateApplicationData;
 use Flux\Flux;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -399,7 +400,13 @@ class CandidateDetail extends Component
     public function saveRecording(CandidateService $candidates, RecordingReviewService $review): void
     {
         $this->validate([
-            'newRecordingFile' => ['required', 'file', 'mimes:'.$this->allowedRecordingMimes(), 'max:51200'],
+            // extensions:, not mimes: — a real .m4a file's detected MIME
+            // type is frequently video/mp4 (it shares the ISO-BMFF/MP4
+            // container with video), which mimes:'s MIME-to-extension
+            // round-trip rejects even though the extension is legitimate.
+            // extensions: checks the file's actual extension directly,
+            // per Laravel's own docs recommendation for exactly this case.
+            'newRecordingFile' => ['required', 'file', 'extensions:'.$this->allowedRecordingExtensions(), 'max:51200'],
         ]);
 
         $slot = VersionUploadFile::where('id', $this->uploadingVersionUploadFileId)
@@ -546,7 +553,7 @@ class CandidateDetail extends Component
             ->delete();
     }
 
-    private function allowedRecordingMimes(): string
+    private function allowedRecordingExtensions(): string
     {
         return match ($this->version->getRawOriginal('upload_type')) {
             UploadType::Video->value => 'mp4,mov',
@@ -569,11 +576,12 @@ class CandidateDetail extends Component
         abort_unless(match ($feeType) {
             FeeType::Registration => $this->version->registrationFeePayable(),
             FeeType::Participation => $this->version->participationFeePayable(),
+            FeeType::Housing => $this->version->housingFeePayable(),
         }, 403);
 
         $eligibleStates = match ($feeType) {
             FeeType::Registration => CandidateStatus::registrationFeeEligibleStates(),
-            FeeType::Participation => [CandidateStatus::Accepted],
+            FeeType::Participation, FeeType::Housing => [CandidateStatus::Accepted],
         };
         // getRawOriginal(), not the magic-cast property — Larastan can't
         // infer the enum cast through this method-based casts() return here
@@ -712,6 +720,27 @@ class CandidateDetail extends Component
             && $candidateStatus === CandidateStatus::Accepted
             && $balanceDue;
 
+        // Housing deliberately stays OUTSIDE the combined registration+
+        // participation balance above (confirmed with the product owner,
+        // studentfolder-module.md §0 second pass, 2026-08-18 — the
+        // already-confirmed reconciliation formula, epayment-integration.md
+        // §5, does not change) — it gets its own independent due/paid pair,
+        // matched via payment_transactions.fee_type (written only by the
+        // electronic gateways at checkout; a manually recorded payment
+        // isn't attributable to a specific fee type, so it can't satisfy
+        // this balance — flag if that gap needs closing later).
+        $housingCents = (int) ($fees->housing ?? 0);
+        $housingPaidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
+            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value)
+                ->where('fee_type', FeeType::Housing->value))
+            ->sum('amount');
+        $housingBalanceDue = $housingCents - $housingPaidCents > 0;
+
+        $housingFeeDue = $epaymentTeacherReady
+            && $this->version->housingFeePayable()
+            && $candidateStatus === CandidateStatus::Accepted
+            && $housingBalanceDue;
+
         return view('livewire.registrations.candidate-detail', [
             'checklistDefs' => $checklistDefs,
             'relationships' => EmergencyContactRelationship::cases(),
@@ -722,6 +751,7 @@ class CandidateDetail extends Component
             'candidateUploads' => $this->candidate->uploadFiles->keyBy('version_upload_file_id'),
             'registrationFeeDue' => $registrationFeeDue,
             'participationFeeDue' => $participationFeeDue,
+            'housingFeeDue' => $housingFeeDue,
             'overpaymentCents' => $overpaymentCents,
             'candidatePayments' => PaymentTransaction::whereHas(
                 'allocations',
@@ -739,7 +769,7 @@ class CandidateDetail extends Component
      * the in-modal preview and the actual PDF download can never drift —
      * both render the identical shared partial (candidate-application.document).
      *
-     * @return array{application: VersionApplication|null, applicationDoc: array{data: CandidateApplicationData, studentBody: string, parentBody: string, teacherBody: ?string, scheduleBody: ?string, policiesBody: ?string, showTeacherSection: bool}|null}
+     * @return array{application: VersionApplication|null, applicationDoc: array{data: CandidateApplicationData, studentBody: string, parentBody: string, teacherBody: ?string, scheduleBody: ?string, policiesBody: ?string, showTeacherSection: bool, candidateSignedAt: ?Carbon, parentSignedAt: ?Carbon}|null}
      */
     private function applicationDocumentView(): array
     {
@@ -769,6 +799,18 @@ class CandidateDetail extends Component
                     ? VersionApplication::mergeTokens($application->policies_body, $data)
                     : null,
                 'showTeacherSection' => $this->version->getRawOriginal('application_type') === ApplicationType::Pdf->value,
+                // Rendered as a simulated signature in the shared document
+                // partial (product-owner direction, 2026-08-18) — reflects
+                // the student's own self-attestation regardless of which
+                // role (teacher or student) is viewing this document.
+                // Carbon::make(), not the magic-cast property directly —
+                // Larastan infers this model's datetime casts as plain
+                // string|null through its method-based casts() return
+                // (cataloged PHPStan-quirks memory); Carbon::make() is a
+                // no-op at runtime (the value is already a Carbon instance)
+                // but gives the type checker what it needs.
+                'candidateSignedAt' => Carbon::make($this->candidate->application_candidate_signed_at),
+                'parentSignedAt' => Carbon::make($this->candidate->application_parent_signed_at),
             ],
         ];
     }

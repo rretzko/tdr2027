@@ -141,12 +141,13 @@ class VersionDashboard extends Component
         abort_unless(match ($feeType) {
             FeeType::Registration => $this->version->registrationFeePayable(),
             FeeType::Participation => $this->version->participationFeePayable(),
+            FeeType::Housing => $this->version->housingFeePayable(),
         }, 403);
         abort_if($this->selectedCandidateIds === [], 422, 'Select at least one candidate to pay for.');
 
         $eligibleStates = match ($feeType) {
             FeeType::Registration => CandidateStatus::registrationFeeEligibleStates(),
-            FeeType::Participation => [CandidateStatus::Accepted],
+            FeeType::Participation, FeeType::Housing => [CandidateStatus::Accepted],
         };
 
         // Defensive filter — the roster UI already only offers checkboxes for
@@ -415,19 +416,30 @@ class VersionDashboard extends Component
 
         $epaymentTeacherReady = $this->version->epaymentTeacherReady();
 
-        // Registration and participation are two mutually-exclusive windows
-        // (see Version::registrationFeePayable()/participationFeePayable()),
-        // so at most one FeeType is ever chargeable from this roster at a
-        // time — no fee-type selector is needed, just the right label/filter.
-        $activeFeeType = match (true) {
-            $epaymentTeacherReady && $this->version->registrationFeePayable() => FeeType::Registration,
-            $epaymentTeacherReady && $this->version->participationFeePayable() => FeeType::Participation,
-            default => null,
-        };
-        $feeEligibleStatuses = match ($activeFeeType) {
-            FeeType::Registration => CandidateStatus::registrationFeeEligibleStates(),
-            FeeType::Participation => [CandidateStatus::Accepted],
-            null => [],
+        // Registration's window is mutually exclusive with the other two
+        // (see Version::registrationFeePayable()/participationFeePayable()/
+        // housingFeePayable()), but participation and housing share the
+        // exact same timing, so both can be simultaneously chargeable once
+        // the Version closes — $activeFeeTypes is a list (0-2 entries), not
+        // a single value; the roster's checkbox-eligibility set is still
+        // singular, since registration-eligible and Accepted-only never
+        // apply on the same render (confirmed with the product owner,
+        // studentfolder-module.md §0 second pass, 2026-08-18).
+        $activeFeeTypes = collect();
+        if ($epaymentTeacherReady && $this->version->registrationFeePayable()) {
+            $activeFeeTypes->push(FeeType::Registration);
+        }
+        if ($epaymentTeacherReady && $this->version->participationFeePayable()) {
+            $activeFeeTypes->push(FeeType::Participation);
+        }
+        if ($epaymentTeacherReady && $this->version->housingFeePayable()) {
+            $activeFeeTypes->push(FeeType::Housing);
+        }
+
+        $feeEligibleStatuses = match (true) {
+            $activeFeeTypes->contains(FeeType::Registration) => CandidateStatus::registrationFeeEligibleStates(),
+            $activeFeeTypes->isNotEmpty() => [CandidateStatus::Accepted],
+            default => [],
         };
 
         $epaymentStudentEnabled = $this->version->epaymentStudentEnabled();
@@ -453,7 +465,7 @@ class VersionDashboard extends Component
             'myCandidates', 'filteredCandidates', 'paidByCandidateId', 'voicePartCounts', 'voicePartTotal',
             'statusCounts', 'statusTotal', 'statusOptions',
             'upcomingDates', 'voiceParts', 'checklistDefs',
-            'activeFeeType', 'feeEligibleStatuses', 'epaymentStudentEnabled', 'epaymentOptedIn', 'unreconciledPayments',
+            'activeFeeTypes', 'feeEligibleStatuses', 'epaymentStudentEnabled', 'epaymentOptedIn', 'unreconciledPayments',
             'paymentRegisterRows', 'showOrientation',
         ));
     }
