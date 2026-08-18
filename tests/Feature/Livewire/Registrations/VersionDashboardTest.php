@@ -23,6 +23,7 @@ use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionEpaymentConfig;
+use App\Models\VersionFee;
 use App\Models\VersionInvitation;
 use App\Models\VersionObligation;
 use App\Models\VersionObligationResponse;
@@ -853,6 +854,68 @@ test('Group Payment explains itself instead of offering selection when no fee wi
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
         ->assertSee('Group Payment is not available right now');
+});
+
+test('Group Payment offers separate Pay Participation Fee and Pay Housing Fee buttons at once, once the Version is closed', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create(['status' => EventStatus::Closed]);
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    makeReadyForGroupPayment($version);
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000, 'participation' => 500, 'housing' => 1500]);
+
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Accepted,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->set('selectedCandidateIds', [$candidate->id])
+        ->assertDontSee('Pay Registration Fee for Selected')
+        ->assertSee('Pay Participation Fee for Selected')
+        ->assertSee('Pay Housing Fee for Selected');
+});
+
+test('payForSelected aborts with 403 for housing before the Version is closed', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    makeReadyForGroupPayment($version);
+
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Accepted,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->set('selectedCandidateIds', [$candidate->id])
+        ->call('payForSelected', 'housing')
+        ->assertStatus(403);
+});
+
+test('payForSelected aborts with 422 when none of the selected candidates are Accepted for housing', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create(['status' => EventStatus::Closed]);
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    makeReadyForGroupPayment($version);
+
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::NotAccepted,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->set('selectedCandidateIds', [$candidate->id])
+        ->call('payForSelected', 'housing')
+        ->assertStatus(422);
 });
 
 test('openPaymentRegister does not error', function () {

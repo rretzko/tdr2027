@@ -29,7 +29,9 @@
     @if ($pitchFiles->isEmpty())
         <flux:callout variant="info" icon="magnifying-glass">
             <flux:callout.text>
-                @if ($voicePartFilter !== '' || $nameFilter !== '')
+                @if (! $visibleToTeacher)
+                    Pitch files for this Event are only shown to candidates.
+                @elseif ($voicePartFilter !== '' || $nameFilter !== '')
                     No pitch files match your filter.
                 @else
                     No pitch files have been added to this Version yet.

@@ -291,10 +291,18 @@
             <div class="flex items-center justify-between mb-2">
                 <flux:heading size="xs" class="text-zinc-500">Payment History</flux:heading>
                 <div class="flex items-center gap-2">
+                    {{-- Registration is mutually exclusive with the other
+                         two by timing (see FeeType), but participation and
+                         housing can both be due at once once the Version
+                         closes — independent @if blocks, not @elseif. --}}
                     @if ($registrationFeeDue)
                         <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('registration')">Pay Registration Fee</flux:button>
-                    @elseif ($participationFeeDue)
+                    @endif
+                    @if ($participationFeeDue)
                         <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('participation')">Pay Participation Fee</flux:button>
+                    @endif
+                    @if ($housingFeeDue)
+                        <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('housing')">Pay Housing Fee</flux:button>
                     @endif
                     <flux:button size="sm" variant="ghost" icon="plus" wire:click="recordPayment">Record Payment</flux:button>
                 </div>
@@ -516,6 +524,8 @@
                         'scheduleBody' => $applicationDoc['scheduleBody'],
                         'policiesBody' => $applicationDoc['policiesBody'],
                         'showTeacherSection' => $applicationDoc['showTeacherSection'],
+                        'candidateSignedAt' => $applicationDoc['candidateSignedAt'],
+                        'parentSignedAt' => $applicationDoc['parentSignedAt'],
                     ])
                 </div>
 

@@ -174,6 +174,18 @@ class Version extends Model
     }
 
     /**
+     * Same timing as participationFeePayable() (studentfolder-module.md
+     * §2.1/§6) — also only assessed on Accepted candidates, once formally
+     * closed. Housing and participation are therefore simultaneously
+     * chargeable once closed, unlike registration (mutually exclusive with
+     * both by timing) — see FeeType and VersionDashboard's $activeFeeTypes.
+     */
+    public function housingFeePayable(): bool
+    {
+        return $this->getRawOriginal('status') === EventStatus::Closed->value;
+    }
+
+    /**
      * @return HasOne<VersionMembershipRequirement, $this>
      */
     public function membershipRequirement(): HasOne

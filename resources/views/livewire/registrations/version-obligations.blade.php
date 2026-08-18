@@ -33,8 +33,12 @@
             text="The Event Manager hasn't published Teacher Obligations for this Version yet. Check back later."
         />
     @else
-        <flux:card class="mb-6">
-            <div class="obligation-content text-zinc-700 dark:text-zinc-300">
+        {{-- Explicit white/black, not dark:-adaptive classes — this is an
+             actual document the teacher reads and accepts/rejects, so like
+             the Candidate Application view it should always look like
+             paper, regardless of the app's theme. --}}
+        <flux:card class="mb-6" style="background-color: #ffffff;">
+            <div class="obligation-content" style="color: #000000;">
                 {!! $body !!}
             </div>
         </flux:card>

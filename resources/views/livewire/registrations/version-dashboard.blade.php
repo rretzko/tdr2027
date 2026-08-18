@@ -209,21 +209,28 @@
                     </div>
                 @endif
 
-                @if ($activeFeeType !== null)
+                @if ($activeFeeTypes->isNotEmpty())
                     <div class="flex items-center justify-between">
                         <div>
                             <flux:heading size="xs" class="text-zinc-500">Group Payment</flux:heading>
                             <flux:text size="sm" class="text-zinc-500">{{ count($selectedCandidateIds) }} selected</flux:text>
                         </div>
                         @if (count($selectedCandidateIds) > 0)
-                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payForSelected('{{ $activeFeeType->value }}')">
-                                Pay {{ $activeFeeType->label() }} for Selected
-                            </flux:button>
+                            {{-- Usually just one button — participation and
+                                 housing can both be active at once once the
+                                 Version closes, so up to two show side by side. --}}
+                            <div class="flex items-center gap-2">
+                                @foreach ($activeFeeTypes as $feeType)
+                                    <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payForSelected('{{ $feeType->value }}')">
+                                        Pay {{ $feeType->label() }} for Selected
+                                    </flux:button>
+                                @endforeach
+                            </div>
                         @endif
                     </div>
                 @else
                     <flux:text size="sm" class="text-zinc-500">
-                        Group Payment is not available right now — no registration or participation fee window is currently open.
+                        Group Payment is not available right now — no registration, participation, or housing fee window is currently open.
                     </flux:text>
                 @endif
             </div>
@@ -243,7 +250,7 @@
                     <flux:card size="sm">
                         <div class="flex items-start justify-between gap-3 mb-3">
                             <div class="flex items-start gap-2">
-                                @if ($activeFeeType !== null && in_array($candidate->status, $feeEligibleStatuses, true))
+                                @if ($activeFeeTypes->isNotEmpty() && in_array($candidate->status, $feeEligibleStatuses, true))
                                     <flux:checkbox wire:model.live="selectedCandidateIds" value="{{ $candidate->id }}" class="mt-1" />
                                 @endif
                                 <flux:heading size="base">{{ $displayName }}</flux:heading>
@@ -314,7 +321,7 @@
 
             <flux:table class="hidden md:table">
                 <flux:table.columns>
-                    @if ($activeFeeType !== null)
+                    @if ($activeFeeTypes->isNotEmpty())
                         <flux:table.column></flux:table.column>
                     @endif
                     <flux:table.column>Name</flux:table.column>
@@ -334,7 +341,7 @@
                             $displayName = $studentUser->last_name.', '.trim($studentUser->first_name.' '.$studentUser->middle_name);
                         @endphp
                         <flux:table.row>
-                            @if ($activeFeeType !== null)
+                            @if ($activeFeeTypes->isNotEmpty())
                                 <flux:table.cell>
                                     @if (in_array($candidate->status, $feeEligibleStatuses, true))
                                         <flux:checkbox wire:model.live="selectedCandidateIds" value="{{ $candidate->id }}" />

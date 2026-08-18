@@ -669,8 +669,13 @@
                 @if (trim(strip_tags($obligationPreviewBody)) === '')
                     <flux:text class="text-zinc-500">Nothing to preview yet — add some obligations text first.</flux:text>
                 @else
-                    <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-4">
-                        <div class="obligation-content text-zinc-700 dark:text-zinc-300">
+                    {{-- Explicit white/black, not dark:-adaptive classes — this
+                         previews an actual document a teacher will read and
+                         sign off on, so like the Candidate Application view
+                         (candidate-application/document.blade.php) it should
+                         always look like paper, regardless of the app's theme. --}}
+                    <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-4" style="background-color: #ffffff;">
+                        <div class="obligation-content" style="color: #000000;">
                             {!! $obligationPreviewBody !!}
                         </div>
                     </div>

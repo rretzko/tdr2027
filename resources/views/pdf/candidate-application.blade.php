@@ -22,6 +22,8 @@
         'scheduleBody' => $scheduleBody ?? null,
         'policiesBody' => $policiesBody ?? null,
         'showTeacherSection' => $showTeacherSection,
+        'candidateSignedAt' => $candidateSignedAt ?? null,
+        'parentSignedAt' => $parentSignedAt ?? null,
     ])
 </body>
 </html>

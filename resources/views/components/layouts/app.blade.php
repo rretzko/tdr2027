@@ -39,37 +39,45 @@
                 Dashboard
             </flux:sidebar.item>
 
-            @php
-                $fastPassRecent = \App\Support\FastPass::recentFor(auth()->user());
-                $fastPassTop = \App\Support\FastPass::topFor(auth()->user());
-            @endphp
-            <div id="tour-sidebar-fastpass" class="px-2">
-                <flux:dropdown position="bottom" align="start">
-                    <flux:button variant="ghost" icon="bolt" class="w-full justify-start in-data-flux-sidebar-collapsed-desktop:justify-center">
-                        <span class="in-data-flux-sidebar-collapsed-desktop:hidden">Fast Pass</span>
-                    </flux:button>
+            {{-- Fast Pass is a teacher/staff-side convenience over PageVisit::url(),
+                 which only knows how to rebuild a {version}-parameterized route
+                 (see PageVisit::url()) — StudentFolder.info pages aren't shaped
+                 that way (e.g. sfdi.events.candidate is {candidate}-scoped), so
+                 rather than generalize a shared, app-wide feature for one
+                 portal, it's simply not offered to students. --}}
+            @unless ($isSfdiUser)
+                @php
+                    $fastPassRecent = \App\Support\FastPass::recentFor(auth()->user());
+                    $fastPassTop = \App\Support\FastPass::topFor(auth()->user());
+                @endphp
+                <div id="tour-sidebar-fastpass" class="px-2">
+                    <flux:dropdown position="bottom" align="start">
+                        <flux:button variant="ghost" icon="bolt" class="w-full justify-start in-data-flux-sidebar-collapsed-desktop:justify-center">
+                            <span class="in-data-flux-sidebar-collapsed-desktop:hidden">Fast Pass</span>
+                        </flux:button>
 
-                    <flux:menu>
-                        <flux:menu.group heading="Recently Visited">
-                            @forelse ($fastPassRecent as $visit)
-                                @continue($visit->url === null)
-                                <flux:menu.item :href="$visit->url" wire:navigate>{{ $visit->displayLabel }}</flux:menu.item>
-                            @empty
-                                <flux:menu.item disabled>No visits yet</flux:menu.item>
-                            @endforelse
-                        </flux:menu.group>
+                        <flux:menu>
+                            <flux:menu.group heading="Recently Visited">
+                                @forelse ($fastPassRecent as $visit)
+                                    @continue($visit->url === null)
+                                    <flux:menu.item :href="$visit->url" wire:navigate>{{ $visit->displayLabel }}</flux:menu.item>
+                                @empty
+                                    <flux:menu.item disabled>No visits yet</flux:menu.item>
+                                @endforelse
+                            </flux:menu.group>
 
-                        <flux:menu.group heading="Most Visited">
-                            @forelse ($fastPassTop as $visit)
-                                @continue($visit->url === null)
-                                <flux:menu.item :href="$visit->url" wire:navigate>{{ $visit->displayLabel }}</flux:menu.item>
-                            @empty
-                                <flux:menu.item disabled>No visits yet</flux:menu.item>
-                            @endforelse
-                        </flux:menu.group>
-                    </flux:menu>
-                </flux:dropdown>
-            </div>
+                            <flux:menu.group heading="Most Visited">
+                                @forelse ($fastPassTop as $visit)
+                                    @continue($visit->url === null)
+                                    <flux:menu.item :href="$visit->url" wire:navigate>{{ $visit->displayLabel }}</flux:menu.item>
+                                @empty
+                                    <flux:menu.item disabled>No visits yet</flux:menu.item>
+                                @endforelse
+                            </flux:menu.group>
+                        </flux:menu>
+                    </flux:dropdown>
+                </div>
+            @endunless
 
             <flux:separator />
 
@@ -131,6 +139,10 @@
                 $student = auth()->user()->student;
             @endphp
             @if ($student)
+                <flux:sidebar.item icon="calendar" :href="route('sfdi.events.index')" :current="request()->routeIs('sfdi.events.*')">
+                    My Events
+                </flux:sidebar.item>
+
                 <flux:sidebar.item icon="identification" :href="route('sfdi.student-details')" :current="request()->routeIs('sfdi.student-details')">
                     Student Details
                 </flux:sidebar.item>

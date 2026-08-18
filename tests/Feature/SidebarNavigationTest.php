@@ -30,7 +30,7 @@ test('a teacher who completed onboarding sees the Schools/Students/Organizations
         ->assertSeeText('Events');
 });
 
-test('a student does not see the Schools/Students/Organizations/Events nav links', function () {
+test('a student does not see the teacher-only Schools/Students/Organizations nav links, but does see their own Events link', function () {
     $user = User::factory()->create();
     $user->markEmailAsVerified();
     $student = Student::factory()->create(['user_id' => $user->id]);
@@ -41,7 +41,22 @@ test('a student does not see the Schools/Students/Organizations/Events nav links
         ->assertOk()
         ->assertDontSeeText('Schools')
         ->assertDontSeeText('Organizations')
-        ->assertDontSeeText('Events');
+        ->assertSeeText('My Events')
+        // Fast Pass (App\Support\FastPass) only knows how to rebuild
+        // {version}-parameterized routes (PageVisit::url()) — StudentFolder.info
+        // pages aren't shaped that way, so it's not offered to students at all
+        // rather than generalizing a shared, app-wide feature for one portal.
+        ->assertDontSeeText('Fast Pass');
+});
+
+test('a teacher still sees Fast Pass', function () {
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+    Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
+
+    actingAs($user)->get(route('dashboard'))
+        ->assertOk()
+        ->assertSeeText('Fast Pass');
 });
 
 test('the new nav routes render for a teacher who completed onboarding', function () {

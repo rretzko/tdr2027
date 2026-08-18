@@ -33,17 +33,23 @@ class VersionFee extends Model
         return $this->participation / 100;
     }
 
+    public function housingInDollars(): float
+    {
+        return $this->housing / 100;
+    }
+
     /**
-     * Registration and participation are never combined into one checkout
-     * amount — see FeeType. The surcharge is additive once per transaction
-     * regardless of fee type (an electronic-checkout add-on, never part of
-     * what's "owed").
+     * Registration, participation, and housing are never combined into one
+     * checkout amount — see FeeType. The surcharge is additive once per
+     * transaction regardless of fee type (an electronic-checkout add-on,
+     * never part of what's "owed").
      */
     public function amountForCheckout(FeeType $feeType, int $candidateCount): int
     {
         $perCandidate = match ($feeType) {
             FeeType::Registration => $this->registration,
             FeeType::Participation => $this->participation,
+            FeeType::Housing => $this->housing,
         };
 
         return ($perCandidate * $candidateCount) + $this->epayment_surcharge;

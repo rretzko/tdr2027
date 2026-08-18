@@ -84,6 +84,8 @@ use App\Livewire\Schools\Index as SchoolsIndex;
 use App\Livewire\Settings\Password;
 use App\Livewire\Settings\Profile;
 use App\Livewire\Sfdi\EmergencyContacts as SfdiEmergencyContacts;
+use App\Livewire\Sfdi\Events\Index as SfdiEventsIndex;
+use App\Livewire\Sfdi\Events\Show as SfdiEventsShow;
 use App\Livewire\Sfdi\School as SfdiSchool;
 use App\Livewire\Sfdi\StudentDetails as SfdiStudentDetails;
 use App\Livewire\Students\Index as StudentsIndex;
@@ -206,6 +208,14 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
     Route::get('/sfdi/school', SfdiSchool::class)->name('sfdi.school');
     Route::get('/sfdi/student-details', SfdiStudentDetails::class)->name('sfdi.student-details');
     Route::get('/sfdi/emergency-contacts', SfdiEmergencyContacts::class)->name('sfdi.emergency-contacts');
+
+    // "My Events" (studentfolder-module.md §5.1-§5.2) depends on having an
+    // active school/teacher link to have auto-enrolled any Candidate rows in
+    // the first place, so it's gated the same way the Dashboard is.
+    Route::middleware('student.has.active.school')->group(function () {
+        Route::get('/sfdi/events', SfdiEventsIndex::class)->name('sfdi.events.index');
+        Route::get('/sfdi/events/{candidate}', SfdiEventsShow::class)->name('sfdi.events.candidate');
+    });
 
     Route::get('/schools', SchoolsIndex::class)->name('schools.index');
     Route::view('/organizations', 'organizations')->name('organizations.index');

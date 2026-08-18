@@ -1445,6 +1445,79 @@ test('Pay Participation Fee is visible only once the Version is closed and the c
         ->assertSee('Pay Participation Fee');
 });
 
+test('Pay Participation Fee and Pay Housing Fee are both visible at once once the Version is closed — not mutually exclusive like registration', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create(['status' => EventStatus::Closed]);
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Accepted,
+    ]);
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000, 'participation' => 500, 'housing' => 1500]);
+
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => false, 'epayment_teacher' => true]);
+    EventEpaymentConfig::create([
+        'event_id' => $version->event_id,
+        'vendor' => Vendor::Square,
+        'vendor_account_id' => 'loc-123',
+        'secret' => 'token-123',
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->assertDontSee('Pay Registration Fee')
+        ->assertSee('Pay Participation Fee')
+        ->assertSee('Pay Housing Fee');
+});
+
+test('housing balance is tracked independently of the combined registration+participation balance', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create(['status' => EventStatus::Closed]);
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Accepted,
+    ]);
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000, 'participation' => 500, 'housing' => 1500]);
+
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => false, 'epayment_teacher' => true]);
+    EventEpaymentConfig::create([
+        'event_id' => $version->event_id,
+        'vendor' => Vendor::Square,
+        'vendor_account_id' => 'loc-123',
+        'secret' => 'token-123',
+    ]);
+
+    // Pays off registration + participation in full (2500), tagged with no
+    // specific fee_type (a manual/lump payment) — the combined balance
+    // clears, but housing has not been touched.
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => 'manual',
+        'payer_teacher_id' => $teacher->id,
+        'school_id' => $candidate->school_id,
+        'amount' => 2500,
+        'status' => 'completed',
+        'payment_type' => 'check',
+        'paid_at' => now(),
+    ]);
+    PaymentAllocation::create([
+        'payment_transaction_id' => $transaction->id,
+        'candidate_id' => $candidate->id,
+        'amount' => 2500,
+        'allocated_at' => now(),
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version->fresh(), 'candidate' => $candidate])
+        ->assertDontSee('Pay Participation Fee')
+        ->assertSee('Pay Housing Fee');
+});
+
 test('payNow aborts with 403 when the requested FeeType is not yet payable for this Version', function () {
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create(['status' => EventStatus::Closed]);
@@ -1494,6 +1567,56 @@ test('payNow aborts with 422 when the candidate is not Accepted for a participat
     Livewire::actingAs($teacher->user)
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->call('payNow', 'participation')
+        ->assertStatus(422);
+});
+
+test('payNow aborts with 403 for housing before the Version is closed', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create();
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Accepted,
+    ]);
+
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => false, 'epayment_teacher' => true]);
+    EventEpaymentConfig::create([
+        'event_id' => $version->event_id,
+        'vendor' => Vendor::Square,
+        'vendor_account_id' => 'loc-123',
+        'secret' => 'token-123',
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->call('payNow', 'housing')
+        ->assertStatus(403);
+});
+
+test('payNow aborts with 422 when the candidate is not Accepted for a housing fee', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create(['status' => EventStatus::Closed]);
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::NotAccepted,
+    ]);
+
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => false, 'epayment_teacher' => true]);
+    EventEpaymentConfig::create([
+        'event_id' => $version->event_id,
+        'vendor' => Vendor::Square,
+        'vendor_account_id' => 'loc-123',
+        'secret' => 'token-123',
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->call('payNow', 'housing')
         ->assertStatus(422);
 });
 
