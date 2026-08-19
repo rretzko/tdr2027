@@ -46,7 +46,14 @@ class PaypalReturnController extends Controller
                 ->where('version_id', $version->id)
                 ->firstOrFail();
 
-            return redirect()->route('registrations.candidate', ['version' => $version, 'candidate' => $candidate]);
+            // A Student payer (studentfolder-module.md §5.7) always pays for
+            // exactly one candidate — their own — so the transaction's
+            // payer_student_id is enough to know which portal to send them
+            // back to, without threading a separate payer-type query param
+            // through the PayPal return URL.
+            return $transaction->payer_student_id !== null
+                ? redirect()->route('sfdi.events.candidate', ['candidate' => $candidate])
+                : redirect()->route('registrations.candidate', ['version' => $version, 'candidate' => $candidate]);
         }
 
         return redirect()->route('registrations.version', ['version' => $version]);

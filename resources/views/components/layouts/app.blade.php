@@ -139,19 +139,19 @@
                 $student = auth()->user()->student;
             @endphp
             @if ($student)
-                <flux:sidebar.item icon="calendar" :href="route('sfdi.events.index')" :current="request()->routeIs('sfdi.events.*')">
+                <flux:sidebar.item id="tour-sidebar-my-events" icon="calendar" :href="route('sfdi.events.index')" :current="request()->routeIs('sfdi.events.*')">
                     My Events
                 </flux:sidebar.item>
 
-                <flux:sidebar.item icon="identification" :href="route('sfdi.student-details')" :current="request()->routeIs('sfdi.student-details')">
+                <flux:sidebar.item id="tour-sidebar-student-details" icon="identification" :href="route('sfdi.student-details')" :current="request()->routeIs('sfdi.student-details')">
                     Student Details
                 </flux:sidebar.item>
 
-                <flux:sidebar.item icon="building-library" :href="route('sfdi.school')" :current="request()->routeIs('sfdi.school')">
+                <flux:sidebar.item id="tour-sidebar-school" icon="building-library" :href="route('sfdi.school')" :current="request()->routeIs('sfdi.school')">
                     School
                 </flux:sidebar.item>
 
-                <flux:sidebar.item icon="phone" :href="route('sfdi.emergency-contacts')" :current="request()->routeIs('sfdi.emergency-contacts')">
+                <flux:sidebar.item id="tour-sidebar-emergency-contacts" icon="phone" :href="route('sfdi.emergency-contacts')" :current="request()->routeIs('sfdi.emergency-contacts')">
                     Emergency Contacts
                 </flux:sidebar.item>
             @endif

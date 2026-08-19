@@ -23,8 +23,9 @@
             };
         @endphp
         <div class="flex items-center gap-2">
-            <flux:button size="sm" variant="ghost" icon="musical-note" wire:click="viewPitchFiles">Pitch Files</flux:button>
-            <flux:badge :color="$statusColor">{{ $candidate->status->label() }}</flux:badge>
+            <flux:button id="tour-start" data-auto-start="{{ auth()->user()->dismissed_sfdi_candidate_orientation_at === null ? '1' : '0' }}" size="sm" variant="ghost" icon="sparkles" type="button">Take a tour</flux:button>
+            <flux:button id="tour-pitch-files" size="sm" variant="ghost" icon="musical-note" wire:click="viewPitchFiles">Pitch Files</flux:button>
+            <flux:badge id="tour-status-badge" :color="$statusColor">{{ $candidate->status->label() }}</flux:badge>
         </div>
     </div>
 
@@ -40,7 +41,7 @@
         </flux:callout>
     @endif
 
-    <flux:card class="mb-6">
+    <flux:card id="tour-candidate-requirements" class="mb-6">
         <flux:heading size="sm" class="mb-1">Candidate Requirements</flux:heading>
         <flux:text size="sm" class="text-zinc-500 mb-3">
             What's needed before your teacher can register you for this Event. Anything not yet done links to the page where you can complete it.
@@ -75,10 +76,10 @@
         @endif
     </flux:card>
 
-    <div class="space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {{-- Registration --}}
-        <flux:card>
+        <flux:card id="tour-registration-card">
             <div class="flex items-center justify-between mb-3">
                 <flux:heading size="sm">Registration</flux:heading>
             </div>
@@ -125,7 +126,7 @@
 
         {{-- Application --}}
         @if ($application !== null)
-            <flux:card>
+            <flux:card id="tour-application-card">
                 <div class="flex items-center justify-between mb-3">
                     <flux:heading size="sm">Application</flux:heading>
                     <flux:button size="sm" variant="ghost" icon="eye" wire:click="viewApplication">View</flux:button>
@@ -150,7 +151,7 @@
 
         {{-- Recordings (remote audition only) --}}
         @if ($uploadSlots->isNotEmpty())
-            <flux:card>
+            <flux:card id="tour-recordings-card">
                 <flux:heading size="sm" class="mb-3">Recordings</flux:heading>
 
                 <div class="space-y-4">
@@ -229,6 +230,69 @@
                 </div>
             </flux:card>
         @endif
+
+        {{-- Payment --}}
+        <flux:card id="tour-payment-card">
+            <flux:heading size="sm" class="mb-1">Payment</flux:heading>
+
+            @if ($overpaymentCents > 0)
+                <div class="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40 px-3 py-2 mb-2 text-sm text-amber-800 dark:text-amber-300">
+                    <flux:icon.exclamation-triangle variant="micro" class="shrink-0" />
+                    Overpaid by ${{ number_format($overpaymentCents / 100, 2) }}.
+                </div>
+            @endif
+
+            <div class="flex items-center justify-between mb-2">
+                <flux:heading size="xs" class="text-zinc-500">Payment History</flux:heading>
+                @if ($registrationFeeDue || $participationFeeDue || $housingFeeDue)
+                    <div class="flex items-center gap-2">
+                        {{-- Registration is mutually exclusive with the other
+                             two by timing (see FeeType), but participation and
+                             housing can both be due at once once the Version
+                             closes — independent @if blocks, not @elseif. --}}
+                        @if ($registrationFeeDue)
+                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('registration')">Pay Registration Fee</flux:button>
+                        @endif
+                        @if ($participationFeeDue)
+                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('participation')">Pay Participation Fee</flux:button>
+                        @endif
+                        @if ($housingFeeDue)
+                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('housing')">Pay Housing Fee</flux:button>
+                        @endif
+                    </div>
+                @endif
+            </div>
+
+            @if ($candidatePayments->isNotEmpty())
+                <div class="space-y-2">
+                    @foreach ($candidatePayments as $payment)
+                        @php $allocatedAmount = $payment->allocations->first()?->amountInDollars() ?? $payment->amountInDollars(); @endphp
+                        <div class="flex items-center justify-between text-sm border-b border-zinc-100 dark:border-zinc-800 pb-2 last:border-0 last:pb-0">
+                            <div>
+                                <span class="font-medium">{{ $allocatedAmount < 0 ? '-' : '' }}${{ number_format(abs($allocatedAmount), 2) }}</span>
+                                @if ($payment->paid_at)
+                                    <span class="text-zinc-500"> — {{ $payment->paid_at->format('M j, Y') }}</span>
+                                @endif
+                                @if ($payment->reference_number)
+                                    <div class="text-zinc-500">Ref: {{ $payment->reference_number }}</div>
+                                @endif
+                            </div>
+                            @php
+                                $statusColor = match ($payment->status) {
+                                    \App\Enums\PaymentTransactionStatus::Completed => 'green',
+                                    \App\Enums\PaymentTransactionStatus::Pending => 'amber',
+                                    \App\Enums\PaymentTransactionStatus::Failed => 'red',
+                                    \App\Enums\PaymentTransactionStatus::Refunded => 'zinc',
+                                };
+                            @endphp
+                            <flux:badge size="sm" :color="$statusColor">{{ $payment->status->label() }}</flux:badge>
+                        </div>
+                    @endforeach
+                </div>
+            @else
+                <flux:text size="sm" class="text-zinc-500">No payments recorded yet.</flux:text>
+            @endif
+        </flux:card>
 
     </div>
 
@@ -496,4 +560,206 @@
             </div>
         </flux:modal>
     @endif
+
+    {{-- Spotlight tour, same approach as Events\Show/VersionDashboard's
+         (resources/views/livewire/events/show.blade.php,
+         resources/views/livewire/registrations/version-dashboard.blade.php)
+         — a persistent "Take a tour" button covering this page's cards. No
+         tabs here (unlike Events\Show), so the simpler resolveEl()-only
+         engine applies, same as VersionDashboard's own copy. --}}
+    <button type="button" id="tour-dismiss-trigger" wire:click="dismissOrientation" class="hidden" aria-hidden="true" tabindex="-1"></button>
+
+    <div id="tour-scrim" class="hidden fixed inset-0 z-[59]"></div>
+    <div id="tour-cutout" class="hidden fixed z-[60] rounded-lg pointer-events-none transition-[top,left,width,height] duration-300 ease-out"></div>
+    <div
+        id="tour-card"
+        class="hidden fixed z-[61] w-72 max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-xl p-4 transition-[top,left] duration-300 ease-out"
+        role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body"
+    >
+        <div class="h-1 rounded-full bg-zinc-100 dark:bg-zinc-700 overflow-hidden mb-3">
+            <div id="tour-progress" class="h-full bg-orange-600 dark:bg-orange-400 rounded-full transition-[width] duration-200"></div>
+        </div>
+        <div id="tour-stepcount" class="text-[11px] font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400 mb-1"></div>
+        <h3 id="tour-title" class="text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-1"></h3>
+        <p id="tour-body" class="text-sm text-zinc-500 dark:text-zinc-400 mb-3"></p>
+        <div class="flex items-center justify-between gap-2">
+            <button type="button" id="tour-skip" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">Skip tour</button>
+            <div class="flex gap-2">
+                <button type="button" id="tour-prev" class="text-sm font-medium px-3 py-1.5 rounded-md border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-700 disabled:opacity-40">Back</button>
+                <button type="button" id="tour-next" class="text-sm font-medium px-3 py-1.5 rounded-md border border-orange-600 bg-orange-600 text-white hover:brightness-110 dark:border-orange-400 dark:bg-orange-400 dark:text-zinc-900">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        #tour-cutout { box-shadow: 0 0 0 9999px rgba(15, 13, 12, 0.6); }
+        :root[data-theme="dark"] #tour-cutout { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.72); }
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) #tour-cutout { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.72); }
+        }
+        #tour-cutout::after {
+            content: "";
+            position: absolute;
+            inset: -4px;
+            border-radius: 11px;
+            border: 2px solid rgb(234 88 12);
+            box-shadow: 0 0 0 4px rgba(234, 88, 12, 0.5);
+            animation: tour-pulse 1.8s ease-in-out infinite;
+        }
+        @keyframes tour-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.45; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #tour-cutout, #tour-card { transition: none !important; }
+            #tour-cutout::after { animation: none !important; }
+        }
+    </style>
+
+    <script>
+        (function () {
+            var steps = [
+                { ids: ['tour-status-badge'], title: 'Status', body: 'Where you sit in the registration lifecycle for this Event — Eligible, Pending, Registered, or Withdrawn.' },
+                { ids: ['tour-pitch-files'], title: 'Pitch Files', body: 'Reference audio and PDFs for your voice part — the same library your teacher can browse.' },
+                { ids: ['tour-candidate-requirements'], title: 'Candidate Requirements', body: "What's needed before your teacher can register you. Anything not yet done links to the page where you can complete it." },
+                { ids: ['tour-registration-card'], title: 'Registration', body: 'Your voice part and program name — edit either one, or withdraw from this Event entirely.' },
+                { ids: ['tour-application-card'], title: 'Application', body: 'View your application, and — if this Event uses e-signatures — sign it yourself.' },
+                { ids: ['tour-recordings-card'], title: 'Recordings', body: 'Upload audition recordings for a remote audition Event. Once your teacher approves one, you can only replay it.' },
+                { ids: ['tour-payment-card'], title: 'Payment', body: "Pay any fees your teacher has opted you into electronically, and see your payment history." }
+            ];
+
+            var activeSteps = [];
+            var current = -1;
+            var running = false;
+            var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            var raf = null;
+
+            var scrim = document.getElementById('tour-scrim');
+            var cutout = document.getElementById('tour-cutout');
+            var card = document.getElementById('tour-card');
+            var startBtn = document.getElementById('tour-start');
+            var dismissTrigger = document.getElementById('tour-dismiss-trigger');
+            var prevBtn = document.getElementById('tour-prev');
+            var nextBtn = document.getElementById('tour-next');
+            var skipBtn = document.getElementById('tour-skip');
+            var titleEl = document.getElementById('tour-title');
+            var bodyEl = document.getElementById('tour-body');
+            var stepCountEl = document.getElementById('tour-stepcount');
+            var progressEl = document.getElementById('tour-progress');
+
+            if (!startBtn || !scrim || !cutout || !card) return;
+
+            function resolveEl(ids) {
+                for (var i = 0; i < ids.length; i++) {
+                    var el = document.getElementById(ids[i]);
+                    if (el && el.offsetParent !== null) return el;
+                }
+                return null;
+            }
+
+            function start() {
+                activeSteps = steps.filter(function (s) { return resolveEl(s.ids) !== null; });
+                if (activeSteps.length === 0) return;
+
+                running = true;
+                current = 0;
+                scrim.classList.remove('hidden');
+                cutout.classList.remove('hidden');
+                card.classList.remove('hidden');
+                document.addEventListener('keydown', onKeydown);
+                window.addEventListener('resize', onReposition);
+                window.addEventListener('scroll', onReposition, true);
+                render();
+            }
+
+            function end() {
+                running = false;
+                scrim.classList.add('hidden');
+                cutout.classList.add('hidden');
+                card.classList.add('hidden');
+                document.removeEventListener('keydown', onKeydown);
+                window.removeEventListener('resize', onReposition);
+                window.removeEventListener('scroll', onReposition, true);
+                if (dismissTrigger) dismissTrigger.click();
+                startBtn.focus();
+            }
+
+            function go(delta) {
+                var target = current + delta;
+                if (target < 0) return;
+                if (target >= activeSteps.length) { end(); return; }
+                current = target;
+                render();
+            }
+
+            function render() {
+                var step = activeSteps[current];
+                var el = resolveEl(step.ids);
+                if (!el) { go(1); return; }
+
+                titleEl.textContent = step.title;
+                bodyEl.textContent = step.body;
+                stepCountEl.textContent = 'Step ' + (current + 1) + ' of ' + activeSteps.length;
+                progressEl.style.width = (((current + 1) / activeSteps.length) * 100) + '%';
+                prevBtn.disabled = current === 0;
+                nextBtn.textContent = current === activeSteps.length - 1 ? 'Finish' : 'Next';
+
+                el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+
+                window.setTimeout(function () { position(el); }, reduceMotion ? 0 : 260);
+                nextBtn.focus();
+            }
+
+            function position(el) {
+                var pad = 6;
+                var r = el.getBoundingClientRect();
+
+                cutout.style.top = (r.top - pad) + 'px';
+                cutout.style.left = (r.left - pad) + 'px';
+                cutout.style.width = (r.width + pad * 2) + 'px';
+                cutout.style.height = (r.height + pad * 2) + 'px';
+
+                var cardW = card.offsetWidth || 288;
+                var cardH = card.offsetHeight || 160;
+                var margin = 14;
+                var vw = window.innerWidth;
+                var vh = window.innerHeight;
+
+                var top = r.bottom + margin;
+                if (top + cardH > vh) {
+                    top = r.top - cardH - margin;
+                    if (top < 8) top = Math.max(8, Math.min(vh - cardH - 8, r.top));
+                }
+
+                var left = r.left;
+                if (left + cardW > vw - 8) left = vw - cardW - 8;
+                if (left < 8) left = 8;
+
+                card.style.top = top + 'px';
+                card.style.left = left + 'px';
+            }
+
+            function onReposition() {
+                if (!running) return;
+                if (raf) cancelAnimationFrame(raf);
+                raf = requestAnimationFrame(function () {
+                    var el = resolveEl(activeSteps[current].ids);
+                    if (el) position(el);
+                });
+            }
+
+            function onKeydown(e) {
+                if (e.key === 'Escape') { end(); return; }
+                if (e.key === 'ArrowRight' || e.key === 'Enter') { go(1); return; }
+                if (e.key === 'ArrowLeft') { go(-1); return; }
+            }
+
+            startBtn.addEventListener('click', start);
+            nextBtn.addEventListener('click', function () { go(1); });
+            prevBtn.addEventListener('click', function () { go(-1); });
+            skipBtn.addEventListener('click', end);
+
+            if (startBtn.dataset.autoStart === '1') start();
+        })();
+    </script>
 </div>

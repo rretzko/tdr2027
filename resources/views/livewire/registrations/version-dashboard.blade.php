@@ -1,6 +1,6 @@
 <div>
     {{-- Breadcrumb --}}
-    <div class="flex items-center gap-2 mb-1 text-sm text-zinc-500">
+    <div id="tour-breadcrumb" class="flex items-center gap-2 mb-1 text-sm text-zinc-500">
         <a href="{{ route('registrations.index') }}" wire:navigate class="hover:text-zinc-800 dark:hover:text-zinc-200">Registrations</a>
         <flux:icon.chevron-right variant="micro" class="text-zinc-400" />
         <span>{{ $version->name }}</span>
@@ -587,6 +587,7 @@
     <script>
         (function () {
                 var steps = [
+                    { ids: ['tour-breadcrumb'], title: 'Breadcrumb', body: "You're here. Registrations takes you back to every Version you have a role on." },
                     { ids: ['tour-upcoming-deadlines'], title: 'Upcoming Deadlines', body: "What's due next for the Event — registration windows, postmark cutoffs, adjudication dates — soonest first." },
                     { ids: ['tour-registration-summary'], title: 'Registration Summary', body: 'A live count of your registered candidates by voice part and by status, so you can see progress at a glance without scrolling the table.' },
                     { ids: ['tour-epayment-checkbox'], title: 'E-payment checkbox', body: 'Turn on electronic payment for every candidate on your roster.' },

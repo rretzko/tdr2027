@@ -13,6 +13,7 @@ use App\Models\Event;
 use App\Models\EventEpaymentConfig;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
+use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\Version;
 use App\Services\Payments\Dto\CheckoutSession;
@@ -40,7 +41,7 @@ class SquarePaymentGateway implements PaymentGatewayContract
     /**
      * @param  Collection<int, Candidate>  $candidates
      */
-    public function createCheckoutSession(Version $version, Collection $candidates, Teacher $payer, FeeType $feeType): CheckoutSession
+    public function createCheckoutSession(Version $version, Collection $candidates, Teacher|Student $payer, FeeType $feeType): CheckoutSession
     {
         abort_if($candidates->isEmpty(), 422, 'At least one candidate is required to create a checkout session.');
 
@@ -73,12 +74,18 @@ class SquarePaymentGateway implements PaymentGatewayContract
         $firstCandidate = $candidates->first();
         $source = $candidates->count() === 1 ? PaymentSource::CandidateEpayment : PaymentSource::TeacherEpayment;
 
-        // Single-candidate: back to that candidate's own page. Group
-        // payment: no single candidate to return to, so the Version
-        // dashboard (§3's "Your Unreconciled Payments" section lives there).
-        $redirectUrl = $candidates->count() === 1
-            ? route('registrations.candidate', ['version' => $version->id, 'candidate' => $firstCandidate->id])
-            : route('registrations.version', ['version' => $version->id]);
+        // Single-candidate: back to that candidate's own page — the
+        // student's own /sfdi/events/{candidate} page for a Student payer
+        // (studentfolder-module.md §5.7, always exactly one candidate),
+        // otherwise the teacher's registrations.candidate. Group payment
+        // (Teacher payer only): no single candidate to return to, so the
+        // Version dashboard (§3's "Your Unreconciled Payments" section lives
+        // there).
+        $redirectUrl = match (true) {
+            $payer instanceof Student => route('sfdi.events.candidate', ['candidate' => $firstCandidate->id]),
+            $candidates->count() === 1 => route('registrations.candidate', ['version' => $version->id, 'candidate' => $firstCandidate->id]),
+            default => route('registrations.version', ['version' => $version->id]),
+        };
 
         $request = new CreatePaymentLinkRequest([
             'idempotencyKey' => (string) Str::uuid(),
@@ -107,7 +114,8 @@ class SquarePaymentGateway implements PaymentGatewayContract
             'source' => $source,
             'vendor' => Vendor::Square,
             'vendor_transaction_id' => $paymentLink->getOrderId(),
-            'payer_teacher_id' => $payer->id,
+            'payer_teacher_id' => $payer instanceof Teacher ? $payer->id : null,
+            'payer_student_id' => $payer instanceof Student ? $payer->id : null,
             'school_id' => $firstCandidate->school_id,
             'amount' => $amount,
             'status' => PaymentTransactionStatus::Pending,

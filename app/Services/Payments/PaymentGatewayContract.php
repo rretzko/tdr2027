@@ -7,6 +7,7 @@ namespace App\Services\Payments;
 use App\Enums\FeeType;
 use App\Models\Candidate;
 use App\Models\Event;
+use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\Version;
 use App\Services\Payments\Dto\CheckoutSession;
@@ -30,10 +31,14 @@ interface PaymentGatewayContract
      *                                                  candidate_epayment; more than one for a teacher_epayment
      *                                                  lump-sum group payment (§0/§1.1) — the transaction amount is
      *                                                  always the sum across every candidate here.
+     * @param  Teacher|Student  $payer  A Student payer (studentfolder-module.md
+     *                                  §5.7) always pays for exactly one candidate — their own — and
+     *                                  populates payment_transactions.payer_student_id instead of
+     *                                  payer_teacher_id.
      * @param  FeeType  $feeType  Registration and participation are never
      *                            combined into one checkout amount — see FeeType.
      */
-    public function createCheckoutSession(Version $version, Collection $candidates, Teacher $payer, FeeType $feeType): CheckoutSession;
+    public function createCheckoutSession(Version $version, Collection $candidates, Teacher|Student $payer, FeeType $feeType): CheckoutSession;
 
     /**
      * $event identifies which business's webhook subscription this request

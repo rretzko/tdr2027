@@ -13,6 +13,7 @@ use App\Models\Event;
 use App\Models\EventEpaymentConfig;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
+use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\Version;
 use App\Services\Payments\Dto\CheckoutSession;
@@ -46,7 +47,7 @@ class PaypalPaymentGateway implements PaymentGatewayContract
     /**
      * @param  Collection<int, Candidate>  $candidates
      */
-    public function createCheckoutSession(Version $version, Collection $candidates, Teacher $payer, FeeType $feeType): CheckoutSession
+    public function createCheckoutSession(Version $version, Collection $candidates, Teacher|Student $payer, FeeType $feeType): CheckoutSession
     {
         abort_if($candidates->isEmpty(), 422, 'At least one candidate is required to create a checkout session.');
 
@@ -117,7 +118,8 @@ class PaypalPaymentGateway implements PaymentGatewayContract
             // webhook event correlates back to — no order_id/payment_id
             // split to work around here.
             'vendor_transaction_id' => $order->getId(),
-            'payer_teacher_id' => $payer->id,
+            'payer_teacher_id' => $payer instanceof Teacher ? $payer->id : null,
+            'payer_student_id' => $payer instanceof Student ? $payer->id : null,
             'school_id' => $firstCandidate->school_id,
             'amount' => $amount,
             'status' => PaymentTransactionStatus::Pending,

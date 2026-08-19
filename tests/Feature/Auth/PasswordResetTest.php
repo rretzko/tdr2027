@@ -32,6 +32,46 @@ test('reset password link can be requested', function () {
     Notification::assertSentTo($user, ResetPasswordNotification::class);
 });
 
+// --- School-email advisory (studentfolder-module.md §3/§9 item 7) ---
+
+test('a school-pattern email address shows the advisory alongside the normal confirmation, and the reset link is still sent', function () {
+    Notification::fake();
+
+    $user = User::factory()->create(['email' => 'jsmith@district.k12.state.us']);
+
+    Livewire::test(ForgotPassword::class)
+        ->set('email', $user->email)
+        ->call('sendResetLink')
+        ->assertSee('Check your email')
+        ->assertSee('This looks like a school email address')
+        ->assertSee('please see your teacher');
+
+    Notification::assertSentTo($user, ResetPasswordNotification::class);
+});
+
+test('a commercial email address shows only the normal confirmation, no advisory', function () {
+    Notification::fake();
+
+    $user = User::factory()->create(['email' => 'jsmith@gmail.com']);
+
+    Livewire::test(ForgotPassword::class)
+        ->set('email', $user->email)
+        ->call('sendResetLink')
+        ->assertSee('Check your email')
+        ->assertDontSee('This looks like a school email address');
+
+    Notification::assertSentTo($user, ResetPasswordNotification::class);
+});
+
+test('the advisory is heuristic, not existence-revealing — it shows for a school-pattern address even when no account matches it', function () {
+    Notification::fake();
+
+    Livewire::test(ForgotPassword::class)
+        ->set('email', 'nobody@district.k12.state.us')
+        ->call('sendResetLink')
+        ->assertSee('This looks like a school email address');
+});
+
 test('reset password screen can be rendered', function () {
     $user = User::factory()->create();
 
