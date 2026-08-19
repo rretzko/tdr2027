@@ -55,9 +55,17 @@ class EstimateForm extends Component
         $teacher = $this->teacher();
         $schools = $this->schoolsWithCandidates($teacher);
 
+        // Independent of $schools->count() — a membership requirement is
+        // Version+teacher-scoped, not per-school (see
+        // EstimateFormData::membershipCardStatus()'s own docblock), so it's
+        // shown once here rather than only in the single-school branch.
+        $membershipStatus = EstimateFormData::membershipCardStatus($this->version, $teacher);
+
         return view('livewire.registrations.estimate-form', [
             'schools' => $schools,
             'registeredCounts' => $this->registeredCountsBySchool($teacher, $schools),
+            'membershipCardRequired' => $membershipStatus['required'],
+            'membershipCardImageUrl' => $membershipStatus['imageUrl'],
             // Only built for the single-school case — the multi-school picker
             // shows counts only, per §5.13 ("no inline on-screen summary per
             // school in the multi-school case").

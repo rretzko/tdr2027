@@ -19,10 +19,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['email', 'cell_phone', 'password', 'pronoun_id', 'honorific', 'first_name', 'middle_name', 'last_name', 'suffix_name', 'dismissed_registration_orientation_at', 'dismissed_dashboard_orientation_at', 'dismissed_event_orientation_at', 'dismissed_sfdi_candidate_orientation_at'])]
+#[Fillable(['email', 'cell_phone', 'password', 'pronoun_id', 'honorific', 'first_name', 'middle_name', 'last_name', 'suffix_name', 'dismissed_registration_orientation_at', 'dismissed_dashboard_orientation_at', 'dismissed_event_orientation_at', 'dismissed_sfdi_candidate_orientation_at', 'photo_path'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmailContract
 {
@@ -108,8 +109,19 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->hasMany(PageVisit::class);
     }
 
+    /**
+     * A self-uploaded photo takes priority over a social-login provider's
+     * avatar — it's the more deliberate, current choice of the two. Signed,
+     * not a public URL — the private-by-default S3 bucket convention this
+     * app already uses for recordings/pitch files (temporaryUrl(), no S3 API
+     * call, cheap enough to compute on every page load's sidebar render).
+     */
     public function avatarUrl(): ?string
     {
+        if ($this->photo_path !== null) {
+            return Storage::disk('s3')->temporaryUrl($this->photo_path, now()->addMinutes(30));
+        }
+
         return $this->socialAccounts()->whereNotNull('provider_avatar')->value('provider_avatar');
     }
 

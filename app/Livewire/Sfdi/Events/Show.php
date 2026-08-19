@@ -127,14 +127,28 @@ class Show extends Component
         $this->modal('pitch-files')->show();
     }
 
+    /**
+     * The Application section (View +, in EApplication mode, the signature
+     * checkboxes it hosts) is disabled until every currently-required
+     * Candidate Requirement is met — a new gate on top of §5.3's existing
+     * two (status lock, obligations), scoped to this one section rather than
+     * every write action on the page. Deliberately excludes application-
+     * signature items themselves (checklistDefs() only adds those once the
+     * Application is published, and CANDIDATE_REQUIREMENT_LABELS never
+     * includes them) — otherwise meeting this gate would depend on the very
+     * section it gates.
+     */
     public function viewApplication(): void
     {
+        abort_if(! $this->candidateRequirementsMet(), 403);
+
         $this->modal('view-application')->show();
     }
 
     public function toggleApplicationCandidateSigned(CandidateService $candidates): void
     {
         abort_if($this->writeActionsBlocked(), 403);
+        abort_if(! $this->candidateRequirementsMet(), 403);
 
         if ($this->version->getRawOriginal('application_type') !== ApplicationType::EApplication->value) {
             return;
@@ -152,6 +166,7 @@ class Show extends Component
     public function toggleApplicationParentSigned(CandidateService $candidates): void
     {
         abort_if($this->writeActionsBlocked(), 403);
+        abort_if(! $this->candidateRequirementsMet(), 403);
 
         if ($this->version->getRawOriginal('application_type') !== ApplicationType::EApplication->value) {
             return;
@@ -433,10 +448,7 @@ class Show extends Component
 
     public function render(): View
     {
-        $checklistDefs = array_values(array_filter(
-            $this->checklistDefs($this->version),
-            fn (array $def): bool => in_array($def['label'], self::CANDIDATE_REQUIREMENT_LABELS, true),
-        ));
+        $checklistDefs = $this->candidateRequirementChecklistDefs();
 
         $pitchFilesVisible = in_array(
             $this->version->getRawOriginal('pitch_file_visibility'),
@@ -448,6 +460,7 @@ class Show extends Component
             'checklistDefs' => $checklistDefs,
             'writeActionsBlocked' => $this->writeActionsBlocked(),
             'obligationsBlocked' => $this->isObligationsBlocked(),
+            'candidateRequirementsMet' => $this->candidateRequirementsMet($checklistDefs),
             'uploadSlots' => $this->version->getRawOriginal('audition_type') === AuditionType::Remote->value
                 ? $this->version->uploadFiles
                 : collect(),
@@ -499,6 +512,41 @@ class Show extends Component
             ->first();
 
         return $invitation?->obligationResponse?->isAccepted() !== true;
+    }
+
+    /**
+     * @return list<array{label: string, check: \Closure(Candidate): bool, partial?: \Closure(Candidate): bool}>
+     */
+    private function candidateRequirementChecklistDefs(): array
+    {
+        return array_values(array_filter(
+            $this->checklistDefs($this->version),
+            fn (array $def): bool => in_array($def['label'], self::CANDIDATE_REQUIREMENT_LABELS, true),
+        ));
+    }
+
+    /**
+     * True once every currently-required Candidate Requirement is met (or
+     * trivially true if this Version requires none) — gates the Application
+     * section per the product owner's direction, 2026-08-19: disabled by
+     * default, enabled only once these are done. Accepts an already-computed
+     * list to avoid recomputing it a second time in render(); action guards
+     * (viewApplication(), the two signature toggles) call it with no
+     * argument.
+     *
+     * @param  list<array{label: string, check: \Closure(Candidate): bool, partial?: \Closure(Candidate): bool}>|null  $checklistDefs
+     */
+    private function candidateRequirementsMet(?array $checklistDefs = null): bool
+    {
+        $checklistDefs ??= $this->candidateRequirementChecklistDefs();
+
+        foreach ($checklistDefs as $def) {
+            if (! ($def['check'])($this->candidate)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

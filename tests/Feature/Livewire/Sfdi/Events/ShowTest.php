@@ -660,7 +660,7 @@ function publishSfdiApplication(Version $version): VersionApplication
 
 test('the View Application modal shows the self-attestation checkboxes in EApplication mode, and the download link', function () {
     $user = makeSfdiEventsShowUser();
-    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value]);
+    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value, 'emergency_contact_name' => false]);
     publishSfdiApplication($version);
 
     actingAs($user);
@@ -682,7 +682,7 @@ test('the View Application modal shows the self-attestation checkboxes in EAppli
 
 test('the View Application modal shows only a download link in Pdf mode, no self-attestation checkboxes', function () {
     $user = makeSfdiEventsShowUser();
-    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::Pdf->value]);
+    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::Pdf->value, 'emergency_contact_name' => false]);
     publishSfdiApplication($version);
 
     actingAs($user);
@@ -701,7 +701,7 @@ test('the View Application modal shows only a download link in Pdf mode, no self
 
 test('toggleApplicationCandidateSigned and toggleApplicationParentSigned self-attest and recalculate status', function () {
     $user = makeSfdiEventsShowUser();
-    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value]);
+    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value, 'emergency_contact_name' => false]);
     publishSfdiApplication($version);
 
     actingAs($user);
@@ -723,7 +723,7 @@ test('toggleApplicationCandidateSigned and toggleApplicationParentSigned self-at
 
 test('the document shows a simulated signature and the actual signed date once attested, not a blank line', function () {
     $user = makeSfdiEventsShowUser();
-    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value]);
+    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value, 'emergency_contact_name' => false]);
     publishSfdiApplication($version);
 
     actingAs($user);
@@ -758,7 +758,7 @@ test('the teacher\'s own toggle capability is unaffected by the student self-att
     // a teacher-side test would also exercise; it does not re-test the
     // teacher's own CandidateDetail toggle, already covered there.
     $user = makeSfdiEventsShowUser();
-    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value]);
+    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value, 'emergency_contact_name' => false]);
     publishSfdiApplication($version);
 
     actingAs($user);
@@ -775,6 +775,136 @@ test('the teacher\'s own toggle capability is unaffected by the student self-att
     $candidate->refresh();
     expect($candidate->application_candidate_signed_at)->not->toBeNull();
     expect($candidate->application_parent_signed_at)->not->toBeNull();
+});
+
+// --- Application gated on Candidate Requirements (2026-08-19 product-owner direction) ---
+
+test('the Application card shows a disabled View button and an explanation when Candidate Requirements are unmet', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value, 'emergency_contact_name' => true]);
+    publishSfdiApplication($version);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertDontSeeHtml('wire:click="viewApplication"')
+        ->assertSee('Applications are enabled after Candidate Requirements have been met.');
+});
+
+test('viewApplication aborts with 403 while Candidate Requirements are unmet', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value, 'emergency_contact_name' => true]);
+    publishSfdiApplication($version);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->call('viewApplication')
+        ->assertForbidden();
+});
+
+test('the signature toggles abort with 403 while Candidate Requirements are unmet, even though the candidate is otherwise unlocked', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value, 'emergency_contact_name' => true]);
+    publishSfdiApplication($version);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id]);
+
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->call('toggleApplicationCandidateSigned')->assertForbidden();
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->call('toggleApplicationParentSigned')->assertForbidden();
+
+    expect($candidate->fresh()->application_candidate_signed_at)->toBeNull();
+});
+
+test('the Application section unlocks once every Candidate Requirement is met', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create([
+        'status' => EventStatus::Active,
+        'application_type' => ApplicationType::EApplication->value,
+        'emergency_contact_name' => false,
+        'birthday' => true,
+    ]);
+    publishSfdiApplication($version);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id]);
+
+    // Unmet: birthday still null.
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertSee('Applications are enabled after Candidate Requirements have been met.')
+        ->call('viewApplication')
+        ->assertForbidden();
+
+    $user->student->update(['birthday' => '2010-01-01']);
+
+    // Met: birthday now set — the same action succeeds.
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate->fresh()])
+        ->assertDontSee('Applications are enabled after Candidate Requirements have been met.')
+        ->call('viewApplication')
+        ->assertOk();
+});
+
+test('an Application with no Candidate Requirements configured is never gated', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create([
+        'status' => EventStatus::Active,
+        'application_type' => ApplicationType::EApplication->value,
+        'emergency_contact_name' => false,
+        'birthday' => false,
+        'height' => false,
+        'home_address' => false,
+        'shirt_size' => false,
+    ]);
+    publishSfdiApplication($version);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertDontSee('Applications are enabled after Candidate Requirements have been met.')
+        ->call('viewApplication')
+        ->assertOk();
+});
+
+test('the signature badges are clickable (open the View modal) once Candidate Requirements are met', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value, 'emergency_contact_name' => false]);
+    publishSfdiApplication($version);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id]);
+
+    $component = Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate]);
+
+    // 3 occurrences, not just assertSeeHtml's presence check — the View
+    // button already carries this exact wire:click, so a plain "contains"
+    // assertion wouldn't actually prove the two badges got it too.
+    expect(substr_count($component->html(), 'wire:click="viewApplication"'))->toBe(3);
+
+    $component->call('viewApplication')->assertOk();
+});
+
+test('the signature badges are not clickable while Candidate Requirements are unmet', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active, 'application_type' => ApplicationType::EApplication->value, 'emergency_contact_name' => true]);
+    publishSfdiApplication($version);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertDontSeeHtml('wire:click="viewApplication"');
 });
 
 test('application signature toggles are blocked once the candidate is locked or obligations-gated', function () {

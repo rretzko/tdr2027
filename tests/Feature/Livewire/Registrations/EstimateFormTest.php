@@ -5,13 +5,16 @@ declare(strict_types=1);
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\EstimateForm;
 use App\Models\Candidate;
+use App\Models\Membership;
 use App\Models\School;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionInvitation;
+use App\Models\VersionMembershipRequirement;
 use App\Models\VersionObligation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 use function Pest\Laravel\actingAs;
@@ -124,6 +127,73 @@ test('a teacher with registered candidates at two schools sees a picker, not an 
         ->assertSee('Morris Knolls High School')
         ->assertSee(route('registrations.estimate-form-pdf', [$version, $schoolA]), false)
         ->assertSee(route('registrations.estimate-form-pdf', [$version, $schoolB]), false);
+});
+
+// --- Membership Card (independent of $schools->count(), unlike singleSchoolData) ---
+
+test('no Membership Card section shows when the Version has no membership requirement', function () {
+    $teacher = makeEstimateFormTeacher();
+    $version = Version::factory()->create();
+    $school = School::factory()->create();
+    actingAs($teacher->user);
+    inviteEstimateFormTeacher($teacher, $version);
+    registerEstimateFormCandidate($teacher, $version, $school);
+
+    Livewire::test(EstimateForm::class, ['version' => $version])
+        ->assertDontSee('Membership Card');
+});
+
+test('the Membership Card section shows a warning and a link to update membership when none is on file', function () {
+    $teacher = makeEstimateFormTeacher();
+    $version = Version::factory()->create();
+    $school = School::factory()->create();
+    actingAs($teacher->user);
+    inviteEstimateFormTeacher($teacher, $version);
+    registerEstimateFormCandidate($teacher, $version, $school);
+    VersionMembershipRequirement::create(['version_id' => $version->id, 'membership_card' => true]);
+
+    Livewire::test(EstimateForm::class, ['version' => $version])
+        ->assertSee('Membership Card')
+        ->assertSee('have a membership card on file')
+        ->assertSee(route('organizations.index'), false);
+});
+
+test('the Membership Card section shows the teacher\'s uploaded card image when one is on file', function () {
+    Storage::fake('s3');
+
+    $teacher = makeEstimateFormTeacher();
+    $version = Version::factory()->create();
+    $school = School::factory()->create();
+    actingAs($teacher->user);
+    inviteEstimateFormTeacher($teacher, $version);
+    registerEstimateFormCandidate($teacher, $version, $school);
+    VersionMembershipRequirement::create(['version_id' => $version->id, 'membership_card' => true]);
+
+    Membership::factory()->create([
+        'teacher_id' => $teacher->id,
+        'organization_id' => $version->event->organization_id,
+        'membership_card' => 'memberships/cards/card.png',
+    ]);
+
+    Livewire::test(EstimateForm::class, ['version' => $version])
+        ->assertSee('Membership Card')
+        ->assertDontSee("don't have a membership card on file")
+        ->assertSeeHtml('alt="Membership card"');
+});
+
+test('the Membership Card section still shows on the multi-school picker branch', function () {
+    $teacher = makeEstimateFormTeacher();
+    $version = Version::factory()->create();
+    $schoolA = School::factory()->create();
+    $schoolB = School::factory()->create();
+    actingAs($teacher->user);
+    inviteEstimateFormTeacher($teacher, $version);
+    registerEstimateFormCandidate($teacher, $version, $schoolA);
+    registerEstimateFormCandidate($teacher, $version, $schoolB);
+    VersionMembershipRequirement::create(['version_id' => $version->id, 'membership_card' => true]);
+
+    Livewire::test(EstimateForm::class, ['version' => $version])
+        ->assertSee('Membership Card');
 });
 
 test('a school with a registered candidate is excluded when the teacher is no longer active+verified there', function () {

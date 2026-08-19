@@ -22,8 +22,10 @@ use App\Models\VoicePart;
 use App\Support\ClassOfCalculator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 
@@ -101,6 +103,106 @@ test('the students index lists students this teacher teaches', function () {
     Livewire::actingAs($user)
         ->test(Index::class)
         ->assertSee('Anderson, Alice');
+});
+
+test('the Photo column shows initials when the student has no uploaded photo', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    claimStudentForTeacher($user->teacher, $school, 'Alice', 'Anderson');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('AA');
+});
+
+test('the Photo column shows the uploaded image when the student has one', function () {
+    Storage::fake('s3');
+
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Alice', 'Anderson');
+    $row->student->user->update(['photo_path' => 'thumbnails/test-photo.jpg']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSeeHtml('rounded-full object-cover')
+        ->assertDontSee('AA');
+});
+
+test('a teacher can upload a photo for a student from the Edit modal', function () {
+    Storage::fake('s3');
+
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Alice', 'Anderson');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $row->id)
+        ->set('edit_photo', UploadedFile::fake()->image('headshot.jpg'))
+        ->assertHasNoErrors();
+
+    $photoPath = $row->student->user->refresh()->photo_path;
+
+    expect($photoPath)->not->toBeNull();
+    expect($photoPath)->toStartWith('thumbnails/');
+    Storage::disk('s3')->assertExists($photoPath);
+});
+
+test('a teacher can replace a photo the student already uploaded, deleting the old one', function () {
+    Storage::fake('s3');
+
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Alice', 'Anderson');
+    $row->student->user->update(['photo_path' => 'thumbnails/student-uploaded.jpg']);
+    Storage::disk('s3')->put('thumbnails/student-uploaded.jpg', 'fake-bytes');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $row->id)
+        ->set('edit_photo', UploadedFile::fake()->image('replacement.jpg'));
+
+    $newPath = $row->student->user->refresh()->photo_path;
+
+    expect($newPath)->not->toBe('thumbnails/student-uploaded.jpg');
+    Storage::disk('s3')->assertMissing('thumbnails/student-uploaded.jpg');
+    Storage::disk('s3')->assertExists($newPath);
+});
+
+test('a teacher can remove a student\'s photo from the Edit modal', function () {
+    Storage::fake('s3');
+
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Alice', 'Anderson');
+    $row->student->user->update(['photo_path' => 'thumbnails/student-uploaded.jpg']);
+    Storage::disk('s3')->put('thumbnails/student-uploaded.jpg', 'fake-bytes');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $row->id)
+        ->call('removeEditPhoto');
+
+    expect($row->student->user->refresh()->photo_path)->toBeNull();
+    Storage::disk('s3')->assertMissing('thumbnails/student-uploaded.jpg');
+});
+
+test('a teacher cannot upload a photo for a student outside their roster', function () {
+    Storage::fake('s3');
+
+    $user = makeStudentsIndexTeacherUser();
+    $otherTeacher = Teacher::factory()->create();
+    $school = School::factory()->create();
+    $otherRow = claimStudentForTeacher($otherTeacher, $school, 'Not', 'Mine');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->set('editingRowId', $otherRow->id)
+        ->set('edit_photo', UploadedFile::fake()->image('headshot.jpg'))
+        ->assertStatus(404);
+
+    expect($otherRow->student->user->refresh()->photo_path)->toBeNull();
 });
 
 test('the Name column shows "Last Suffix, First Middle"', function () {

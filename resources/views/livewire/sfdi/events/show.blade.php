@@ -129,21 +129,48 @@
             <flux:card id="tour-application-card">
                 <div class="flex items-center justify-between mb-3">
                     <flux:heading size="sm">Application</flux:heading>
-                    <flux:button size="sm" variant="ghost" icon="eye" wire:click="viewApplication">View</flux:button>
+                    @if ($candidateRequirementsMet)
+                        <flux:button size="sm" variant="ghost" icon="eye" wire:click="viewApplication">View</flux:button>
+                    @else
+                        <flux:button size="sm" variant="ghost" icon="eye" disabled>View</flux:button>
+                    @endif
                 </div>
 
+                @if (! $candidateRequirementsMet)
+                    <flux:callout variant="warning" icon="lock-closed" class="mb-3">
+                        <flux:callout.text>
+                            Applications are enabled after Candidate Requirements have been met.
+                        </flux:callout.text>
+                    </flux:callout>
+                @endif
+
                 @if ($version->application_type === \App\Enums\ApplicationType::Pdf)
-                    <flux:badge color="{{ $candidate->application_certified_at !== null ? 'green' : 'amber' }}" size="sm">
-                        {{ $candidate->application_certified_at !== null ? 'Certified' : 'Not Certified' }}
-                    </flux:badge>
+                    @if ($candidateRequirementsMet)
+                        <flux:badge color="{{ $candidate->application_certified_at !== null ? 'green' : 'amber' }}" size="sm" wire:click="viewApplication" class="cursor-pointer">
+                            {{ $candidate->application_certified_at !== null ? 'Certified' : 'Not Certified' }}
+                        </flux:badge>
+                    @else
+                        <flux:badge color="{{ $candidate->application_certified_at !== null ? 'green' : 'amber' }}" size="sm">
+                            {{ $candidate->application_certified_at !== null ? 'Certified' : 'Not Certified' }}
+                        </flux:badge>
+                    @endif
                 @else
                     <div class="flex flex-wrap gap-2">
-                        <flux:badge color="{{ $candidate->application_candidate_signed_at !== null ? 'green' : 'amber' }}" size="sm">
-                            {{ $candidate->application_candidate_signed_at !== null ? 'Candidate Signed' : 'Candidate Not Signed' }}
-                        </flux:badge>
-                        <flux:badge color="{{ $candidate->application_parent_signed_at !== null ? 'green' : 'amber' }}" size="sm">
-                            {{ $candidate->application_parent_signed_at !== null ? 'Parent Signed' : 'Parent Not Signed' }}
-                        </flux:badge>
+                        @if ($candidateRequirementsMet)
+                            <flux:badge color="{{ $candidate->application_candidate_signed_at !== null ? 'green' : 'amber' }}" size="sm" wire:click="viewApplication" class="cursor-pointer">
+                                {{ $candidate->application_candidate_signed_at !== null ? 'Candidate Signed' : 'Candidate Not Signed' }}
+                            </flux:badge>
+                            <flux:badge color="{{ $candidate->application_parent_signed_at !== null ? 'green' : 'amber' }}" size="sm" wire:click="viewApplication" class="cursor-pointer">
+                                {{ $candidate->application_parent_signed_at !== null ? 'Parent Signed' : 'Parent Not Signed' }}
+                            </flux:badge>
+                        @else
+                            <flux:badge color="{{ $candidate->application_candidate_signed_at !== null ? 'green' : 'amber' }}" size="sm">
+                                {{ $candidate->application_candidate_signed_at !== null ? 'Candidate Signed' : 'Candidate Not Signed' }}
+                            </flux:badge>
+                            <flux:badge color="{{ $candidate->application_parent_signed_at !== null ? 'green' : 'amber' }}" size="sm">
+                                {{ $candidate->application_parent_signed_at !== null ? 'Parent Signed' : 'Parent Not Signed' }}
+                            </flux:badge>
+                        @endif
                     </div>
                 @endif
             </flux:card>
@@ -447,7 +474,7 @@
                 </div>
 
                 @if ($version->application_type === \App\Enums\ApplicationType::EApplication)
-                    <div class="space-y-3">
+                    <div class="space-y-3 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 p-4">
                         @if ($writeActionsBlocked)
                             <flux:text size="sm" class="text-zinc-500">
                                 Signature status can't be changed right now — see the notice at the top of the page.

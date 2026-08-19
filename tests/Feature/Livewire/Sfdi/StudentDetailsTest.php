@@ -58,6 +58,18 @@ test('a student can save their biography details and home address', function () 
         ->and($homeAddress->zip_code)->toBe('08901');
 });
 
+test('the Height select shows the foot-inch translation alongside each inches value', function () {
+    $user = makeStudentDetailsUser();
+
+    // assertSeeHtml, not assertSee — assertSee HTML-escapes its needle
+    // (looking for &#039;/&quot;), but the raw option text has plain
+    // apostrophe/quote characters (feedback_flux_custom_label_fields-style
+    // gotcha, cataloged project-wide).
+    Livewire::actingAs($user)
+        ->test(StudentDetails::class)
+        ->assertSeeHtml('74 (6\'2")');
+});
+
 test('height outside the valid range is rejected', function () {
     $user = makeStudentDetailsUser();
 

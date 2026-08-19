@@ -36,12 +36,19 @@
                         <flux:label>Membership card image</flux:label>
 
                         @if (isset($existingMembershipCards[$rootOrgId]))
-                            <div class="mb-3">
+                            <div class="mb-3 flex items-start gap-3">
                                 <img
-                                    src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($existingMembershipCards[$rootOrgId]) }}"
+                                    src="{{ \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($existingMembershipCards[$rootOrgId], now()->addMinutes(30)) }}"
                                     alt="Membership card"
                                     class="h-24 w-auto rounded-md border border-zinc-200 object-cover dark:border-zinc-700"
                                 />
+                                <flux:button
+                                    size="sm" variant="ghost" icon="trash"
+                                    wire:click="removeMembershipCard({{ $rootOrgId }})"
+                                    wire:confirm="Remove this membership card?"
+                                >
+                                    Remove
+                                </flux:button>
                             </div>
                         @endif
 
@@ -51,6 +58,9 @@
                             accept="image/*"
                             class="block w-full text-sm text-zinc-600 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-zinc-700 hover:file:bg-zinc-200 dark:text-zinc-400 dark:file:bg-zinc-700 dark:file:text-zinc-300"
                         />
+                        @if (isset($existingMembershipCards[$rootOrgId]))
+                            <flux:text size="sm" class="mt-1 text-zinc-400">Choose a new file to replace the card above.</flux:text>
+                        @endif
 
                         <div wire:loading wire:target="membershipCards.{{ $rootOrgId }}">
                             <flux:text size="sm" class="mt-1 text-zinc-400">Uploading…</flux:text>
