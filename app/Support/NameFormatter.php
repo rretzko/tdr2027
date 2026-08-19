@@ -25,6 +25,22 @@ final class NameFormatter
     }
 
     /**
+     * First+last initials for an avatar-placeholder fallback (e.g. "JD" for
+     * Jane Doe) — falls back to just the first name's initial if there's no
+     * last name yet (a mid-invite/incomplete record), and to '?' if there's
+     * neither.
+     */
+    public static function initials(User $user): string
+    {
+        $first = filled($user->first_name) ? mb_strtoupper(mb_substr($user->first_name, 0, 1)) : '';
+        $last = filled($user->last_name) ? mb_strtoupper(mb_substr($user->last_name, 0, 1)) : '';
+
+        $initials = $first.$last;
+
+        return $initials !== '' ? $initials : '?';
+    }
+
+    /**
      * Build the "Last, Suffix, First Middle (Honorific)" sort name.
      */
     public static function buildSortName(User $user): string

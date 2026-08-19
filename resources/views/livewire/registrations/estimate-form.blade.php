@@ -13,7 +13,32 @@
         <flux:callout variant="info" icon="information-circle">
             <flux:callout.text>You have no candidates registered for this Version yet.</flux:callout.text>
         </flux:callout>
-    @elseif ($schools->count() === 1)
+    @else
+
+    @if ($membershipCardRequired)
+        <flux:card class="max-w-xl mb-6">
+            <flux:heading size="lg" class="mb-1">Membership Card</flux:heading>
+            <flux:text size="sm" class="text-zinc-500 mb-4">This Event requires proof of membership on your Estimate Form.</flux:text>
+
+            @if ($membershipCardImageUrl !== null)
+                <img
+                    src="{{ $membershipCardImageUrl }}"
+                    alt="Membership card"
+                    class="mb-4 max-h-48 w-auto rounded-md border border-zinc-200 object-contain dark:border-zinc-700"
+                />
+            @else
+                <flux:callout variant="warning" icon="exclamation-triangle" class="mb-4">
+                    <flux:callout.text>You don't have a membership card on file yet — it will show as a placeholder on your downloaded PDF.</flux:callout.text>
+                </flux:callout>
+            @endif
+
+            <flux:button size="sm" variant="ghost" icon="pencil" :href="route('organizations.index')" wire:navigate>
+                Update membership information
+            </flux:button>
+        </flux:card>
+    @endif
+
+    @if ($schools->count() === 1)
         @php $school = $schools->first(); @endphp
         <flux:card class="max-w-xl">
             <flux:heading size="lg">{{ $school->name }}</flux:heading>
@@ -62,5 +87,7 @@
                 </flux:card>
             @endforeach
         </div>
+    @endif
+
     @endif
 </div>

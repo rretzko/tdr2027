@@ -5,14 +5,20 @@ declare(strict_types=1);
 namespace App\Livewire\Settings;
 
 use App\Models\Pronoun;
+use Flux\Flux;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Laravel\Fortify\Contracts\UpdatesUserProfileInformation;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 #[Layout('components.layouts.app')]
 class Profile extends Component
 {
+    use WithFileUploads;
+
     public string $honorific = '';
 
     public string $first_name = '';
@@ -31,6 +37,8 @@ class Profile extends Component
 
     public bool $saved = false;
 
+    public $photo = null;
+
     public function mount(): void
     {
         $user = auth()->user();
@@ -43,6 +51,49 @@ class Profile extends Component
         $this->pronoun_id = $user->pronoun_id !== null ? (string) $user->pronoun_id : '';
         $this->email = (string) $user->email;
         $this->cell_phone = (string) $user->cell_phone;
+    }
+
+    /**
+     * Auto-saves on selection rather than waiting for the form's own Save
+     * button — every other single-purpose action on this page (uploads,
+     * toggles) elsewhere in the app is immediate, and a photo preview that
+     * silently discards itself if the user forgets to hit Save would be a
+     * worse experience than the inconsistency with the name/email fields.
+     */
+    public function updatedPhoto(): void
+    {
+        $this->validate([
+            'photo' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+        ]);
+
+        $user = Auth::user();
+        $previousPath = $user->photo_path;
+
+        $path = $this->photo->store('thumbnails', 's3');
+        $user->update(['photo_path' => $path]);
+
+        // Deleted after the new one is committed, not before — a failed
+        // upload above never reaches here, so the old photo is never lost
+        // to a failed replacement.
+        if ($previousPath !== null) {
+            Storage::disk('s3')->delete($previousPath);
+        }
+
+        $this->photo = null;
+
+        Flux::toast('Profile photo updated.');
+    }
+
+    public function removePhoto(): void
+    {
+        $user = Auth::user();
+
+        if ($user->photo_path !== null) {
+            Storage::disk('s3')->delete($user->photo_path);
+            $user->update(['photo_path' => null]);
+        }
+
+        Flux::toast('Profile photo removed.');
     }
 
     public function update(): void

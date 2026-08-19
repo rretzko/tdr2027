@@ -27,7 +27,11 @@
 
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <flux:input wire:model="birthday" label="Birthday" type="date" />
-                <flux:input wire:model="height" label="Height (inches)" type="number" min="30" max="84" />
+                <flux:select wire:model="height" label="Height (in)" placeholder="Select height...">
+                    @for ($inches = 30; $inches <= 84; $inches++)
+                        <flux:select.option value="{{ $inches }}">{{ $inches }} ({{ intdiv($inches, 12) }}'{{ $inches % 12 }}")</flux:select.option>
+                    @endfor
+                </flux:select>
             </div>
             <flux:error name="voice_part_id" />
             <flux:error name="birthday" />

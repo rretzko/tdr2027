@@ -78,19 +78,7 @@ final class EstimateFormData
 
         $feeSubtotalCents = $candidates->count() * $registrationCents;
 
-        $membershipCardRequired = (bool) ($version->membershipRequirement?->membership_card);
-        $membershipCardImageUrl = null;
-
-        if ($membershipCardRequired) {
-            $rootOrganization = $version->event->organization->membershipOrganization();
-
-            $membership = Membership::where('teacher_id', $teacher->id)
-                ->where('organization_id', $rootOrganization->id)
-                ->whereNotNull('membership_card')
-                ->first();
-
-            $membershipCardImageUrl = $membership !== null ? self::resolveImageUrl($membership->membership_card) : null;
-        }
+        $membershipStatus = self::membershipCardStatus($version, $teacher);
 
         $organization = $version->event->organization;
 
@@ -105,8 +93,8 @@ final class EstimateFormData
             feeSubtotalCents: $feeSubtotalCents,
             ePaymentsCents: $ePaymentsCents,
             balanceDueCents: $feeSubtotalCents - $ePaymentsCents,
-            membershipCardRequired: $membershipCardRequired,
-            membershipCardImageUrl: $membershipCardImageUrl,
+            membershipCardRequired: $membershipStatus['required'],
+            membershipCardImageUrl: $membershipStatus['imageUrl'],
             mailToAddress: $mailToResolver->resolve($version, $school),
             organizationLogoUrl: self::resolveImageUrl($organization->logo_file_url),
             organizationLogoAlt: $organization->logo_file_alt,
@@ -114,6 +102,38 @@ final class EstimateFormData
             // doc's "Downloaded on: Saturday, August 15th, 2026 @ 06:59:26 am".
             generatedAt: now()->timezone('America/New_York')->format('l, F jS, Y \@ h:i:s a'),
         );
+    }
+
+    /**
+     * Membership requirement/card lookup depends only on ($version, $teacher)
+     * — not on $school — so it's pulled out as its own method rather than
+     * requiring a full build() (and the School it needs) just to answer "is
+     * a card required, and do we have one on file" for a screen that isn't
+     * scoped to one school yet (Registrations\EstimateForm's multi-school
+     * branch, which never calls build() per §5.13's own "no inline on-screen
+     * summary per school in the multi-school case").
+     *
+     * @return array{required: bool, imageUrl: ?string}
+     */
+    public static function membershipCardStatus(Version $version, Teacher $teacher): array
+    {
+        $required = (bool) ($version->membershipRequirement?->membership_card);
+
+        if (! $required) {
+            return ['required' => false, 'imageUrl' => null];
+        }
+
+        $rootOrganization = $version->event->organization->membershipOrganization();
+
+        $membership = Membership::where('teacher_id', $teacher->id)
+            ->where('organization_id', $rootOrganization->id)
+            ->whereNotNull('membership_card')
+            ->first();
+
+        return [
+            'required' => true,
+            'imageUrl' => $membership !== null ? self::resolveImageUrl($membership->membership_card) : null,
+        ];
     }
 
     private static function resolveImageUrl(?string $key): ?string

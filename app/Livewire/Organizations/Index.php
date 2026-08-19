@@ -11,6 +11,7 @@ use App\Models\Teacher;
 use Flux\Flux;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -92,7 +93,12 @@ class Index extends Component
             ];
 
             if (isset($this->membershipCards[$rootOrgId])) {
-                $path = $this->membershipCards[$rootOrgId]->store('memberships/cards', 'public');
+                // 's3' (private-by-default, signed temporaryUrl() reads), not
+                // 'public' — matches every other uploaded document in this
+                // app (recordings, pitch files, application PDFs, org
+                // logos) and what EstimateFormData::resolveImageUrl()
+                // already expects when it displays this same card.
+                $path = $this->membershipCards[$rootOrgId]->store('memberships/cards', 's3');
                 $data['membership_card'] = $path;
                 $this->existingMembershipCards[$rootOrgId] = $path;
                 $this->membershipCards[$rootOrgId] = null;
@@ -105,6 +111,30 @@ class Index extends Component
         }
 
         Flux::toast('Your organizations have been updated.');
+    }
+
+    /**
+     * Immediate, not deferred to the next Save click — unlike a new upload
+     * (queued in membershipCards[] until save()), a removal has nothing
+     * left to stage; there's no "undo" state to preserve by waiting.
+     * Scoped to the acting teacher's own Membership row regardless of which
+     * $rootOrganizationId a tampered request passes — the query's own
+     * teacher_id condition is the authorization boundary, not the caller.
+     */
+    public function removeMembershipCard(int $rootOrganizationId): void
+    {
+        $membership = Membership::where('teacher_id', $this->teacher()->id)
+            ->where('organization_id', $rootOrganizationId)
+            ->first();
+
+        if ($membership?->membership_card !== null) {
+            Storage::disk('s3')->delete($membership->membership_card);
+            $membership->update(['membership_card' => null]);
+        }
+
+        unset($this->existingMembershipCards[$rootOrganizationId]);
+
+        Flux::toast('Membership card removed.');
     }
 
     public function render(): View

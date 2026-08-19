@@ -38,6 +38,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL as UrlFacade;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -45,12 +46,13 @@ use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 #[Layout('components.layouts.app')]
 class Index extends Component
 {
-    use WithPagination;
+    use WithFileUploads, WithPagination;
 
     #[Url]
     public string $search = '';
@@ -175,6 +177,8 @@ class Index extends Component
     public ?string $emailFallbackNotice = null;
 
     public ?string $passwordResetNotice = null;
+
+    public $edit_photo = null;
 
     public function sortBy(string $column): void
     {
@@ -786,7 +790,22 @@ class Index extends Component
 
         $this->emailFallbackNotice = null;
         $this->passwordResetNotice = null;
+        $this->edit_photo = null;
         $this->resetErrorBag();
+    }
+
+    /**
+     * The currently-edited row's own User — resolved fresh via teacherRow()
+     * rather than cached on a property, the same authorization-scoped lookup
+     * resetPassword() already uses, so the photo actions below can't be
+     * pointed at a student outside this teacher's roster by tampering with
+     * editingRowId client-side.
+     */
+    public function editingUser(): ?User
+    {
+        $row = $this->teacherRow($this->editingRowId)->with('student.user')->first();
+
+        return $row?->student->user;
     }
 
     public function updatedEditSubject(): void
@@ -888,6 +907,48 @@ class Index extends Component
         $user->forceFill(['password' => Hash::make($lowercaseEmail)])->save();
 
         $this->passwordResetNotice = "Password reset to the student's email address: {$lowercaseEmail}.";
+    }
+
+    /**
+     * Lets a teacher replace a photo the student uploaded themselves (or add
+     * one on their behalf) — same validation/storage shape as
+     * Settings\Profile::updatedPhoto(), just against editingUser() instead
+     * of Auth::user().
+     */
+    public function updatedEditPhoto(): void
+    {
+        $this->validate([
+            'edit_photo' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+        ]);
+
+        $user = $this->editingUser();
+        abort_if($user === null, 404);
+
+        $previousPath = $user->photo_path;
+
+        $path = $this->edit_photo->store('thumbnails', 's3');
+        $user->update(['photo_path' => $path]);
+
+        if ($previousPath !== null) {
+            Storage::disk('s3')->delete($previousPath);
+        }
+
+        $this->edit_photo = null;
+
+        Flux::toast('Photo updated.');
+    }
+
+    public function removeEditPhoto(): void
+    {
+        $user = $this->editingUser();
+        abort_if($user === null, 404);
+
+        if ($user->photo_path !== null) {
+            Storage::disk('s3')->delete($user->photo_path);
+            $user->update(['photo_path' => null]);
+        }
+
+        Flux::toast('Photo removed.');
     }
 
     public function saveEdit(): void

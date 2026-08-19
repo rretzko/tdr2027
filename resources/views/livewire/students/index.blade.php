@@ -22,22 +22,33 @@
         </div>
     </div>
 
-    {{-- Cards below lg:, full table at lg: and up. This table has 7 columns —
+    {{-- Cards below lg:, full table at lg: and up. This table has 9 columns —
          md: doesn't leave enough room once the persistent sidebar appears. --}}
     <div class="lg:hidden space-y-3">
         @forelse ($rows as $row)
             <flux:card size="sm">
                 <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <flux:heading size="base">{{ $this->studentDisplayName($row->student->user) }}</flux:heading>
-
-                        @if ($this->hasRealEmail($row->student->user->email))
-                            <flux:text size="sm" class="ms-3 text-zinc-500">{{ $row->student->user->email }}</flux:text>
+                    <div class="flex items-start gap-3">
+                        @php $avatar = $row->student->user->avatarUrl(); @endphp
+                        @if ($avatar)
+                            <img src="{{ $avatar }}" alt="" class="h-10 w-10 shrink-0 rounded-full object-cover">
                         @else
-                            <flux:text size="sm" class="ms-3 italic text-zinc-400">No email address</flux:text>
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-sm font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+                                {{ \App\Support\NameFormatter::initials($row->student->user) }}
+                            </div>
                         @endif
 
-                        <flux:text size="sm" class="text-zinc-500">{{ $row->school->name }}</flux:text>
+                        <div>
+                            <flux:heading size="base">{{ $this->studentDisplayName($row->student->user) }}</flux:heading>
+
+                            @if ($this->hasRealEmail($row->student->user->email))
+                                <flux:text size="sm" class="ms-3 text-zinc-500">{{ $row->student->user->email }}</flux:text>
+                            @else
+                                <flux:text size="sm" class="ms-3 italic text-zinc-400">No email address</flux:text>
+                            @endif
+
+                            <flux:text size="sm" class="text-zinc-500">{{ $row->school->name }}</flux:text>
+                        </div>
                     </div>
 
                     @if ($row->isPending())
@@ -115,6 +126,7 @@
     <div class="hidden lg:block">
         <flux:table :paginate="$rows">
             <flux:table.columns>
+                <flux:table.column>Photo</flux:table.column>
                 <flux:table.column sortable :sorted="$sortColumn === 'name'" :direction="$sortDirection" wire:click="sortBy('name')">
                     Name
                 </flux:table.column>
@@ -138,6 +150,16 @@
             <flux:table.rows>
                 @forelse ($rows as $row)
                     <flux:table.row :key="$row->id">
+                        <flux:table.cell>
+                            @php $avatar = $row->student->user->avatarUrl(); @endphp
+                            @if ($avatar)
+                                <img src="{{ $avatar }}" alt="" class="h-8 w-8 rounded-full object-cover">
+                            @else
+                                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-xs font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+                                    {{ \App\Support\NameFormatter::initials($row->student->user) }}
+                                </div>
+                            @endif
+                        </flux:table.cell>
                         <flux:table.cell>
                             <div>{{ $this->studentDisplayName($row->student->user) }}</div>
 
@@ -209,7 +231,7 @@
                     </flux:table.row>
                 @empty
                     <flux:table.row>
-                        <flux:table.cell colspan="7" class="text-center text-zinc-500">
+                        <flux:table.cell colspan="9" class="text-center text-zinc-500">
                             No students found.
                         </flux:table.cell>
                     </flux:table.row>
@@ -435,6 +457,38 @@
             @endif
 
             <flux:separator text="Profile" />
+
+            @unless ($isAdding)
+                <div class="flex items-center gap-4">
+                    @php $editAvatar = $this->editingUser()?->avatarUrl(); @endphp
+                    @if ($editAvatar)
+                        <img src="{{ $editAvatar }}" alt="" class="h-16 w-16 rounded-full object-cover">
+                    @else
+                        <div class="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-200 text-lg font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+                            {{ $this->editingUser() !== null ? \App\Support\NameFormatter::initials($this->editingUser()) : '?' }}
+                        </div>
+                    @endif
+
+                    <div class="flex flex-col gap-2">
+                        <input
+                            type="file"
+                            wire:model="edit_photo"
+                            accept="image/*"
+                            class="block text-sm text-zinc-600 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-zinc-700 hover:file:bg-zinc-200 dark:text-zinc-400 dark:file:bg-zinc-700 dark:file:text-zinc-300"
+                        />
+                        <div wire:loading wire:target="edit_photo">
+                            <flux:text size="sm" class="text-zinc-400">Uploading…</flux:text>
+                        </div>
+                        <flux:error name="edit_photo" />
+
+                        @if ($this->editingUser()?->photo_path !== null)
+                            <flux:button size="sm" variant="ghost" wire:click="removeEditPhoto" wire:confirm="Remove this student's photo?">
+                                Remove photo
+                            </flux:button>
+                        @endif
+                    </div>
+                </div>
+            @endunless
 
             <flux:input wire:model.live.debounce.300ms="edit_first_name" label="First name" />
             <flux:input wire:model="edit_middle_name" label="Middle name (optional)" />

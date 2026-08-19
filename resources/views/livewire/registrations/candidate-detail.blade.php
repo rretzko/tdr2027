@@ -543,7 +543,7 @@
                         </flux:text>
                     @endif
                 @else
-                    <div class="space-y-3">
+                    <div class="space-y-3 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 p-4">
                         <flux:checkbox
                             :checked="$candidate->application_candidate_signed_at !== null"
                             wire:click="toggleApplicationCandidateSigned"
