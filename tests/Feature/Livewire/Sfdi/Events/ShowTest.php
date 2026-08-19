@@ -550,6 +550,12 @@ test('viewPitchFiles opens without error', function () {
 });
 
 test('the Pitch Files modal shows files matching the candidate\'s own voice part, and the ALL voice part, with no filter UI', function () {
+    // Livewire's initial mount renders the full component, including the
+    // modal content — so real pitch-file rows always exercise the blade's
+    // Storage::disk('s3')->temporaryUrl() calls even when the test itself
+    // never touches Storage, and never actually opens the modal.
+    Storage::fake('s3');
+
     $user = makeSfdiEventsShowUser();
     $version = Version::factory()->create(['status' => EventStatus::Active]);
 
@@ -579,6 +585,8 @@ test('the Pitch Files modal shows files matching the candidate\'s own voice part
 });
 
 test('a Version set to Teacher-only visibility shows no pitch files to the student', function () {
+    Storage::fake('s3');
+
     $user = makeSfdiEventsShowUser();
     $version = Version::factory()->create(['status' => EventStatus::Active, 'pitch_file_visibility' => 'teacher']);
     $soprano = attachSfdiVoicePart($version, 'Soprano');
@@ -598,6 +606,8 @@ test('a Version set to Teacher-only visibility shows no pitch files to the stude
 });
 
 test('a Version set to Candidate-only or Both visibility shows pitch files to the student', function (string $visibility) {
+    Storage::fake('s3');
+
     $user = makeSfdiEventsShowUser();
     $version = Version::factory()->create(['status' => EventStatus::Active, 'pitch_file_visibility' => $visibility]);
     $soprano = attachSfdiVoicePart($version, 'Soprano');
