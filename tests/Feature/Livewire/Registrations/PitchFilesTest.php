@@ -97,6 +97,8 @@ test('mount redirects an invited teacher who has not yet responded to a publishe
 });
 
 test('an invited teacher sees every pitch file with no filter applied', function () {
+    Storage::fake('s3');
+
     $teacher = makePitchFilesTeacher();
     $version = makeRegistrationsPitchFilesVersion();
     actingAs($teacher->user);
@@ -111,6 +113,8 @@ test('an invited teacher sees every pitch file with no filter applied', function
 });
 
 test('the voice part filter narrows the list to matching pitch files', function () {
+    Storage::fake('s3');
+
     $teacher = makePitchFilesTeacher();
     $version = makeRegistrationsPitchFilesVersion();
     actingAs($teacher->user);
@@ -134,6 +138,8 @@ test('the voice part filter narrows the list to matching pitch files', function 
 });
 
 test('a pitch file on the ALL voice part is shown regardless of the voice part filter', function () {
+    Storage::fake('s3');
+
     $teacher = makePitchFilesTeacher();
     $version = makeRegistrationsPitchFilesVersion();
     actingAs($teacher->user);
@@ -155,6 +161,8 @@ test('a pitch file on the ALL voice part is shown regardless of the voice part f
 });
 
 test('the name filter narrows the list to an exact name match', function () {
+    Storage::fake('s3');
+
     $teacher = makePitchFilesTeacher();
     $version = makeRegistrationsPitchFilesVersion();
     actingAs($teacher->user);
@@ -186,6 +194,8 @@ test('shows the empty-state message when the Version has no pitch files', functi
 // --- pitch_file_visibility (studentfolder-module.md §5.5, second pass 2026-08-18) ---
 
 test('a Version set to Candidate-only visibility shows no pitch files to the teacher', function () {
+    Storage::fake('s3');
+
     $teacher = makePitchFilesTeacher();
     $version = makeRegistrationsPitchFilesVersion();
     $version->update(['pitch_file_visibility' => 'candidate']);
@@ -201,6 +211,8 @@ test('a Version set to Candidate-only visibility shows no pitch files to the tea
 });
 
 test('a Version set to Teacher-only or Both visibility still shows pitch files to the teacher', function (string $visibility) {
+    Storage::fake('s3');
+
     $teacher = makePitchFilesTeacher();
     $version = makeRegistrationsPitchFilesVersion();
     $version->update(['pitch_file_visibility' => $visibility]);
