@@ -9,17 +9,23 @@ use App\Enums\ApplicationType;
 use App\Enums\AuditionType;
 use App\Enums\CandidateStatus;
 use App\Enums\CandidateUploadStatus;
+use App\Enums\FeeType;
+use App\Enums\PaymentTransactionStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\UploadType;
 use App\Models\Candidate;
 use App\Models\CandidateUploadFile;
+use App\Models\PaymentAllocation;
+use App\Models\PaymentTransaction;
 use App\Models\Recording;
 use App\Models\Version;
 use App\Models\VersionApplication;
 use App\Models\VersionInvitation;
 use App\Models\VersionPitchFile;
+use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VersionUploadFile;
 use App\Services\CandidateService;
+use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\RecordingReviewService;
 use App\Support\CandidateApplicationData;
 use Flux\Flux;
@@ -216,6 +222,20 @@ class Show extends Component
         Flux::toast('Program name saved.');
     }
 
+    /**
+     * Marks the first-visit spotlight tour as seen for this user — a single
+     * flag covers every Candidate's Show page, mirroring
+     * Events\Show::dismissOrientation()/VersionDashboard::dismissOrientation().
+     * Called from the client-side tour engine
+     * (resources/views/livewire/sfdi/events/show.blade.php) via a hidden
+     * wire:click trigger when the tour finishes or is skipped; the
+     * always-visible "Take a tour" button ignores this flag entirely.
+     */
+    public function dismissOrientation(): void
+    {
+        Auth::user()->update(['dismissed_sfdi_candidate_orientation_at' => now()]);
+    }
+
     public function withdraw(CandidateService $candidates): void
     {
         abort_if($this->writeActionsBlocked(), 403);
@@ -225,6 +245,52 @@ class Show extends Component
         Flux::toast('You have withdrawn from this Event.');
 
         $this->redirect(route('sfdi.events.index'), navigate: true);
+    }
+
+    /**
+     * Student-initiated Pay Now (studentfolder-module.md §5.7) — deliberately
+     * not behind writeActionsBlocked() (status lock / obligations gate):
+     * §5.7 defines its own three-part gate below, independent of §5.3's
+     * gates, mirroring CandidateDetail::payNow() (teacher-initiated), which
+     * likewise isn't wrapped in that guard.
+     */
+    public function payNow(PaymentGatewayFactory $factory, string $feeType): void
+    {
+        $feeType = FeeType::from($feeType);
+
+        abort_unless($this->version->epaymentStudentEnabled(), 403);
+
+        // Scoped to this candidate's own enrolling teacher, not "any teacher
+        // at the school" — the source doc's own wording (§5.7 condition 2).
+        $optedIn = VersionTeacherEpaymentOptIn::where('version_id', $this->version->id)
+            ->where('teacher_id', $this->candidate->teacher_id)
+            ->value('opted_in');
+        abort_unless($optedIn === true, 403);
+
+        abort_unless(match ($feeType) {
+            // Tighter than the teacher-facing rule — cuts off once
+            // Adjudication starts, not just once the Version closes (§9
+            // item 2, confirmed with the product owner: student-only,
+            // registrationFeePayable() itself stays unchanged for teachers).
+            FeeType::Registration => $this->version->registrationFeePayableByStudent(),
+            FeeType::Participation => $this->version->participationFeePayable(),
+            FeeType::Housing => $this->version->housingFeePayable(),
+        }, 403);
+
+        $eligibleStates = match ($feeType) {
+            FeeType::Registration => CandidateStatus::registrationFeeEligibleStates(),
+            FeeType::Participation, FeeType::Housing => [CandidateStatus::Accepted],
+        };
+        // getRawOriginal(), not the magic-cast property — Larastan can't
+        // infer the enum cast through this model's method-based casts()
+        // return (cataloged PHPStan-quirks memory).
+        $candidateStatus = CandidateStatus::from((string) $this->candidate->getRawOriginal('status'));
+        abort_unless(in_array($candidateStatus, $eligibleStates, true), 422);
+
+        $gateway = $factory->make($this->version);
+        $session = $gateway->createCheckoutSession($this->version, collect([$this->candidate]), $this->candidate->student, $feeType);
+
+        $this->redirect($session->redirectUrl, navigate: false);
     }
 
     public function uploadRecording(int $versionUploadFileId): void
@@ -389,6 +455,7 @@ class Show extends Component
             'pitchFilesVisible' => $pitchFilesVisible,
             'pitchFiles' => $pitchFilesVisible ? $this->matchingPitchFiles() : new Collection,
             ...$this->applicationDocumentView(),
+            ...$this->paymentView(),
         ]);
     }
 
@@ -527,6 +594,75 @@ class Show extends Component
                 'candidateSignedAt' => Carbon::make($this->candidate->application_candidate_signed_at),
                 'parentSignedAt' => Carbon::make($this->candidate->application_parent_signed_at),
             ],
+        ];
+    }
+
+    /**
+     * §5.7's three-part gate (epaymentStudentEnabled, this candidate's own
+     * teacher opted in, the relevant fee's timing) plus the same due/paid
+     * balance math CandidateDetail::render() already does per fee type —
+     * mirrored rather than shared, since the two components have no common
+     * base to hang a helper off of and the two call sites would otherwise
+     * drift no differently than any other Livewire-component duplication in
+     * this codebase (e.g. isLocked()'s own status-cast comment).
+     *
+     * @return array{registrationFeeDue: bool, participationFeeDue: bool, housingFeeDue: bool, overpaymentCents: int, candidatePayments: Collection<int, PaymentTransaction>}
+     */
+    private function paymentView(): array
+    {
+        $epaymentOptedIn = $this->version->epaymentStudentEnabled() && (bool) VersionTeacherEpaymentOptIn::where('version_id', $this->version->id)
+            ->where('teacher_id', $this->candidate->teacher_id)
+            ->value('opted_in');
+
+        $candidateStatus = CandidateStatus::from((string) $this->candidate->getRawOriginal('status'));
+
+        $fees = $this->version->fees()->first();
+        $dueCents = (int) ($fees->registration ?? 0);
+        if ($this->version->participationFeePayable() && $candidateStatus === CandidateStatus::Accepted) {
+            $dueCents += (int) ($fees->participation ?? 0);
+        }
+        $paidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
+            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
+            ->sum('amount');
+        $balanceDue = $dueCents - $paidCents > 0;
+        $overpaymentCents = max(0, $paidCents - $dueCents);
+
+        $registrationFeeDue = $epaymentOptedIn
+            && $this->version->registrationFeePayableByStudent()
+            && in_array($candidateStatus, CandidateStatus::registrationFeeEligibleStates(), true)
+            && $balanceDue;
+
+        $participationFeeDue = $epaymentOptedIn
+            && $this->version->participationFeePayable()
+            && $candidateStatus === CandidateStatus::Accepted
+            && $balanceDue;
+
+        // Housing stays outside the combined balance above — same
+        // independent due/paid pair CandidateDetail::render() computes, see
+        // that method's own comment for the full reasoning.
+        $housingCents = (int) ($fees->housing ?? 0);
+        $housingPaidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
+            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value)
+                ->where('fee_type', FeeType::Housing->value))
+            ->sum('amount');
+        $housingBalanceDue = $housingCents - $housingPaidCents > 0;
+
+        $housingFeeDue = $epaymentOptedIn
+            && $this->version->housingFeePayable()
+            && $candidateStatus === CandidateStatus::Accepted
+            && $housingBalanceDue;
+
+        return [
+            'registrationFeeDue' => $registrationFeeDue,
+            'participationFeeDue' => $participationFeeDue,
+            'housingFeeDue' => $housingFeeDue,
+            'overpaymentCents' => $overpaymentCents,
+            'candidatePayments' => PaymentTransaction::whereHas(
+                'allocations',
+                fn ($q) => $q->where('candidate_id', $this->candidate->id),
+            )->with(['allocations' => fn ($q) => $q->where('candidate_id', $this->candidate->id)])
+                ->orderByDesc('paid_at')
+                ->get(),
         ];
     }
 }

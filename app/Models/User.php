@@ -22,7 +22,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['email', 'cell_phone', 'password', 'pronoun_id', 'honorific', 'first_name', 'middle_name', 'last_name', 'suffix_name', 'dismissed_registration_orientation_at', 'dismissed_dashboard_orientation_at', 'dismissed_event_orientation_at'])]
+#[Fillable(['email', 'cell_phone', 'password', 'pronoun_id', 'honorific', 'first_name', 'middle_name', 'last_name', 'suffix_name', 'dismissed_registration_orientation_at', 'dismissed_dashboard_orientation_at', 'dismissed_event_orientation_at', 'dismissed_sfdi_candidate_orientation_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmailContract
 {
@@ -56,6 +56,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
             'dismissed_registration_orientation_at' => 'datetime',
             'dismissed_dashboard_orientation_at' => 'datetime',
             'dismissed_event_orientation_at' => 'datetime',
+            'dismissed_sfdi_candidate_orientation_at' => 'datetime',
         ];
     }
 

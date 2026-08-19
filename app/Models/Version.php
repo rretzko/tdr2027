@@ -11,7 +11,9 @@ use App\Enums\EventStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
+use App\Enums\VersionDateType;
 use App\Observers\VersionObserver;
+use Carbon\Carbon;
 use Database\Factories\VersionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
@@ -183,6 +185,31 @@ class Version extends Model
     public function housingFeePayable(): bool
     {
         return $this->getRawOriginal('status') === EventStatus::Closed->value;
+    }
+
+    /**
+     * The student-initiated Pay Now's own, tighter registration window
+     * (studentfolder-module.md §5.7/§9 item 2) — cuts off once this
+     * Version's Adjudication window starts, unlike registrationFeePayable()
+     * above, which stays "any time before Closed" for the teacher-facing
+     * Pay Now / group-payment flow (deliberately unchanged, confirmed with
+     * the product owner rather than narrowing it for everyone). A Version
+     * with no Adjudication date configured at all is treated as payable —
+     * there's nothing to cut off against, so it falls back to the base rule
+     * rather than permanently blocking student payment on incomplete date
+     * config.
+     */
+    public function registrationFeePayableByStudent(): bool
+    {
+        if (! $this->registrationFeePayable()) {
+            return false;
+        }
+
+        $adjudicationStart = VersionDate::where('version_id', $this->id)
+            ->where('date_type', VersionDateType::Adjudication)
+            ->value('start_at');
+
+        return $adjudicationStart === null || Carbon::parse($adjudicationStart)->isFuture();
     }
 
     /**

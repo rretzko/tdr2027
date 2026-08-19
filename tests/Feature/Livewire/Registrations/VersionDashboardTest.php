@@ -62,7 +62,7 @@ class FakeSquareGateway implements PaymentGatewayContract
     /**
      * @param  Collection<int, Candidate>  $candidates
      */
-    public function createCheckoutSession(Version $version, Collection $candidates, Teacher $payer, FeeType $feeType): CheckoutSession
+    public function createCheckoutSession(Version $version, Collection $candidates, Teacher|Student $payer, FeeType $feeType): CheckoutSession
     {
         self::$lastCandidates = $candidates;
         self::$lastFeeType = $feeType;
@@ -72,7 +72,8 @@ class FakeSquareGateway implements PaymentGatewayContract
             'source' => $candidates->count() === 1 ? PaymentSource::CandidateEpayment : PaymentSource::TeacherEpayment,
             'vendor' => Vendor::Square,
             'vendor_transaction_id' => 'fake-order-'.uniqid(),
-            'payer_teacher_id' => $payer->id,
+            'payer_teacher_id' => $payer instanceof Teacher ? $payer->id : null,
+            'payer_student_id' => $payer instanceof Student ? $payer->id : null,
             'school_id' => $candidates->first()?->school_id,
             'amount' => 12345,
             'status' => PaymentTransactionStatus::Pending,
@@ -182,6 +183,16 @@ test('the Take a tour button does not auto-start once the tour has already been 
         ->test(VersionDashboard::class, ['version' => $version])
         ->assertSee('Take a tour')
         ->assertSeeHtml('data-auto-start="0"');
+});
+
+test('the breadcrumb tour anchor renders', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    inviteRegistrationTeacher($teacher, $version);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSeeHtml('id="tour-breadcrumb"');
 });
 
 test('dismissOrientation persists the dismissal and stops the tour from auto-starting on a re-render', function () {

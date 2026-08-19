@@ -7,7 +7,7 @@
     <div class="flex flex-col gap-6">
         <div class="flex items-center justify-between gap-3">
             <flux:heading size="xl">Dashboard</flux:heading>
-            @if ($teacher)
+            @if ($teacher || $student)
                 <flux:button id="dash-tour-start" data-auto-start="{{ auth()->user()->dismissed_dashboard_orientation_at === null ? '1' : '0' }}" size="sm" variant="ghost" icon="sparkles" type="button">Take a tour</flux:button>
             @endif
         </div>
@@ -147,6 +147,45 @@
                 </a>
             @endif
         </div>
+        @elseif ($student)
+        {{-- StudentFolder.info side (studentfolder-module.md §5.1) — a
+             summary card linking to the real "My Events" list
+             (App\Livewire\Sfdi\Events\Index), which owns the full
+             read/checklist view. Queried inline here the same way the
+             teacher Events card above inlines $openEvents, rather than
+             invoking that Livewire component from a plain Route::view. --}}
+        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <a id="tour-my-events-card" href="{{ route('sfdi.events.index') }}" wire:navigate class="block h-full transition hover:shadow-md">
+                <flux:card class="flex h-full flex-col gap-4 border-l-4 border-l-teal-500 sm:border-2 sm:border-teal-500">
+                    <flux:heading size="lg">My Events</flux:heading>
+
+                    @php
+                        $myCandidates = \App\Models\Candidate::where('student_id', $student->id)
+                            ->whereHas('version', fn ($q) => $q->where('status', 'active'))
+                            ->with(['version.event'])
+                            ->get();
+                    @endphp
+
+                    @if ($myCandidates->isNotEmpty())
+                        <div class="flex flex-col gap-2">
+                            @foreach ($myCandidates->take(5) as $candidate)
+                                <div class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                                    <flux:text class="font-medium">{{ $candidate->version->name }}</flux:text>
+                                    <flux:text size="sm" class="text-zinc-500">{{ $candidate->version->event->name }}</flux:text>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        @if ($myCandidates->count() > 5)
+                            <flux:text size="sm" class="text-zinc-500">+ {{ $myCandidates->count() - 5 }} more</flux:text>
+                        @endif
+                    @else
+                        <flux:text size="sm" class="text-zinc-500">No open events yet.</flux:text>
+                    @endif
+                </flux:card>
+            </a>
+        </div>
+        @endif
     </div>
 
     {{-- Spotlight tour, same approach as the Registration Dashboard's
@@ -154,7 +193,11 @@
          — a persistent "Take a tour" button covering the sidebar nav and
          this page's own cards. Persistence goes through a tiny embedded
          Livewire component (App\Livewire\Dashboard\TourDismiss) since this
-         page itself is a plain Route::view, not a Livewire component. --}}
+         page itself is a plain Route::view, not a Livewire component. Shared
+         chrome for both the teacher and student variant of this page (the
+         two branches above are mutually exclusive, so reusing the same
+         dash-tour-* ids for both is safe) — only the steps array below
+         varies by role. --}}
     <livewire:dashboard.tour-dismiss />
 
     <div id="dash-tour-scrim" class="hidden fixed inset-0 z-[59]"></div>
@@ -207,22 +250,35 @@
     <script>
         (function () {
             var steps = [
-                { ids: ['tour-sidebar-dashboard'], title: 'Dashboard', body: 'Your home base — jump back here anytime from the sidebar.' },
-                { ids: ['tour-sidebar-fastpass'], title: 'Fast Pass', body: "Quick links to your recently and most visited pages, so you don't have to dig through menus every time." },
-                { ids: ['tour-sidebar-schools'], title: 'Schools', body: 'Manage the schools you teach at — add a new one or check your verification status.' },
-                { ids: ['tour-sidebar-students'], title: 'Students', body: 'Your full student roster across every active school.' },
-                { ids: ['tour-sidebar-organizations'], title: 'Organizations', body: "The associations you're a member of, like NJMEA or CJMEA." },
-                { ids: ['tour-sidebar-events'], title: 'Events', body: 'Events you manage or judge for — create a new one or open an existing one.' },
-                { ids: ['tour-sidebar-registrations'], title: 'Registrations', body: 'Where you register candidates for an open Event and manage their status.' },
-                { ids: ['tour-sidebar-results'], title: 'Results', body: "Score reports and outcomes once an Event's adjudication has closed." },
-                { ids: ['tour-sidebar-profile'], title: 'Profile', body: 'Update your name, contact info, and pronouns.' },
-                { ids: ['tour-sidebar-password'], title: 'Password', body: 'Change your account password.' },
-                { ids: ['tour-sidebar-appearance'], title: 'Appearance', body: 'Switch between light and dark mode.' },
-                { ids: ['tour-sidebar-logout'], title: 'Log out', body: 'Sign out of your account.' },
-                { ids: ['tour-card-schools'], title: 'Schools', body: 'Every school you teach at, with your role and verification status at a glance.' },
-                { ids: ['tour-card-students'], title: 'Students', body: 'A roster summary broken down by grade for each of your schools.' },
-                { ids: ['tour-card-organizations'], title: 'Organizations', body: 'The associations linked to your account.' },
-                { ids: ['tour-card-events'], title: 'Events', body: 'Events currently open for you to manage, or a shortcut to start your first one.' }
+                @if ($teacher)
+                    { ids: ['tour-sidebar-dashboard'], title: 'Dashboard', body: 'Your home base — jump back here anytime from the sidebar.' },
+                    { ids: ['tour-sidebar-fastpass'], title: 'Fast Pass', body: "Quick links to your recently and most visited pages, so you don't have to dig through menus every time." },
+                    { ids: ['tour-sidebar-schools'], title: 'Schools', body: 'Manage the schools you teach at — add a new one or check your verification status.' },
+                    { ids: ['tour-sidebar-students'], title: 'Students', body: 'Your full student roster across every active school.' },
+                    { ids: ['tour-sidebar-organizations'], title: 'Organizations', body: "The associations you're a member of, like NJMEA or CJMEA." },
+                    { ids: ['tour-sidebar-events'], title: 'Events', body: 'Events you manage or judge for — create a new one or open an existing one.' },
+                    { ids: ['tour-sidebar-registrations'], title: 'Registrations', body: 'Where you register candidates for an open Event and manage their status.' },
+                    { ids: ['tour-sidebar-results'], title: 'Results', body: "Score reports and outcomes once an Event's adjudication has closed." },
+                    { ids: ['tour-sidebar-profile'], title: 'Profile', body: 'Update your name, contact info, and pronouns.' },
+                    { ids: ['tour-sidebar-password'], title: 'Password', body: 'Change your account password.' },
+                    { ids: ['tour-sidebar-appearance'], title: 'Appearance', body: 'Switch between light and dark mode.' },
+                    { ids: ['tour-sidebar-logout'], title: 'Log out', body: 'Sign out of your account.' },
+                    { ids: ['tour-card-schools'], title: 'Schools', body: 'Every school you teach at, with your role and verification status at a glance.' },
+                    { ids: ['tour-card-students'], title: 'Students', body: 'A roster summary broken down by grade for each of your schools.' },
+                    { ids: ['tour-card-organizations'], title: 'Organizations', body: 'The associations linked to your account.' },
+                    { ids: ['tour-card-events'], title: 'Events', body: 'Events currently open for you to manage, or a shortcut to start your first one.' }
+                @elseif ($student)
+                    { ids: ['tour-sidebar-dashboard'], title: 'Dashboard', body: 'Your home base — jump back here anytime from the sidebar.' },
+                    { ids: ['tour-sidebar-my-events'], title: 'My Events', body: "Every Event you're eligible for, based on which teacher(s) you're linked to." },
+                    { ids: ['tour-sidebar-student-details'], title: 'Student Details', body: 'Your biography, voice part, birthday, shirt size, and home address.' },
+                    { ids: ['tour-sidebar-school'], title: 'School', body: "The school and teacher(s) you're linked to — join a new one here." },
+                    { ids: ['tour-sidebar-emergency-contacts'], title: 'Emergency Contacts', body: 'Contacts your school may need to reach in an emergency.' },
+                    { ids: ['tour-sidebar-profile'], title: 'Profile', body: 'Update your name, contact info, and pronouns.' },
+                    { ids: ['tour-sidebar-password'], title: 'Password', body: 'Change your account password.' },
+                    { ids: ['tour-sidebar-appearance'], title: 'Appearance', body: 'Switch between light and dark mode.' },
+                    { ids: ['tour-sidebar-logout'], title: 'Log out', body: 'Sign out of your account.' },
+                    { ids: ['tour-my-events-card'], title: 'My Events', body: 'A quick look at your open Events — click through for the full list and to complete your registration requirements.' }
+                @endif
             ];
 
             var activeSteps = [];
@@ -359,43 +415,4 @@
             if (startBtn.dataset.autoStart === '1') start();
         })();
     </script>
-    @elseif ($student)
-        {{-- StudentFolder.info side (studentfolder-module.md §5.1) — a
-             summary card linking to the real "My Events" list
-             (App\Livewire\Sfdi\Events\Index), which owns the full
-             read/checklist view. Queried inline here the same way the
-             teacher Events card above inlines $openEvents, rather than
-             invoking that Livewire component from a plain Route::view. --}}
-        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <a href="{{ route('sfdi.events.index') }}" wire:navigate class="block h-full transition hover:shadow-md">
-                <flux:card class="flex h-full flex-col gap-4 border-l-4 border-l-teal-500 sm:border-2 sm:border-teal-500">
-                    <flux:heading size="lg">My Events</flux:heading>
-
-                    @php
-                        $myCandidates = \App\Models\Candidate::where('student_id', $student->id)
-                            ->whereHas('version', fn ($q) => $q->where('status', 'active'))
-                            ->with(['version.event'])
-                            ->get();
-                    @endphp
-
-                    @if ($myCandidates->isNotEmpty())
-                        <div class="flex flex-col gap-2">
-                            @foreach ($myCandidates->take(5) as $candidate)
-                                <div class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
-                                    <flux:text class="font-medium">{{ $candidate->version->name }}</flux:text>
-                                    <flux:text size="sm" class="text-zinc-500">{{ $candidate->version->event->name }}</flux:text>
-                                </div>
-                            @endforeach
-                        </div>
-
-                        @if ($myCandidates->count() > 5)
-                            <flux:text size="sm" class="text-zinc-500">+ {{ $myCandidates->count() - 5 }} more</flux:text>
-                        @endif
-                    @else
-                        <flux:text size="sm" class="text-zinc-500">No open events yet.</flux:text>
-                    @endif
-                </flux:card>
-            </a>
-        </div>
-    @endif
 </x-layouts.app>

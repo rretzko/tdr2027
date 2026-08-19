@@ -6,29 +6,47 @@ use App\Enums\ApplicationType;
 use App\Enums\AuditionType;
 use App\Enums\CandidateStatus;
 use App\Enums\EventStatus;
+use App\Enums\FeeType;
 use App\Enums\ObligationDecision;
+use App\Enums\PaymentSource;
+use App\Enums\PaymentTransactionStatus;
 use App\Enums\UploadType;
+use App\Enums\Vendor;
 use App\Enums\VersionApplicationStatus;
+use App\Enums\VersionDateType;
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Sfdi\Events\Show;
 use App\Models\Candidate;
 use App\Models\CandidateUploadFile;
 use App\Models\Ensemble;
 use App\Models\Event;
+use App\Models\EventEpaymentConfig;
+use App\Models\PaymentAllocation;
+use App\Models\PaymentTransaction;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionApplication;
+use App\Models\VersionDate;
+use App\Models\VersionEpaymentConfig;
+use App\Models\VersionFee;
 use App\Models\VersionInvitation;
 use App\Models\VersionObligation;
 use App\Models\VersionObligationResponse;
 use App\Models\VersionPitchFile;
+use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VersionUploadFile;
 use App\Models\VoicePart;
+use App\Services\Payments\Dto\CheckoutSession;
+use App\Services\Payments\Dto\WebhookEvent;
+use App\Services\Payments\PaymentGatewayContract;
+use App\Services\Payments\SquarePaymentGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
@@ -777,4 +795,340 @@ test('application signature toggles are blocked once the candidate is locked or 
         ->call('toggleApplicationParentSigned')->assertForbidden();
 
     expect($candidate->fresh()->application_candidate_signed_at)->toBeNull();
+});
+
+// --- Payment (studentfolder-module.md §5.7, step 8) ---
+
+/**
+ * Stands in for the real SquarePaymentGateway — see
+ * VersionDashboardTest.php's identical-in-spirit FakeSquareGateway, not
+ * reused directly since that class is declared at that other test file's
+ * top level and Pest runs every file in the same PHP process. This fake
+ * additionally records $lastPayer so tests can assert a Student payer
+ * populates payer_student_id, not payer_teacher_id (§9 item 3).
+ */
+class FakeSfdiSquareGateway implements PaymentGatewayContract
+{
+    public static Teacher|Student|null $lastPayer = null;
+
+    /**
+     * @param  Collection<int, Candidate>  $candidates
+     */
+    public function createCheckoutSession(Version $version, Collection $candidates, Teacher|Student $payer, FeeType $feeType): CheckoutSession
+    {
+        self::$lastPayer = $payer;
+
+        /** @var Candidate $firstCandidate */
+        $firstCandidate = $candidates->first();
+
+        $transaction = PaymentTransaction::create([
+            'version_id' => $version->id,
+            'source' => PaymentSource::CandidateEpayment,
+            'vendor' => Vendor::Square,
+            'vendor_transaction_id' => 'fake-order-'.uniqid(),
+            'payer_teacher_id' => $payer instanceof Teacher ? $payer->id : null,
+            'payer_student_id' => $payer instanceof Student ? $payer->id : null,
+            'school_id' => $firstCandidate->school_id,
+            'amount' => 12345,
+            'status' => PaymentTransactionStatus::Pending,
+            'fee_type' => $feeType,
+        ]);
+
+        return new CheckoutSession(redirectUrl: 'https://fake.example/checkout', paymentTransactionId: $transaction->id);
+    }
+
+    public function verifyWebhookSignature(Request $request, Event $event): bool
+    {
+        return true;
+    }
+
+    public function parseWebhookEvent(Request $request): WebhookEvent
+    {
+        throw new RuntimeException('not used in this test');
+    }
+}
+
+/**
+ * A Version ready for student e-payment: Active, Square configured at the
+ * Event level, epayment_student on, a VersionFee row, and the given
+ * teacher opted in — the full §5.7 gate satisfied except per-test overrides.
+ */
+function makeSfdiPayableVersion(int $teacherId, array $feeOverrides = []): Version
+{
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => true, 'epayment_teacher' => true]);
+    EventEpaymentConfig::create([
+        'event_id' => $version->event_id,
+        'vendor' => Vendor::Square,
+        'vendor_account_id' => 'loc-123',
+        'secret' => 'token-123',
+    ]);
+    VersionFee::create(array_merge([
+        'version_id' => $version->id,
+        'registration' => 2000,
+    ], $feeOverrides));
+    VersionTeacherEpaymentOptIn::create(['version_id' => $version->id, 'teacher_id' => $teacherId, 'opted_in' => true]);
+
+    return $version;
+}
+
+test('payNow aborts with 403 when epaymentStudentEnabled is off for this Version', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    $version->versionEpaymentConfig->update(['epayment_student' => false]);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->call('payNow', 'registration')
+        ->assertStatus(403);
+});
+
+test('payNow aborts with 403 when the candidate\'s own teacher has not opted in', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    VersionTeacherEpaymentOptIn::where('version_id', $version->id)->where('teacher_id', $teacher->id)->update(['opted_in' => false]);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->call('payNow', 'registration')
+        ->assertStatus(403);
+});
+
+test('payNow aborts with 403 for registration once the Adjudication window has started, even though the Version is still open', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Adjudication,
+        'start_at' => now()->subDay(),
+    ]);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->call('payNow', 'registration')
+        ->assertStatus(403);
+});
+
+test('payNow aborts with 422 when the candidate is not in a registration-fee-eligible state', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Withdrew,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->call('payNow', 'registration')
+        ->assertStatus(422);
+});
+
+test('payNow aborts with 403 for housing/participation before the Version is closed', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id, ['housing' => 1000, 'participation' => 500]);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Accepted,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->call('payNow', 'housing')
+        ->assertStatus(403);
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->call('payNow', 'participation')
+        ->assertStatus(403);
+});
+
+test('a successful payNow creates a payment_transactions row with payer_student_id set, not payer_teacher_id, and redirects to checkout', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    app()->bind(SquarePaymentGateway::class, fn () => new FakeSfdiSquareGateway);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->call('payNow', 'registration')
+        ->assertRedirect('https://fake.example/checkout');
+
+    expect(FakeSfdiSquareGateway::$lastPayer)->toBeInstanceOf(Student::class);
+    expect(FakeSfdiSquareGateway::$lastPayer->id)->toBe($user->student->id);
+
+    $transaction = PaymentTransaction::sole();
+    expect($transaction->payer_student_id)->toBe($user->student->id);
+    expect($transaction->payer_teacher_id)->toBeNull();
+});
+
+test('Pay Registration Fee is offered once opted in and hidden once the balance is fully paid', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertSee('Pay Registration Fee');
+
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => PaymentSource::CandidateEpayment,
+        'vendor' => Vendor::Square,
+        'vendor_transaction_id' => 'order-paid',
+        'payer_student_id' => $user->student->id,
+        'school_id' => $candidate->school_id,
+        'amount' => 2000,
+        'status' => PaymentTransactionStatus::Completed,
+        'fee_type' => FeeType::Registration,
+        'paid_at' => now(),
+    ]);
+    PaymentAllocation::create([
+        'payment_transaction_id' => $transaction->id,
+        'candidate_id' => $candidate->id,
+        'amount' => 2000,
+        'allocated_at' => now(),
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertDontSee('Pay Registration Fee');
+});
+
+test('Pay Now buttons stay hidden when the candidate\'s own teacher has not opted in, even though the Version is otherwise ready', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    VersionTeacherEpaymentOptIn::where('version_id', $version->id)->where('teacher_id', $teacher->id)->update(['opted_in' => false]);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertDontSee('Pay Registration Fee');
+});
+
+// --- Take a tour ---
+
+test('the Take a tour button auto-starts for a student who has never taken it on this page', function () {
+    $user = makeSfdiEventsShowUser();
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertSee('Take a tour')
+        ->assertSeeHtml('data-auto-start="1"');
+});
+
+test('the Take a tour button does not auto-start once already dismissed', function () {
+    $user = makeSfdiEventsShowUser();
+    $user->update(['dismissed_sfdi_candidate_orientation_at' => now()]);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertSeeHtml('data-auto-start="0"');
+});
+
+test('dismissOrientation persists the dismissal for the acting user', function () {
+    $user = makeSfdiEventsShowUser();
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->call('dismissOrientation');
+
+    expect($user->fresh()->dismissed_sfdi_candidate_orientation_at)->not->toBeNull();
+});
+
+test('the core tour anchors render regardless of which conditional cards are present', function () {
+    $user = makeSfdiEventsShowUser();
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id]);
+
+    $component = Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate]);
+
+    foreach ([
+        'id="tour-status-badge"',
+        'id="tour-pitch-files"',
+        'id="tour-candidate-requirements"',
+        'id="tour-registration-card"',
+        'id="tour-payment-card"',
+    ] as $needle) {
+        $component->assertSeeHtml($needle);
+    }
+});
+
+test('the Application and Recordings tour anchors render only when those cards are present', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active, 'audition_type' => AuditionType::Remote->value]);
+    VersionUploadFile::create(['version_id' => $version->id, 'name' => 'scales', 'order_by' => 1]);
+    publishSfdiApplication($version);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertSeeHtml('id="tour-application-card"')
+        ->assertSeeHtml('id="tour-recordings-card"');
 });
