@@ -16,12 +16,14 @@ use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\CandidateDetail;
 use App\Models\Candidate;
 use App\Models\CandidateUploadFile;
+use App\Models\CoTeacherGrant;
 use App\Models\EmergencyContact;
 use App\Models\Ensemble;
 use App\Models\EventEpaymentConfig;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
 use App\Models\Recording;
+use App\Models\School;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
@@ -107,6 +109,57 @@ test('mount aborts with 403 when the candidate does not belong to the teacher', 
         ->assertStatus(403);
 });
 
+test('mount succeeds for a co-teacher granted access at the candidate\'s school', function () {
+    $granting = makeCandidateDetailTeacher();
+    $coTeacher = makeCandidateDetailTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $granting->id,
+        'school_id' => $school->id,
+    ]);
+
+    CoTeacherGrant::create([
+        'school_id' => $school->id,
+        'granting_teacher_id' => $granting->id,
+        'co_teacher_id' => $coTeacher->id,
+        'granted_by_user_id' => $granting->user->id,
+    ]);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->assertStatus(200);
+});
+
+test('mount aborts with 403 for a co-teacher whose grant is scoped to a different school', function () {
+    $granting = makeCandidateDetailTeacher();
+    $coTeacher = makeCandidateDetailTeacher();
+    $candidateSchool = School::factory()->create();
+    $grantedSchool = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $granting->id,
+        'school_id' => $candidateSchool->id,
+    ]);
+
+    CoTeacherGrant::create([
+        'school_id' => $grantedSchool->id,
+        'granting_teacher_id' => $granting->id,
+        'co_teacher_id' => $coTeacher->id,
+        'granted_by_user_id' => $granting->user->id,
+    ]);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->assertStatus(403);
+});
+
 test('mount aborts with 404 when the candidate belongs to a different version', function () {
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create();
@@ -154,6 +207,82 @@ test('mount redirects to the obligations form when the teacher rejected the vers
     Livewire::actingAs($teacher->user)
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->assertRedirect(route('registrations.obligations', $version));
+});
+
+test('mount redirects a granted co-teacher when the candidate\'s owning teacher rejected the version obligation, even with no invitation of their own', function () {
+    $granting = makeCandidateDetailTeacher();
+    $coTeacher = makeCandidateDetailTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $granting->id,
+        'school_id' => $school->id,
+    ]);
+
+    CoTeacherGrant::create([
+        'school_id' => $school->id,
+        'granting_teacher_id' => $granting->id,
+        'co_teacher_id' => $coTeacher->id,
+        'granted_by_user_id' => $granting->user->id,
+    ]);
+
+    $invitation = VersionInvitation::create([
+        'version_id' => $version->id,
+        'teacher_id' => $granting->id,
+        'status' => 'rejected',
+        'invited_at' => now(),
+        'invited_by_user_id' => User::factory()->create()->id,
+    ]);
+
+    $obligation = VersionObligation::create([
+        'version_id' => $version->id,
+        'body' => '<p>Be excellent.</p>',
+        'status' => VersionObligationStatus::Published->value,
+        'published_at' => now(),
+        'published_by_user_id' => User::factory()->create()->id,
+    ]);
+
+    VersionObligationResponse::create([
+        'version_invitation_id' => $invitation->id,
+        'version_obligation_id' => $obligation->id,
+        'decision' => ObligationDecision::Rejected->value,
+        'decided_at' => now(),
+        'obligation_snapshot' => $obligation->body,
+    ]);
+
+    // The co-teacher never received their own VersionInvitation to this
+    // Version at all — access is granted purely via the co-teacher share.
+    Livewire::actingAs($coTeacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->assertRedirect(route('registrations.obligations', $version));
+});
+
+test('mount succeeds for a granted co-teacher with no invitation of their own when the version has no published obligation', function () {
+    $granting = makeCandidateDetailTeacher();
+    $coTeacher = makeCandidateDetailTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $granting->id,
+        'school_id' => $school->id,
+    ]);
+
+    CoTeacherGrant::create([
+        'school_id' => $school->id,
+        'granting_teacher_id' => $granting->id,
+        'co_teacher_id' => $coTeacher->id,
+        'granted_by_user_id' => $granting->user->id,
+    ]);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->assertStatus(200);
 });
 
 test('saveProgramName updates the candidate program name and recalculates status', function () {

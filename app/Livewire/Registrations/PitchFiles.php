@@ -10,6 +10,7 @@ use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionInvitation;
 use App\Models\VersionPitchFile;
+use App\Services\CoTeacherAccessService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -45,7 +46,7 @@ class PitchFiles extends Component
     #[Url]
     public string $nameFilter = '';
 
-    public function mount(Version $version): void
+    public function mount(Version $version, CoTeacherAccessService $coTeacherAccess): void
     {
         $teacher = $this->teacher();
 
@@ -53,7 +54,23 @@ class PitchFiles extends Component
             ->where('teacher_id', $teacher->id)
             ->first();
 
-        abort_if($invitation === null, 403);
+        if ($invitation === null) {
+            // Reachable from VersionDashboard's quick-links row, which a
+            // granted co-teacher with no invitation of their own can now
+            // open too (docs/plans/co-teacher-definition.md §3) — let them
+            // through here as well rather than dead-ending on this link.
+            // Reference material, not the candidate's own obligations
+            // standing, so no redirect check applies on this path.
+            $hasGrantedCandidates = $coTeacherAccess->candidateQuery($teacher)
+                ->where('version_id', $version->id)
+                ->exists();
+
+            abort_unless($hasGrantedCandidates, 403);
+
+            $this->version = $version;
+
+            return;
+        }
 
         if ($this->redirectUnlessObligationsAccepted($version, $invitation)) {
             return;

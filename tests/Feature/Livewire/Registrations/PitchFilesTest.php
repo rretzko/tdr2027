@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\PitchFiles;
+use App\Models\Candidate;
+use App\Models\CoTeacherGrant;
 use App\Models\Ensemble;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Models\School;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
@@ -77,6 +80,27 @@ test('mount aborts with 403 for a teacher with no invitation on this Version', f
 
     Livewire::test(PitchFiles::class, ['version' => $version])
         ->assertStatus(403);
+});
+
+test('mount succeeds for a co-teacher with no invitation of their own but a granted candidate in this Version', function () {
+    $granting = makePitchFilesTeacher();
+    $coTeacher = makePitchFilesTeacher();
+    $school = School::factory()->create();
+    $version = makeRegistrationsPitchFilesVersion();
+
+    actingAs($granting->user);
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $granting->id, 'school_id' => $school->id]);
+
+    CoTeacherGrant::create([
+        'school_id' => $school->id,
+        'granting_teacher_id' => $granting->id,
+        'co_teacher_id' => $coTeacher->id,
+        'granted_by_user_id' => $granting->user->id,
+    ]);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(PitchFiles::class, ['version' => $version])
+        ->assertOk();
 });
 
 test('mount redirects an invited teacher who has not yet responded to a published obligation', function () {

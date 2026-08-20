@@ -10,13 +10,24 @@
                 <flux:text size="sm" class="text-zinc-500">{{ $version->event->name }}</flux:text>
             </div>
 
-            @if ($switcherOptions->count() > 1)
-                <flux:select wire:model.live="switchVersionId" class="sm:max-w-xs">
-                    @foreach ($switcherOptions as $option)
-                        <flux:select.option value="{{ $option->id }}">{{ $option->event->name }} — {{ $option->name }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-            @endif
+            <div class="flex flex-col sm:flex-row gap-2">
+                @if ($schoolOptions->count() > 1)
+                    <flux:select wire:model.live="schoolFilter" placeholder="All schools" class="sm:max-w-xs">
+                        <flux:select.option value="">All schools</flux:select.option>
+                        @foreach ($schoolOptions as $school)
+                            <flux:select.option value="{{ $school->id }}">{{ $school->name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                @endif
+
+                @if ($switcherOptions->count() > 1)
+                    <flux:select wire:model.live="switchVersionId" class="sm:max-w-xs">
+                        @foreach ($switcherOptions as $option)
+                            <flux:select.option value="{{ $option->id }}">{{ $option->event->name }} — {{ $option->name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                @endif
+            </div>
         </div>
     </div>
 
@@ -60,7 +71,12 @@
                 <flux:card size="sm">
                     <div class="flex items-center gap-3">
                         <flux:text class="text-zinc-500 tabular-nums">{{ $index + 1 }}</flux:text>
-                        <flux:heading size="base">{{ $candidate->student->user->sort_name }}</flux:heading>
+                        <div>
+                            <flux:heading size="base">{{ $candidate->student->user->sort_name }}</flux:heading>
+                            @if ($schoolOptions->count() > 1)
+                                <flux:text size="sm" class="text-zinc-500">{{ $candidate->school?->name }}</flux:text>
+                            @endif
+                        </div>
                         <flux:spacer />
                         <flux:badge size="sm">{{ $candidate->voicePart?->abbr ?? '—' }}</flux:badge>
                     </div>
@@ -99,6 +115,9 @@
             <flux:table.columns>
                 <flux:table.column class="w-12">#</flux:table.column>
                 <flux:table.column sortable :sorted="$sortColumn === 'name'" :direction="$sortDirection" wire:click="sortBy('name')">Name</flux:table.column>
+                @if ($schoolOptions->count() > 1)
+                    <flux:table.column>School</flux:table.column>
+                @endif
                 <flux:table.column align="center" sortable :sorted="$sortColumn === 'voice_part'" :direction="$sortDirection" wire:click="sortBy('voice_part')">Voice Part</flux:table.column>
                 <flux:table.column align="center" sortable :sorted="$sortColumn === 'score'" :direction="$sortDirection" wire:click="sortBy('score')">Score</flux:table.column>
                 <flux:table.column align="center" sortable :sorted="$sortColumn === 'result'" :direction="$sortDirection" wire:click="sortBy('result')">Result</flux:table.column>
@@ -111,6 +130,9 @@
                     <flux:table.row>
                         <flux:table.cell class="tabular-nums text-zinc-500">{{ $index + 1 }}</flux:table.cell>
                         <flux:table.cell class="font-medium">{{ $candidate->student->user->sort_name }}</flux:table.cell>
+                        @if ($schoolOptions->count() > 1)
+                            <flux:table.cell>{{ $candidate->school?->name }}</flux:table.cell>
+                        @endif
                         <flux:table.cell align="center">{{ $candidate->voicePart?->abbr ?? '—' }}</flux:table.cell>
                         <flux:table.cell align="center" class="tabular-nums">{{ $candidate->auditionResult?->total ?? '—' }}</flux:table.cell>
                         <flux:table.cell align="center">

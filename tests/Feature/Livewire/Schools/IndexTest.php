@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Livewire\Schools\Index;
 use App\Mail\SchoolEmailVerificationMail;
+use App\Models\CoTeacherGrant;
 use App\Models\County;
 use App\Models\Geostate;
 use App\Models\Pivots\SchoolTeacher;
@@ -14,6 +15,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Support\ClassOfCalculator;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
@@ -958,4 +960,145 @@ test('saveEdit rejects a school name already used at the same zip code', functio
         ->set('edit_name', 'Taken Name')
         ->call('saveEdit')
         ->assertHasErrors('edit_name');
+});
+
+test('manageCoTeachers aborts with 403 for a school not active+verified for this teacher', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+
+    $user->teacher->schools()->attach($school, ['is_active' => false, 'verified_at' => now()]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('manageCoTeachers', $school->id)
+        ->assertStatus(403);
+});
+
+test('manageCoTeachers opens the modal scoped to that school\'s grantable teachers and existing grants', function () {
+    $user = makeOnboardedTeacherUser();
+    $coTeacherUser = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+    $otherSchool = School::factory()->create();
+
+    $user->teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
+    $coTeacherUser->teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
+
+    // A grant at a different school must not appear here.
+    $user->teacher->schools()->attach($otherSchool, ['is_active' => true, 'verified_at' => now()]);
+    $elsewhereCoTeacherUser = makeOnboardedTeacherUser();
+    $elsewhereCoTeacherUser->teacher->schools()->attach($otherSchool, ['is_active' => true, 'verified_at' => now()]);
+    CoTeacherGrant::create([
+        'school_id' => $otherSchool->id,
+        'granting_teacher_id' => $user->teacher->id,
+        'co_teacher_id' => $elsewhereCoTeacherUser->teacher->id,
+        'granted_by_user_id' => $user->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('manageCoTeachers', $school->id)
+        ->assertSee('Co-Teachers at '.$school->name)
+        ->assertSee($coTeacherUser->name)
+        ->assertDontSee($elsewhereCoTeacherUser->name);
+});
+
+test('grantCoTeacher creates a grant to an active+verified teacher at the same school', function () {
+    $user = makeOnboardedTeacherUser();
+    $coTeacherUser = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+
+    $user->teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
+    $coTeacherUser->teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('manageCoTeachers', $school->id)
+        ->set('newCoTeacherId', (string) $coTeacherUser->teacher->id)
+        ->call('grantCoTeacher')
+        ->assertHasNoErrors();
+
+    expect(CoTeacherGrant::where('school_id', $school->id)
+        ->where('granting_teacher_id', $user->teacher->id)
+        ->where('co_teacher_id', $coTeacherUser->teacher->id)
+        ->exists())->toBeTrue();
+});
+
+test('grantCoTeacher rejects a teacher who is not active+verified at that school', function () {
+    $user = makeOnboardedTeacherUser();
+    $notEligibleUser = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+
+    $user->teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
+    // Not attached to $school at all.
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('manageCoTeachers', $school->id)
+        ->set('newCoTeacherId', (string) $notEligibleUser->teacher->id)
+        ->call('grantCoTeacher')
+        ->assertHasErrors('newCoTeacherId');
+
+    expect(CoTeacherGrant::where('school_id', $school->id)->exists())->toBeFalse();
+});
+
+test('grantCoTeacher rejects granting to self', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+
+    $user->teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('manageCoTeachers', $school->id)
+        ->set('newCoTeacherId', (string) $user->teacher->id)
+        ->call('grantCoTeacher')
+        ->assertHasErrors('newCoTeacherId');
+});
+
+test('revokeCoTeacherGrant deletes a grant this teacher made', function () {
+    $user = makeOnboardedTeacherUser();
+    $coTeacherUser = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+
+    $user->teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
+    $coTeacherUser->teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
+
+    $grant = CoTeacherGrant::create([
+        'school_id' => $school->id,
+        'granting_teacher_id' => $user->teacher->id,
+        'co_teacher_id' => $coTeacherUser->teacher->id,
+        'granted_by_user_id' => $user->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('manageCoTeachers', $school->id)
+        ->call('revokeCoTeacherGrant', $grant->id);
+
+    expect(CoTeacherGrant::find($grant->id))->toBeNull();
+});
+
+test('revokeCoTeacherGrant cannot revoke a grant made by another teacher', function () {
+    $granting = makeOnboardedTeacherUser();
+    $coTeacherUser = makeOnboardedTeacherUser();
+    $bystander = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+
+    $granting->teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
+    $coTeacherUser->teacher->schools()->attach($school, ['is_active' => true, 'verified_at' => now()]);
+
+    $grant = CoTeacherGrant::create([
+        'school_id' => $school->id,
+        'granting_teacher_id' => $granting->teacher->id,
+        'co_teacher_id' => $coTeacherUser->teacher->id,
+        'granted_by_user_id' => $granting->id,
+    ]);
+
+    expect(function () use ($bystander, $grant) {
+        Livewire::actingAs($bystander)
+            ->test(Index::class)
+            ->call('revokeCoTeacherGrant', $grant->id);
+    })->toThrow(ModelNotFoundException::class);
+
+    expect(CoTeacherGrant::find($grant->id))->not->toBeNull();
 });

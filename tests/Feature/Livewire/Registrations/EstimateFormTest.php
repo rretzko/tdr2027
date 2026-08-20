@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\EstimateForm;
 use App\Models\Candidate;
+use App\Models\CoTeacherGrant;
 use App\Models\Membership;
 use App\Models\School;
 use App\Models\Teacher;
@@ -65,6 +66,30 @@ test('mount aborts with 403 for a teacher with no invitation on this Version', f
 
     Livewire::test(EstimateForm::class, ['version' => $version])
         ->assertStatus(403);
+});
+
+test('mount succeeds for a co-teacher with no invitation of their own but a granted registered candidate', function () {
+    $granting = makeEstimateFormTeacher();
+    $coTeacher = makeEstimateFormTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    registerEstimateFormCandidate($granting, $version, $school);
+
+    // A grant requires both teachers active+verified at the shared school.
+    $coTeacher->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
+    CoTeacherGrant::create([
+        'school_id' => $school->id,
+        'granting_teacher_id' => $granting->id,
+        'co_teacher_id' => $coTeacher->id,
+        'granted_by_user_id' => $granting->user->id,
+    ]);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(EstimateForm::class, ['version' => $version])
+        ->assertOk()
+        ->assertSee($school->name);
 });
 
 test('mount redirects an invited teacher who has not yet responded to a published obligation', function () {

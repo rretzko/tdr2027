@@ -12,6 +12,7 @@ use App\Enums\Vendor;
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\VersionDashboard;
 use App\Models\Candidate;
+use App\Models\CoTeacherGrant;
 use App\Models\Ensemble;
 use App\Models\Event;
 use App\Models\EventEpaymentConfig;
@@ -152,6 +153,16 @@ function publishObligationForRegistrationTeacher(Version $version): VersionOblig
     ]);
 }
 
+function grantRegistrationCoTeacherAccess(School $school, Teacher $granting, Teacher $coTeacher): CoTeacherGrant
+{
+    return CoTeacherGrant::create([
+        'school_id' => $school->id,
+        'granting_teacher_id' => $granting->id,
+        'co_teacher_id' => $coTeacher->id,
+        'granted_by_user_id' => User::factory()->create()->id,
+    ]);
+}
+
 test('mount displays the version name', function () {
     $teacher = makeRegistrationTeacher();
     $version = Version::factory()->create(['name' => 'Fall Auditions']);
@@ -193,6 +204,29 @@ test('the breadcrumb tour anchor renders', function () {
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
         ->assertSeeHtml('id="tour-breadcrumb"');
+});
+
+test('the co-teacher panel tour anchor renders only when the panel itself does', function () {
+    $granting = makeRegistrationTeacher();
+    $coTeacher = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $granting->id, 'school_id' => $school->id]);
+    grantRegistrationCoTeacherAccess($school, $granting, $coTeacher);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSeeHtml('id="tour-co-teacher-panel"');
+
+    $lonelyTeacher = makeRegistrationTeacher();
+    $lonelyVersion = Version::factory()->create();
+    inviteRegistrationTeacher($lonelyTeacher, $lonelyVersion);
+
+    Livewire::actingAs($lonelyTeacher->user)
+        ->test(VersionDashboard::class, ['version' => $lonelyVersion])
+        ->assertDontSeeHtml('id="tour-co-teacher-panel"');
 });
 
 test('dismissOrientation persists the dismissal and stops the tour from auto-starting on a re-render', function () {
@@ -265,6 +299,39 @@ test('mount does not redirect when the Version has no published obligation', fun
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
         ->assertSee('No Obligation Version');
+});
+
+test('mount succeeds for an uninvited, ineligible co-teacher with a granted candidate to manage', function () {
+    $granting = makeRegistrationTeacher();
+    $coTeacher = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create(['name' => 'Shared Roster Version']);
+
+    actingAs($granting->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $granting->id,
+        'school_id' => $school->id,
+    ]);
+
+    grantRegistrationCoTeacherAccess($school, $granting, $coTeacher);
+
+    // The co-teacher has neither an invitation nor an active school of their
+    // own — without the grant this would 403, per the "ineligible, uninvited
+    // teacher" case above.
+    Livewire::actingAs($coTeacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee('Shared Roster Version')
+        ->assertOk();
+});
+
+test('mount still aborts with 403 for an uninvited, ineligible teacher with no grant at all', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertStatus(403);
 });
 
 test('mount does not redirect a teacher who already accepted the obligation', function () {
@@ -357,6 +424,90 @@ test('withdraw cannot target a candidate belonging to another teacher', function
     expect($candidate->refresh()->status)->toBe(CandidateStatus::Registered);
 });
 
+test('withdraw can target a granted co-teacher\'s candidate', function () {
+    $granting = makeRegistrationTeacher();
+    $coTeacher = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $granting->id,
+        'school_id' => $school->id,
+        'status' => CandidateStatus::Registered,
+    ]);
+
+    grantRegistrationCoTeacherAccess($school, $granting, $coTeacher);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->call('withdraw', $candidate->id);
+
+    expect($candidate->refresh()->status)->toBe(CandidateStatus::TeacherWithdrawn);
+});
+
+test('the co-teacher consolidation panel renders for a school with a shared candidate and a grant', function () {
+    $granting = makeRegistrationTeacher();
+    $coTeacher = makeRegistrationTeacher();
+    $school = School::factory()->create(['name' => 'Lincoln High School']);
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $granting->id, 'school_id' => $school->id]);
+
+    grantRegistrationCoTeacherAccess($school, $granting, $coTeacher);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee('You co-teach with')
+        ->assertSee('Lincoln High School')
+        ->assertSee('Consolidate under me');
+});
+
+test('the co-teacher consolidation panel does not render with no grant at all', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    inviteRegistrationTeacher($teacher, $version);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertDontSee('You co-teach with');
+});
+
+test('setTeacherConsolidation reassigns both teachers\' candidates at that school to the chosen teacher', function () {
+    $granting = makeRegistrationTeacher();
+    $coTeacher = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    $grantingCandidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $granting->id, 'school_id' => $school->id]);
+    $coTeacherCandidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $coTeacher->id, 'school_id' => $school->id]);
+
+    grantRegistrationCoTeacherAccess($school, $granting, $coTeacher);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->call('setTeacherConsolidation', $school->id, $granting->id, $coTeacher->id);
+
+    expect($grantingCandidate->refresh()->teacher_id)->toBe($coTeacher->id);
+    expect($coTeacherCandidate->refresh()->teacher_id)->toBe($coTeacher->id);
+});
+
+test('setTeacherConsolidation aborts with 403 when no grant exists between the two teachers', function () {
+    $teacher = makeRegistrationTeacher();
+    $stranger = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+    inviteRegistrationTeacher($teacher, $version);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->call('setTeacherConsolidation', $school->id, $stranger->id, $teacher->id)
+        ->assertStatus(403);
+});
+
 test('My Candidates is sorted by the student\'s alpha name order, not program_name', function () {
     $teacher = makeRegistrationTeacher();
     $version = Version::factory()->create();
@@ -378,6 +529,74 @@ test('My Candidates is sorted by the student\'s alpha name order, not program_na
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
         ->assertSeeInOrder(['Adams, Aaron', 'Zeta, Zoe']);
+});
+
+test('My Candidates includes a granted co-teacher\'s candidate, and excludes an ungranted stranger\'s', function () {
+    $granting = makeRegistrationTeacher();
+    $coTeacher = makeRegistrationTeacher();
+    $stranger = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    $grantedStudent = Student::factory()->create();
+    $grantedStudent->user->update(['first_name' => 'Grant', 'last_name' => 'Edd']);
+    $strangerStudent = Student::factory()->create();
+    $strangerStudent->user->update(['first_name' => 'Out', 'last_name' => 'Sider']);
+
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $granting->id, 'school_id' => $school->id, 'student_id' => $grantedStudent->id]);
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $stranger->id, 'student_id' => $strangerStudent->id]);
+
+    grantRegistrationCoTeacherAccess($school, $granting, $coTeacher);
+
+    $component = Livewire::actingAs($coTeacher->user)
+        ->test(VersionDashboard::class, ['version' => $version]);
+
+    $component->assertSee('Edd, Grant');
+    $component->assertDontSee('Sider, Out');
+});
+
+test('the school filter is hidden when the roster has only one school', function () {
+    $teacher = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($teacher->user);
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id, 'school_id' => $school->id]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertDontSee('All schools');
+});
+
+test('the school filter appears and narrows the roster once candidates span more than one school', function () {
+    $granting = makeRegistrationTeacher();
+    $coTeacher = makeRegistrationTeacher();
+    $schoolA = School::factory()->create(['name' => 'Aardvark Academy']);
+    $schoolB = School::factory()->create(['name' => 'Zephyr School']);
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    $studentAtA = Student::factory()->create();
+    $studentAtA->user->update(['first_name' => 'Sam', 'last_name' => 'AtSchoolA']);
+    $studentAtB = Student::factory()->create();
+    $studentAtB->user->update(['first_name' => 'Robin', 'last_name' => 'AtSchoolB']);
+
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $granting->id, 'school_id' => $schoolA->id, 'student_id' => $studentAtA->id]);
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $coTeacher->id, 'school_id' => $schoolB->id, 'student_id' => $studentAtB->id]);
+
+    grantRegistrationCoTeacherAccess($schoolA, $granting, $coTeacher);
+
+    $component = Livewire::actingAs($coTeacher->user)
+        ->test(VersionDashboard::class, ['version' => $version]);
+
+    $component->assertSee('All schools');
+    $component->assertSee('AtSchoolA, Sam');
+    $component->assertSee('AtSchoolB, Robin');
+
+    $component->set('schoolFilter', (string) $schoolA->id);
+    $component->assertSee('AtSchoolA, Sam');
+    $component->assertDontSee('AtSchoolB, Robin');
 });
 
 test('the Paid column shows the sum of Completed payment_allocations for that candidate, net of refunds, and 0 for a candidate with no payments', function () {

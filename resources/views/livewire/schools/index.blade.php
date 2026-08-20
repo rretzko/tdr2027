@@ -98,6 +98,14 @@
                         Remove
                     </flux:button>
                 </div>
+
+                @unless ($this->isPending($school->pivot))
+                    @if ($school->pivot->is_active)
+                        <flux:button size="sm" variant="outline" class="mt-2 w-full" wire:click="manageCoTeachers({{ $school->id }})">
+                            Co-Teachers
+                        </flux:button>
+                    @endif
+                @endunless
             </flux:card>
         @empty
             <flux:card size="sm" class="text-center text-zinc-500">
@@ -173,6 +181,9 @@
                                             @if ($school->pivot->is_active)
                                                 <flux:menu.item wire:click="deactivate({{ $school->id }})">
                                                     Deactivate
+                                                </flux:menu.item>
+                                                <flux:menu.item wire:click="manageCoTeachers({{ $school->id }})">
+                                                    Co-Teachers
                                                 </flux:menu.item>
                                             @else
                                                 <flux:menu.item wire:click="activate({{ $school->id }})">
@@ -326,5 +337,74 @@
                 </flux:button>
             </div>
         </form>
+    </flux:modal>
+
+    <flux:modal name="co-teachers" class="md:w-[32rem]">
+        @if ($managingSchool !== null)
+            <div class="space-y-6">
+                <div>
+                    <flux:heading size="lg">Co-Teachers at {{ $managingSchool->name }}</flux:heading>
+                    <flux:subheading>
+                        Sharing gives a co-teacher the same view/manage access to your students at this school —
+                        including their Candidate records — as you have yourself. Access starts immediately and is
+                        one-directional: they don't automatically see yours back unless they grant you access too.
+                    </flux:subheading>
+                </div>
+
+                <div>
+                    <flux:heading size="sm">Teachers I've granted access to</flux:heading>
+
+                    @forelse ($coTeacherGrantsGiven as $grant)
+                        <div class="mt-2 flex items-center justify-between gap-2">
+                            <flux:text>{{ $grant->coTeacher->user->name }}</flux:text>
+                            <flux:button
+                                size="sm"
+                                variant="danger"
+                                wire:click="revokeCoTeacherGrant({{ $grant->id }})"
+                                wire:confirm="Revoke {{ $grant->coTeacher->user->name }}'s access to your students at {{ $managingSchool->name }}?"
+                            >
+                                Revoke
+                            </flux:button>
+                        </div>
+                    @empty
+                        <flux:text class="mt-2 text-zinc-500">You haven't granted anyone access here yet.</flux:text>
+                    @endforelse
+                </div>
+
+                <div class="space-y-3">
+                    <flux:heading size="sm">Grant access to a new co-teacher</flux:heading>
+
+                    @if ($grantableCoTeachers->isEmpty())
+                        <flux:text class="text-zinc-500">No other active teachers are linked to this school yet.</flux:text>
+                    @else
+                        <div class="flex items-end gap-2">
+                            <flux:select wire:model="newCoTeacherId" label="Teacher" placeholder="Select a teacher..." class="flex-1">
+                                @foreach ($grantableCoTeachers as $grantableTeacher)
+                                    <flux:select.option value="{{ $grantableTeacher->id }}">{{ $grantableTeacher->user->name }}</flux:select.option>
+                                @endforeach
+                            </flux:select>
+                            <flux:button variant="primary" wire:click="grantCoTeacher">Grant</flux:button>
+                        </div>
+                        <flux:error name="newCoTeacherId" />
+                    @endif
+                </div>
+
+                @if ($coTeacherGrantsReceived->isNotEmpty())
+                    <div>
+                        <flux:heading size="sm">Teachers who've granted me access here</flux:heading>
+
+                        @foreach ($coTeacherGrantsReceived as $grant)
+                            <flux:text class="mt-2 block">{{ $grant->grantingTeacher->user->name }}</flux:text>
+                        @endforeach
+                    </div>
+                @endif
+
+                <div class="flex justify-end">
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Close</flux:button>
+                    </flux:modal.close>
+                </div>
+            </div>
+        @endif
     </flux:modal>
 </div>

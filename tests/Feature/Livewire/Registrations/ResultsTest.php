@@ -6,6 +6,7 @@ use App\Enums\CandidateStatus;
 use App\Livewire\Registrations\Results;
 use App\Models\AuditionResult;
 use App\Models\Candidate;
+use App\Models\CoTeacherGrant;
 use App\Models\Ensemble;
 use App\Models\Event;
 use App\Models\School;
@@ -36,6 +37,28 @@ test('mount aborts with 403 when the teacher has no standing in the Version', fu
     Livewire::actingAs($teacher->user)
         ->test(Results::class, ['version' => $version])
         ->assertStatus(403);
+});
+
+test('mount succeeds for a co-teacher granted access to another teacher\'s resolved-outcome candidate', function () {
+    $granting = makeResultsTeacher();
+    $coTeacher = makeResultsTeacher();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'closed', 'results_released_at' => now()]);
+    $school = School::factory()->create();
+
+    actingAs($granting->user);
+    Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $school->id, 'teacher_id' => $granting->id, 'status' => CandidateStatus::Accepted]);
+
+    CoTeacherGrant::create([
+        'school_id' => $school->id,
+        'granting_teacher_id' => $granting->id,
+        'co_teacher_id' => $coTeacher->id,
+        'granted_by_user_id' => $granting->user->id,
+    ]);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(Results::class, ['version' => $version])
+        ->assertOk();
 });
 
 test('mount aborts with 403 when results have not been released even if the teacher has candidates', function () {
@@ -171,4 +194,58 @@ test('switcherOptions only lists Versions whose results have been released', fun
     Livewire::actingAs($teacher->user)
         ->test(Results::class, ['version' => $released])
         ->assertDontSee('Not Released Version');
+});
+
+test('the school filter is hidden when the roster has only one school', function () {
+    $teacher = makeResultsTeacher();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'closed', 'results_released_at' => now()]);
+    $school = School::factory()->create();
+
+    actingAs($teacher->user);
+    Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $school->id, 'teacher_id' => $teacher->id, 'status' => CandidateStatus::Accepted]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(Results::class, ['version' => $version])
+        ->assertDontSee('All schools');
+});
+
+test('the school filter appears and narrows the roster once candidates span more than one school', function () {
+    $granting = makeResultsTeacher();
+    $coTeacher = makeResultsTeacher();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'closed', 'results_released_at' => now()]);
+    $schoolA = School::factory()->create(['name' => 'Aardvark Academy']);
+    $schoolB = School::factory()->create(['name' => 'Zephyr School']);
+
+    actingAs($granting->user);
+    $studentAtA = Student::factory()->create();
+    $studentAtA->user->update(['first_name' => 'Sam', 'last_name' => 'AtSchoolA']);
+    $studentAtB = Student::factory()->create();
+    $studentAtB->user->update(['first_name' => 'Robin', 'last_name' => 'AtSchoolB']);
+
+    Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $schoolA->id, 'teacher_id' => $granting->id, 'student_id' => $studentAtA->id, 'status' => CandidateStatus::Accepted]);
+    Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $schoolB->id, 'teacher_id' => $coTeacher->id, 'student_id' => $studentAtB->id, 'status' => CandidateStatus::Accepted]);
+
+    CoTeacherGrant::create([
+        'school_id' => $schoolA->id,
+        'granting_teacher_id' => $granting->id,
+        'co_teacher_id' => $coTeacher->id,
+        'granted_by_user_id' => $granting->user->id,
+    ]);
+
+    $component = Livewire::actingAs($coTeacher->user)
+        ->test(Results::class, ['version' => $version]);
+
+    $component->assertSee('All schools');
+    $component->assertSee('AtSchoolA, Sam');
+    $component->assertSee('AtSchoolB, Robin');
+
+    $component->set('schoolFilter', (string) $schoolA->id);
+    $component->assertSee('AtSchoolA, Sam');
+    $component->assertDontSee('AtSchoolB, Robin');
+
+    // The dropdown's own option list stays full even while filtered.
+    $component->assertSee('All schools');
+    $component->assertSee('Zephyr School');
 });

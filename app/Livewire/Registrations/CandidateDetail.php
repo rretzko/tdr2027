@@ -28,6 +28,7 @@ use App\Models\VersionApplication;
 use App\Models\VersionInvitation;
 use App\Models\VersionUploadFile;
 use App\Services\CandidateService;
+use App\Services\CoTeacherAccessService;
 use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\RecordingReviewService;
 use App\Support\CandidateApplicationData;
@@ -106,13 +107,17 @@ class CandidateDetail extends Component
 
     public string $payment_paid_at = '';
 
-    public function mount(Version $version, Candidate $candidate): void
+    public function mount(Version $version, Candidate $candidate, CoTeacherAccessService $coTeacherAccess): void
     {
         abort_if($candidate->version_id !== $version->id, 404);
-        abort_if($candidate->teacher_id !== $this->teacher()->id, 403);
+        abort_unless($coTeacherAccess->canAccessCandidate($this->teacher(), $candidate), 403);
 
+        // Obligations standing belongs to the candidate's own recorded
+        // teacher (candidate->teacher_id), not the viewer — a co-teacher
+        // granted access here may hold no VersionInvitation of their own for
+        // this Version at all (docs/plans/co-teacher-definition.md §3).
         $invitation = VersionInvitation::where('version_id', $version->id)
-            ->where('teacher_id', $this->teacher()->id)
+            ->where('teacher_id', $candidate->teacher_id)
             ->first();
 
         if ($this->redirectUnlessObligationsAccepted($version, $invitation)) {

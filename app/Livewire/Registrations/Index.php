@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Livewire\Registrations;
 
 use App\Enums\ObligationDecision;
-use App\Models\Candidate;
 use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionDate;
 use App\Models\VersionInvitation;
+use App\Services\CoTeacherAccessService;
 use App\Services\VersionInvitationEligibilityService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -21,10 +21,10 @@ use Livewire\Component;
 #[Layout('components.layouts.app')]
 class Index extends Component
 {
-    public function render(VersionInvitationEligibilityService $eligibility): View
+    public function render(VersionInvitationEligibilityService $eligibility, CoTeacherAccessService $coTeacherAccess): View
     {
         return view('livewire.registrations.index', [
-            'sections' => $this->buildSections($eligibility),
+            'sections' => $this->buildSections($eligibility, $coTeacherAccess),
         ]);
     }
 
@@ -56,13 +56,18 @@ class Index extends Component
      *
      * @return array{open: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null, obligationDecision: string|null}>, eligible: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null}>, active: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null, obligationDecision: string|null}>}
      */
-    private function buildSections(VersionInvitationEligibilityService $eligibility): array
+    private function buildSections(VersionInvitationEligibilityService $eligibility, CoTeacherAccessService $coTeacherAccess): array
     {
         $teacher = $this->teacher();
 
         $openVersionIds = $eligibility->openForTeacherVersionIds();
 
-        $candidateVersionIds = Candidate::where('teacher_id', $teacher->id)
+        // Includes any Version where this teacher has a visible Candidate —
+        // own or granted via a co-teaching share — feeding the "active"
+        // bucket below. "open"/"eligible" stay strictly this teacher's own
+        // invitation/eligibility standing further down, which a co-teaching
+        // grant does not delegate (docs/plans/co-teacher-definition.md §3).
+        $candidateVersionIds = $coTeacherAccess->candidateQuery($teacher)
             ->whereIn('status', ['eligible', 'pending', 'registered'])
             ->pluck('version_id')
             ->unique();
@@ -88,7 +93,7 @@ class Index extends Component
                 return $seniorClassOf !== 0 ? $seniorClassOf : $a->name <=> $b->name;
             });
 
-        $counts = Candidate::where('teacher_id', $teacher->id)
+        $counts = $coTeacherAccess->candidateQuery($teacher)
             ->whereIn('version_id', $allVersionIds)
             ->selectRaw('version_id, count(*) as total')
             ->groupBy('version_id')

@@ -13,12 +13,15 @@ use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionInvitation;
 use App\Models\VoicePart;
+use App\Services\CoTeacherAccessService;
 use App\Services\EnsembleCutoffService;
 use App\Services\TabRoomReportService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
@@ -60,15 +63,19 @@ class Results extends Component
 
     public string $sortDirection = 'asc';
 
-    public function mount(Version $version): void
+    #[Url]
+    public string $schoolFilter = '';
+
+    public function mount(Version $version, CoTeacherAccessService $coTeacherAccess): void
     {
         $teacher = $this->teacher();
 
         // ResultsIndex lists a Version here whenever the teacher has a
-        // Candidate in it (any status) — not every such Version necessarily
-        // has a surviving VersionInvitation row, so either standing admits.
+        // visible Candidate in it (any status, own or granted via a
+        // co-teaching share) — not every such Version necessarily has a
+        // surviving VersionInvitation row, so either standing admits.
         $hasStanding = VersionInvitation::where('version_id', $version->id)->where('teacher_id', $teacher->id)->exists()
-            || Candidate::where('version_id', $version->id)->where('teacher_id', $teacher->id)->exists();
+            || $coTeacherAccess->candidateQuery($teacher)->where('version_id', $version->id)->exists();
 
         abort_unless($hasStanding, 403);
         abort_unless($version->results_released_at !== null, 403);
@@ -96,13 +103,14 @@ class Results extends Component
         }
     }
 
-    public function render(TabRoomReportService $reports, EnsembleCutoffService $cutoffs): View
+    public function render(TabRoomReportService $reports, EnsembleCutoffService $cutoffs, CoTeacherAccessService $coTeacherAccess): View
     {
-        $candidates = $this->candidates();
+        $candidates = $this->candidates($coTeacherAccess);
 
         return view('livewire.registrations.results', [
             'candidates' => $candidates,
-            'switcherOptions' => $this->switcherOptions(),
+            'schoolOptions' => $this->schoolOptions($coTeacherAccess),
+            'switcherOptions' => $this->switcherOptions($coTeacherAccess),
             'schoolReports' => $this->schoolReports($candidates, $reports, $cutoffs),
             'candidateReports' => $this->candidateReports($candidates, $reports, $cutoffs),
             'shareResultsEnabled' => (bool) $this->version->share_results,
@@ -113,13 +121,14 @@ class Results extends Component
     /**
      * @return Collection<int, Candidate>
      */
-    private function candidates(): Collection
+    private function candidates(CoTeacherAccessService $coTeacherAccess): Collection
     {
         $teacher = $this->teacher();
 
-        $candidates = Candidate::where('version_id', $this->version->id)
-            ->where('teacher_id', $teacher->id)
+        $candidates = $coTeacherAccess->candidateQuery($teacher)
+            ->where('version_id', $this->version->id)
             ->whereIn('status', self::RESULT_STATES)
+            ->when($this->schoolFilter !== '', fn (Builder $query): Builder => $query->where('school_id', $this->schoolFilter))
             ->with(['student.user', 'voicePart', 'acceptedEnsemble', 'auditionResult', 'school'])
             ->get();
 
@@ -135,6 +144,33 @@ class Results extends Component
         $sorted = $this->sortDirection === 'desc' ? $candidates->sortByDesc($sortValue) : $candidates->sortBy($sortValue);
 
         return $sorted->values();
+    }
+
+    /**
+     * Every school among this teacher's *unfiltered* resolved-outcome
+     * candidates — independent of $schoolFilter, so the dropdown's own
+     * option list doesn't shrink to just the currently-selected school. The
+     * view only renders the filter (and a School column) once this has more
+     * than one entry; most often now via a co-teaching grant
+     * (docs/plans/co-teacher-definition.md §3), but also a teacher genuinely
+     * active at more than one school on their own.
+     *
+     * @return Collection<int, School>
+     */
+    private function schoolOptions(CoTeacherAccessService $coTeacherAccess): Collection
+    {
+        $teacher = $this->teacher();
+
+        return $coTeacherAccess->candidateQuery($teacher)
+            ->where('version_id', $this->version->id)
+            ->whereIn('status', self::RESULT_STATES)
+            ->with('school')
+            ->get()
+            ->pluck('school')
+            ->filter()
+            ->unique('id')
+            ->sortBy(fn (School $school): string => $school->name)
+            ->values();
     }
 
     /**
@@ -223,11 +259,11 @@ class Results extends Component
      *
      * @return Collection<int, Version>
      */
-    private function switcherOptions(): Collection
+    private function switcherOptions(CoTeacherAccessService $coTeacherAccess): Collection
     {
         $teacher = $this->teacher();
 
-        $versionIds = Candidate::where('teacher_id', $teacher->id)->pluck('version_id')->unique();
+        $versionIds = $coTeacherAccess->candidateQuery($teacher)->pluck('version_id')->unique();
 
         return Version::with('event')
             ->whereIn('id', $versionIds)

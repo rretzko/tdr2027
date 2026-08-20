@@ -139,6 +139,45 @@
             </div>
         </div>
 
+        @if ($coTeacherPairings->isNotEmpty())
+            <div id="tour-co-teacher-panel" class="space-y-2 mb-4">
+                @foreach ($coTeacherPairings as $pairing)
+                    <div class="rounded-lg border border-purple-200 bg-purple-50 dark:border-purple-900 dark:bg-purple-950/40 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <flux:text>
+                                You co-teach with <span class="font-medium">{{ $pairing['otherTeacher']->user->name }}</span> at {{ $pairing['school']->name }}.
+                            </flux:text>
+                            @if ($pairing['existing'] !== null)
+                                <flux:text size="sm" class="text-zinc-500">
+                                    Shared candidates are currently recorded under
+                                    {{ $pairing['existing']->consolidated_teacher_id === $teacher->id ? 'you' : $pairing['otherTeacher']->user->name }}.
+                                </flux:text>
+                            @endif
+                        </div>
+
+                        <div class="flex flex-wrap gap-2">
+                            <flux:button
+                                size="sm"
+                                variant="{{ $pairing['existing']?->consolidated_teacher_id === $teacher->id ? 'primary' : 'outline' }}"
+                                wire:click="setTeacherConsolidation({{ $pairing['school']->id }}, {{ $pairing['otherTeacher']->id }}, {{ $teacher->id }})"
+                                wire:confirm="Record every shared candidate at {{ $pairing['school']->name }} in this Version under you? This moves any of {{ $pairing['otherTeacher']->user->name }}'s existing candidates there too."
+                            >
+                                Consolidate under me
+                            </flux:button>
+                            <flux:button
+                                size="sm"
+                                variant="{{ $pairing['existing']?->consolidated_teacher_id === $pairing['otherTeacher']->id ? 'primary' : 'outline' }}"
+                                wire:click="setTeacherConsolidation({{ $pairing['school']->id }}, {{ $pairing['otherTeacher']->id }}, {{ $pairing['otherTeacher']->id }})"
+                                wire:confirm="Record every shared candidate at {{ $pairing['school']->name }} in this Version under {{ $pairing['otherTeacher']->user->name }}? This moves any of your existing candidates there too."
+                            >
+                                Consolidate under {{ $pairing['otherTeacher']->user->name }}
+                            </flux:button>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        @endif
+
         @if ($myCandidates->isEmpty())
             <flux:text class="text-zinc-500">No candidates yet. Eligible students are enrolled automatically once you're invited and once they're added to your roster.</flux:text>
         @else
@@ -164,6 +203,14 @@
                             <flux:select.option value="{{ $status->value }}">{{ $status->label() }}</flux:select.option>
                         @endforeach
                     </flux:select>
+                    @if ($schoolOptions->count() > 1)
+                        <flux:select wire:model.live="schoolFilter" placeholder="All schools" class="sm:max-w-2xs">
+                            <flux:select.option value="">All schools</flux:select.option>
+                            @foreach ($schoolOptions as $school)
+                                <flux:select.option value="{{ $school->id }}">{{ $school->name }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                    @endif
                 </div>
             </div>
 
@@ -253,7 +300,12 @@
                                 @if ($activeFeeTypes->isNotEmpty() && in_array($candidate->status, $feeEligibleStatuses, true))
                                     <flux:checkbox wire:model.live="selectedCandidateIds" value="{{ $candidate->id }}" class="mt-1" />
                                 @endif
-                                <flux:heading size="base">{{ $displayName }}</flux:heading>
+                                <div>
+                                    <flux:heading size="base">{{ $displayName }}</flux:heading>
+                                    @if ($schoolOptions->count() > 1)
+                                        <flux:text size="sm" class="text-zinc-500">{{ $candidate->school?->name }}</flux:text>
+                                    @endif
+                                </div>
                             </div>
                             <div class="flex flex-col items-end gap-1">
                                 <div id="{{ $loop->first ? 'tour-row-status-mobile' : '' }}">
@@ -325,6 +377,9 @@
                         <flux:table.column></flux:table.column>
                     @endif
                     <flux:table.column>Name</flux:table.column>
+                    @if ($schoolOptions->count() > 1)
+                        <flux:table.column>School</flux:table.column>
+                    @endif
                     <flux:table.column>Voice Part</flux:table.column>
                     <flux:table.column>Checklist</flux:table.column>
                     <flux:table.column>Status</flux:table.column>
@@ -349,6 +404,9 @@
                                 </flux:table.cell>
                             @endif
                             <flux:table.cell class="font-medium">{{ $displayName }}</flux:table.cell>
+                            @if ($schoolOptions->count() > 1)
+                                <flux:table.cell>{{ $candidate->school?->name }}</flux:table.cell>
+                            @endif
                             <flux:table.cell>{{ $candidate->voicePart?->name ?? '—' }}</flux:table.cell>
                             <flux:table.cell id="{{ $loop->first ? 'tour-row-checklist' : '' }}">
                                 <div class="flex flex-wrap gap-1.5">
@@ -595,6 +653,7 @@
                     { ids: ['tour-link-estimate-form'], title: 'Estimate Form', body: "Download a printable PDF invoice for one of your schools: every registered candidate, their fee, and what's still owed." },
                     { ids: ['tour-link-group-payment'], title: 'Group Payment', body: 'Select several candidates in the roster below and pay their registration or participation fee in a single checkout.' },
                     { ids: ['tour-link-payment-register'], title: 'Payment Register', body: 'A full history of every payment recorded against your roster — manual and electronic alike.' },
+                    { ids: ['tour-co-teacher-panel'], title: 'Co-Teacher Consolidation', body: "You and a co-teacher can share students at a school. When you do, this panel lets either of you record every shared candidate here under one teacher's name — handy for keeping fee correspondence and reports from splitting across both of you." },
                     { ids: ['tour-search-box'], title: 'Search box', body: 'Find one candidate by name without scrolling the full roster.' },
                     { ids: ['tour-filters'], title: 'Filters', body: 'Narrow the roster down to one voice part or one status at a time.' },
                     { ids: ['tour-row-checklist', 'tour-row-checklist-mobile'], title: 'Checklist', body: 'See the status of registration requirements — birthday, emergency contact, application, and so on. Green means done, amber means partial, red means not started.' },

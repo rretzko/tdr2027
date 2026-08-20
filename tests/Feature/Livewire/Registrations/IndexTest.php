@@ -8,6 +8,7 @@ use App\Enums\VersionInvitationStatus;
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\Index;
 use App\Models\Candidate;
+use App\Models\CoTeacherGrant;
 use App\Models\County;
 use App\Models\Event;
 use App\Models\Organization;
@@ -170,6 +171,43 @@ test('a teacher with existing candidates still sees the Version even after the w
     ]);
 
     Livewire::actingAs($teacher->user)
+        ->test(Index::class)
+        ->assertSee($version->name)
+        ->assertSee('Active Candidates');
+});
+
+test('a co-teacher with no invitation or candidates of their own sees a granted candidate\'s Version under Active Candidates', function () {
+    $granting = makeIndexTeacher();
+    $coTeacher = makeIndexTeacher();
+    $school = attachIndexTeacherSchool($granting);
+    $version = makeIndexVersion();
+    // No open teacher window — window has closed, matching the "active" bucket rule.
+
+    $voicePart = VoicePart::factory()->create();
+
+    actingAs($granting->user);
+
+    Candidate::create([
+        'student_id' => Student::factory()->create()->id,
+        'version_id' => $version->id,
+        'school_id' => $school->id,
+        'teacher_id' => $granting->id,
+        'voice_part_id' => $voicePart->id,
+        'status' => CandidateStatus::Registered->value,
+        'program_name' => 'Shared Candidate',
+        'emergency_contact_id' => null,
+    ]);
+
+    // A grant requires both teachers active+verified at the shared school.
+    $coTeacher->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
+    CoTeacherGrant::create([
+        'school_id' => $school->id,
+        'granting_teacher_id' => $granting->id,
+        'co_teacher_id' => $coTeacher->id,
+        'granted_by_user_id' => $granting->user->id,
+    ]);
+
+    Livewire::actingAs($coTeacher->user)
         ->test(Index::class)
         ->assertSee($version->name)
         ->assertSee('Active Candidates');

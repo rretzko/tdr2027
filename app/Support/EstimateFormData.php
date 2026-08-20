@@ -14,6 +14,7 @@ use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionMailToAddress;
 use App\Models\VoicePart;
+use App\Services\CoTeacherAccessService;
 use App\Services\MailToAddressResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
@@ -52,9 +53,12 @@ final class EstimateFormData
         $fees = $version->fees;
         $registrationCents = $fees !== null ? (int) $fees->registration : 0;
 
-        $allRegistered = Candidate::where('version_id', $version->id)
+        // Includes any candidate visible via an active co-teaching grant, not
+        // just this teacher's own — a student-identifying view
+        // (docs/plans/co-teacher-definition.md §3).
+        $allRegistered = app(CoTeacherAccessService::class)->candidateQuery($teacher)
+            ->where('version_id', $version->id)
             ->where('school_id', $school->id)
-            ->where('teacher_id', $teacher->id)
             ->where('status', CandidateStatus::Registered->value)
             ->with(['student.user', 'voicePart'])
             ->get()

@@ -27,11 +27,18 @@ class CandidateService
         int $schoolId,
         int $voicePartId,
     ): Candidate {
+        // Redirected to a consolidated co-teacher if one is set for this
+        // (version, school, teacher) — docs/plans/co-teacher-definition.md §4.
+        // Resolved via the container, not a constructor dependency, so the
+        // many existing `new CandidateService` call sites (this class has no
+        // constructor today) don't all need updating for one extra lookup.
+        $recordedTeacher = app(CoTeacherConsolidationService::class)->resolveTeacherId($version, $schoolId, $teacher);
+
         return Candidate::create([
             'student_id' => $student->id,
             'version_id' => $version->id,
             'school_id' => $schoolId,
-            'teacher_id' => $teacher->id,
+            'teacher_id' => $recordedTeacher->id,
             'voice_part_id' => $voicePartId,
             'status' => CandidateStatus::Eligible->value,
             'program_name' => '',

@@ -7,6 +7,7 @@ namespace App\Livewire\Schools;
 use App\Enums\SchoolType;
 use App\Enums\TeacherRole;
 use App\Mail\SchoolEmailVerificationMail;
+use App\Models\CoTeacherGrant;
 use App\Models\County;
 use App\Models\Geostate;
 use App\Models\Pivots\SchoolTeacher;
@@ -14,6 +15,7 @@ use App\Models\Pivots\StudentTeacher;
 use App\Models\School;
 use App\Models\Teacher;
 use App\Rules\NotCommercialEmailDomain;
+use App\Services\CoTeacherAccessService;
 use App\Support\CommercialEmailDomains;
 use App\Support\SchoolMatcher;
 use Flux\Flux;
@@ -75,6 +77,14 @@ class Index extends Component
 
     public string $edit_county_id = '';
 
+    /**
+     * Which school's Co-Teachers modal is open — see
+     * docs/plans/co-teacher-definition.md §5.
+     */
+    public ?int $managingCoTeachersSchoolId = null;
+
+    public string $newCoTeacherId = '';
+
     public function sortBy(string $column): void
     {
         if ($this->sortColumn === $column) {
@@ -92,7 +102,12 @@ class Index extends Component
 
     public function deactivate(int $schoolId): void
     {
-        $this->teacher()->schools()->updateExistingPivot($schoolId, [
+        // A model-instance update, not updateExistingPivot() (a raw query-
+        // builder statement that never fires Eloquent events) — SchoolTeacher
+        // is #[ObservedBy(SchoolTeacherObserver::class)], which auto-revokes
+        // any co_teacher_grants row resting on this (school, teacher) pair
+        // going inactive (docs/plans/co-teacher-definition.md §3).
+        $this->schoolTeacherPivot($schoolId)?->update([
             'is_active' => false,
             'school_email' => null,
             'verified_at' => null,
@@ -101,7 +116,14 @@ class Index extends Component
 
     public function activate(int $schoolId): void
     {
-        $this->teacher()->schools()->updateExistingPivot($schoolId, ['is_active' => true]);
+        $this->schoolTeacherPivot($schoolId)?->update(['is_active' => true]);
+    }
+
+    private function schoolTeacherPivot(int $schoolId): ?SchoolTeacher
+    {
+        return SchoolTeacher::where('teacher_id', $this->teacher()->id)
+            ->where('school_id', $schoolId)
+            ->first();
     }
 
     public function isPending(SchoolTeacher $pivot): bool
@@ -319,7 +341,10 @@ class Index extends Component
         // database edit — otherwise that's indistinguishable from a real change below.
         $previousSchoolEmail = $pivot->school_email !== '' ? $pivot->school_email : null;
 
-        $teacher->schools()->updateExistingPivot($school->id, [
+        // $pivot->update(), not updateExistingPivot() — see the comment on
+        // deactivate() above; $pivot is already the real SchoolTeacher model
+        // instance for this row (Teacher::schools() uses ->using(SchoolTeacher::class)).
+        $pivot->update([
             'role' => $this->edit_role,
             'replacing_teacher_name' => $this->edit_is_replacing_teacher ? $this->edit_replacing_teacher_name : null,
             'school_email' => $newSchoolEmail,
@@ -477,8 +502,10 @@ class Index extends Component
 
     private function sendVerificationEmailIfNeeded(int $schoolId, Teacher $teacher): void
     {
-        // Re-fetched because updateExistingPivot() ran a raw query update — the
-        // in-memory $pivot from saveEdit() still holds the pre-update verified_at.
+        // Re-fetched rather than threading a $pivot instance through from
+        // either caller — both linkExistingSchool() and saveEdit() already
+        // have their own for a different purpose, but re-querying here keeps
+        // this method self-contained regardless of caller.
         $pivot = SchoolTeacher::where('school_id', $schoolId)->where('teacher_id', $teacher->id)->first();
 
         if ($pivot === null || $pivot->verified_at !== null || $pivot->school_email === null) {
@@ -494,13 +521,90 @@ class Index extends Component
         Mail::to($pivot->school_email)->send(new SchoolEmailVerificationMail($pivot, $verificationUrl));
     }
 
-    public function render(): View
+    /**
+     * Opens the Co-Teachers modal for one of this teacher's own
+     * active+verified schools — docs/plans/co-teacher-definition.md §5.
+     */
+    public function manageCoTeachers(int $schoolId): void
     {
+        $pivot = $this->schoolTeacherPivot($schoolId);
+
+        abort_if($pivot === null || ! $pivot->is_active || $pivot->verified_at === null, 403);
+
+        $this->managingCoTeachersSchoolId = $schoolId;
+        $this->newCoTeacherId = '';
+        $this->resetErrorBag();
+        $this->modal('co-teachers')->show();
+    }
+
+    /**
+     * Unilateral, immediate — no approval from the recipient
+     * (docs/plans/co-teacher-definition.md §0).
+     */
+    public function grantCoTeacher(CoTeacherAccessService $coTeacherAccess): void
+    {
+        abort_if($this->managingCoTeachersSchoolId === null, 400);
+
+        $teacher = $this->teacher();
+        $school = $this->schoolTeacherPivot($this->managingCoTeachersSchoolId)?->school;
+
+        abort_if($school === null, 404);
+
+        $grantableIds = $coTeacherAccess->grantableTeachers($teacher, $school)->pluck('id')->all();
+
+        $this->validate([
+            'newCoTeacherId' => ['required', Rule::in($grantableIds)],
+        ]);
+
+        CoTeacherGrant::create([
+            'school_id' => $school->id,
+            'granting_teacher_id' => $teacher->id,
+            'co_teacher_id' => (int) $this->newCoTeacherId,
+            'granted_by_user_id' => Auth::id(),
+        ]);
+
+        $this->newCoTeacherId = '';
+
+        Flux::toast('Co-teacher access granted.', variant: 'success');
+    }
+
+    /**
+     * Only the teacher who granted a share can revoke it — not the
+     * recipient, and not "any manager" (docs/plans/co-teacher-definition.md §6).
+     */
+    public function revokeCoTeacherGrant(int $grantId): void
+    {
+        $grant = CoTeacherGrant::where('id', $grantId)
+            ->where('granting_teacher_id', $this->teacher()->id)
+            ->firstOrFail();
+
+        $grant->delete();
+
+        Flux::toast('Co-teacher access revoked.');
+    }
+
+    public function render(CoTeacherAccessService $coTeacherAccess): View
+    {
+        $teacher = $this->teacher();
+        $managingSchool = $this->managingCoTeachersSchoolId !== null
+            ? School::find($this->managingCoTeachersSchoolId)
+            : null;
+
         return view('livewire.schools.index', [
             'schools' => $this->schools(),
             'geostates' => Geostate::orderBy('name')->get(),
             'editCounties' => $this->edit_geostate_id !== ''
                 ? County::where('geostate_id', $this->edit_geostate_id)->orderBy('name')->get()
+                : collect(),
+            'managingSchool' => $managingSchool,
+            'coTeacherGrantsGiven' => $managingSchool !== null
+                ? CoTeacherGrant::where('school_id', $managingSchool->id)->where('granting_teacher_id', $teacher->id)->with('coTeacher.user')->get()
+                : collect(),
+            'coTeacherGrantsReceived' => $managingSchool !== null
+                ? CoTeacherGrant::where('school_id', $managingSchool->id)->where('co_teacher_id', $teacher->id)->with('grantingTeacher.user')->get()
+                : collect(),
+            'grantableCoTeachers' => $managingSchool !== null
+                ? $coTeacherAccess->grantableTeachers($teacher, $managingSchool)
                 : collect(),
         ]);
     }

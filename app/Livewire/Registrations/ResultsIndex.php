@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Livewire\Registrations;
 
 use App\Enums\CandidateStatus;
-use App\Models\Candidate;
 use App\Models\Teacher;
 use App\Models\Version;
+use App\Services\CoTeacherAccessService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -26,21 +26,24 @@ use Livewire\Component;
 #[Layout('components.layouts.app')]
 class ResultsIndex extends Component
 {
-    public function render(): View
+    public function render(CoTeacherAccessService $coTeacherAccess): View
     {
         return view('livewire.registrations.results-index', [
-            'items' => $this->buildItems(),
+            'items' => $this->buildItems($coTeacherAccess),
         ]);
     }
 
     /**
      * @return Collection<int, array{version: Version, candidateCount: int}>
      */
-    private function buildItems(): Collection
+    private function buildItems(CoTeacherAccessService $coTeacherAccess): Collection
     {
         $teacher = $this->teacher();
 
-        $versionIds = Candidate::where('teacher_id', $teacher->id)->pluck('version_id')->unique();
+        // Includes any Version where this teacher has a visible Candidate —
+        // own or granted via a co-teaching share
+        // (docs/plans/co-teacher-definition.md §3).
+        $versionIds = $coTeacherAccess->candidateQuery($teacher)->pluck('version_id')->unique();
 
         if ($versionIds->isEmpty()) {
             return collect();
@@ -50,7 +53,7 @@ class ResultsIndex extends Component
         // Results page itself lists — a Version where every candidate has
         // since moved on (withdrawn, etc.) still appears below, just with a
         // 0 badge.
-        $counts = Candidate::where('teacher_id', $teacher->id)
+        $counts = $coTeacherAccess->candidateQuery($teacher)
             ->whereIn('version_id', $versionIds)
             ->whereIn('status', [
                 CandidateStatus::Accepted,

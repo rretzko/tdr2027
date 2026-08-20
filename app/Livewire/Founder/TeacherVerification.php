@@ -158,14 +158,20 @@ class TeacherVerification extends Component
 
     public function resetAllAndSendEmails(): void
     {
+        // Per-row update(), not a bulk whereNotNull()->update() — a bulk
+        // query-builder statement skips Eloquent model events entirely, so
+        // SchoolTeacherObserver (which auto-revokes co_teacher_grants when
+        // verification lapses, docs/plans/co-teacher-definition.md §3)
+        // would never fire. Same fix already applied to
+        // Schools\Index::deactivate()/saveEdit().
         $pivots = SchoolTeacher::with(['teacher.user', 'school'])
             ->whereNotNull('school_email')
             ->get();
 
-        SchoolTeacher::whereNotNull('school_email')->update(['verified_at' => null]);
-
         $count = 0;
         foreach ($pivots as $pivot) {
+            $pivot->update(['verified_at' => null]);
+
             $url = UrlFacade::temporarySignedRoute(
                 'school-email.verify',
                 now()->addDays(30),

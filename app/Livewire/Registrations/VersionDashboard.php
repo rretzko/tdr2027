@@ -14,14 +14,18 @@ use App\Enums\PaymentType;
 use App\Enums\Vendor;
 use App\Enums\VersionDateType;
 use App\Models\Candidate;
+use App\Models\CoTeacherGrant;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
+use App\Models\School;
 use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionInvitation;
 use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VoicePart;
 use App\Services\CandidateService;
+use App\Services\CoTeacherAccessService;
+use App\Services\CoTeacherConsolidationService;
 use App\Services\PaymentAllocationService;
 use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\VersionInvitationEligibilityService;
@@ -52,6 +56,9 @@ class VersionDashboard extends Component
     #[Url]
     public string $statusFilter = '';
 
+    #[Url]
+    public string $schoolFilter = '';
+
     /**
      * @var array<int, int>
      */
@@ -73,7 +80,7 @@ class VersionDashboard extends Component
      * (nav visibility alone is not an authorization boundary) and enroll
      * candidates into a Version they were never invited to.
      */
-    public function mount(Version $version, VersionInvitationEligibilityService $eligibility): void
+    public function mount(Version $version, VersionInvitationEligibilityService $eligibility, CoTeacherAccessService $coTeacherAccess): void
     {
         $teacher = $this->teacher();
 
@@ -82,6 +89,25 @@ class VersionDashboard extends Component
             ->first();
 
         if ($invitation === null) {
+            // A granted co-teacher can have standing here purely via a
+            // co_teacher_grants share, with no VersionInvitation of their
+            // own — obligations enforcement for the candidates' owning
+            // teacher already took effect upstream (cascading withdrawal,
+            // GuardsAcceptedObligations on the granter's own pages) rather
+            // than re-checked here, since this roster can blend candidates
+            // from more than one granting teacher with no single "the"
+            // obligations decision to check. See
+            // docs/plans/co-teacher-definition.md §3.
+            $hasGrantedCandidates = $coTeacherAccess->candidateQuery($teacher)
+                ->where('version_id', $version->id)
+                ->exists();
+
+            if ($hasGrantedCandidates) {
+                $this->version = $version;
+
+                return;
+            }
+
             if ($eligibility->isEligible($version, $teacher)) {
                 $this->redirect(route('registrations.request-invitation', $version), navigate: true);
 
@@ -103,10 +129,10 @@ class VersionDashboard extends Component
         $this->version = $version;
     }
 
-    public function withdraw(CandidateService $candidates, int $candidateId): void
+    public function withdraw(CandidateService $candidates, CoTeacherAccessService $coTeacherAccess, int $candidateId): void
     {
-        $candidate = Candidate::where('id', $candidateId)
-            ->where('teacher_id', $this->teacher()->id)
+        $candidate = $coTeacherAccess->candidateQuery($this->teacher())
+            ->where('id', $candidateId)
             ->firstOrFail();
 
         $name = $candidate->program_name;
@@ -115,10 +141,10 @@ class VersionDashboard extends Component
         Flux::toast("{$name} has been withdrawn.");
     }
 
-    public function refreshStatus(CandidateService $candidates, int $candidateId): void
+    public function refreshStatus(CandidateService $candidates, CoTeacherAccessService $coTeacherAccess, int $candidateId): void
     {
-        $candidate = Candidate::where('id', $candidateId)
-            ->where('teacher_id', $this->teacher()->id)
+        $candidate = $coTeacherAccess->candidateQuery($this->teacher())
+            ->where('id', $candidateId)
             ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts'])
             ->firstOrFail();
 
@@ -133,7 +159,7 @@ class VersionDashboard extends Component
      * covering every selected Candidate's total, unallocated until
      * reconciled. See epayment-integration.md §1.1/§3.
      */
-    public function payForSelected(PaymentGatewayFactory $factory, string $feeType): void
+    public function payForSelected(PaymentGatewayFactory $factory, CoTeacherAccessService $coTeacherAccess, string $feeType): void
     {
         $feeType = FeeType::from($feeType);
 
@@ -151,10 +177,16 @@ class VersionDashboard extends Component
         };
 
         // Defensive filter — the roster UI already only offers checkboxes for
-        // candidates eligible for the currently-active FeeType.
-        $candidates = Candidate::whereIn('id', $this->selectedCandidateIds)
+        // candidates eligible for the currently-active FeeType. Paying is
+        // gated on the acting teacher's own e-payment opt-in (checked via
+        // epaymentTeacherReady() above and the roster UI's own checkbox
+        // eligibility) regardless of whether the target candidate is the
+        // teacher's own or a granted co-teacher's — the opt-in itself
+        // intentionally stays per-acting-teacher, not per-candidate-owner
+        // (docs/plans/co-teacher-definition.md, VersionDashboard note).
+        $candidates = $coTeacherAccess->candidateQuery($this->teacher())
+            ->whereIn('id', $this->selectedCandidateIds)
             ->where('version_id', $this->version->id)
-            ->where('teacher_id', $this->teacher()->id)
             ->get()
             // getRawOriginal(), not the magic-cast property — Larastan can't
             // infer the enum cast through this method-based casts() return
@@ -240,6 +272,42 @@ class VersionDashboard extends Component
     }
 
     /**
+     * Either party to an active co-teaching grant may consolidate their
+     * shared candidates at one school in this Version under one of the two
+     * teacher_ids — docs/plans/co-teacher-definition.md §4. Retroactive and
+     * immediate; see CoTeacherConsolidationService::set()'s own docblock for
+     * the (deliberate) asymmetry with clearing one.
+     */
+    public function setTeacherConsolidation(CoTeacherConsolidationService $consolidation, int $schoolId, int $otherTeacherId, int $consolidatedTeacherId): void
+    {
+        $teacher = $this->teacher();
+        $otherTeacher = Teacher::findOrFail($otherTeacherId);
+
+        // Defense in depth beyond the panel only ever being rendered for a
+        // real pairing — a grant must actually exist between these two
+        // teachers at this school, in either direction.
+        $hasGrant = CoTeacherGrant::where('school_id', $schoolId)
+            ->where(function ($query) use ($teacher, $otherTeacher): void {
+                $query->where(fn ($q) => $q->where('granting_teacher_id', $teacher->id)->where('co_teacher_id', $otherTeacher->id))
+                    ->orWhere(fn ($q) => $q->where('granting_teacher_id', $otherTeacher->id)->where('co_teacher_id', $teacher->id));
+            })
+            ->exists();
+
+        abort_unless($hasGrant, 403);
+
+        $consolidation->set(
+            $this->version,
+            School::findOrFail($schoolId),
+            $teacher,
+            $otherTeacher,
+            Teacher::findOrFail($consolidatedTeacherId),
+            Auth::user(),
+        );
+
+        Flux::toast('Shared candidates consolidated.', variant: 'success');
+    }
+
+    /**
      * Every payment_allocations row across this teacher's own roster in this
      * Version — manual entries, refunds, and e-payments alike — ordered by
      * the candidate's sort_name, then payment chronology within that
@@ -252,8 +320,11 @@ class VersionDashboard extends Component
      */
     public static function paymentRegisterRows(Version $version, Teacher $teacher): Collection
     {
-        $candidateIds = Candidate::where('version_id', $version->id)
-            ->where('teacher_id', $teacher->id)
+        // A student-identifying view — includes any candidate visible via an
+        // active co-teaching grant, not just this teacher's own
+        // (docs/plans/co-teacher-definition.md §3).
+        $candidateIds = app(CoTeacherAccessService::class)->candidateQuery($teacher)
+            ->where('version_id', $version->id)
             ->pluck('id');
 
         $allocations = PaymentAllocation::whereIn('candidate_id', $candidateIds)
@@ -308,7 +379,7 @@ class VersionDashboard extends Component
         return new Collection($rows);
     }
 
-    public function saveAllocations(PaymentAllocationService $allocations): void
+    public function saveAllocations(PaymentAllocationService $allocations, CoTeacherAccessService $coTeacherAccess): void
     {
         abort_if($this->allocatingTransactionId === null, 400);
 
@@ -317,8 +388,11 @@ class VersionDashboard extends Component
             ->where('payer_teacher_id', $this->teacher()->id)
             ->firstOrFail();
 
-        $rosterCandidateIds = Candidate::where('version_id', $this->version->id)
-            ->where('teacher_id', $this->teacher()->id)
+        // A transaction the acting teacher paid personally may still be
+        // allocated toward a granted co-teacher's candidate — "equal access
+        // and responsibility" (docs/plans/co-teacher-definition.md §0).
+        $rosterCandidateIds = $coTeacherAccess->candidateQuery($this->teacher())
+            ->where('version_id', $this->version->id)
             ->pluck('id')
             ->all();
 
@@ -349,20 +423,37 @@ class VersionDashboard extends Component
         Flux::toast('Payment allocated.', variant: 'success');
     }
 
-    public function render(): View
+    public function render(CoTeacherAccessService $coTeacherAccess, CoTeacherConsolidationService $coTeacherConsolidation): View
     {
         $teacher = $this->teacher();
+        $coTeacherPairings = $coTeacherConsolidation->relevantPairings($teacher, $this->version);
 
         // Sorted by the student's sort_name (Last, First — the same "alpha
         // order" convention used elsewhere, e.g. VersionInvitationEligibilityService::roster()),
         // not program_name — a teacher can freely edit program_name to
         // anything for the concert program, so it isn't a reliable
-        // alphabetical key.
-        $myCandidates = Candidate::where('version_id', $this->version->id)
-            ->where('teacher_id', $teacher->id)
-            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'voicePart'])
+        // alphabetical key. Includes any candidate visible via an active
+        // co-teaching grant, not just this teacher's own
+        // (docs/plans/co-teacher-definition.md §3) — still labeled "My
+        // Candidates" in the view, since from this teacher's vantage point
+        // they're all now equally theirs to manage.
+        $myCandidates = $coTeacherAccess->candidateQuery($teacher)
+            ->where('version_id', $this->version->id)
+            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'voicePart', 'school'])
             ->get()
             ->sortBy(fn (Candidate $candidate): string => mb_strtolower($candidate->student->user->sort_name));
+
+        // Only meaningful once a roster spans more than one school — most
+        // often now via a co-teaching grant (docs/plans/co-teacher-definition.md
+        // §3), but also a teacher genuinely active at two schools on their
+        // own. The view only renders the filter (and a School column) when
+        // this has more than one entry.
+        $schoolOptions = $myCandidates
+            ->pluck('school')
+            ->filter()
+            ->unique('id')
+            ->sortBy(fn (School $school): string => $school->name)
+            ->values();
 
         $filteredCandidates = $this->filterCandidates($myCandidates);
 
@@ -462,11 +553,11 @@ class VersionDashboard extends Component
         $showOrientation = Auth::user()->dismissed_registration_orientation_at === null;
 
         return view('livewire.registrations.version-dashboard', compact(
-            'myCandidates', 'filteredCandidates', 'paidByCandidateId', 'voicePartCounts', 'voicePartTotal',
-            'statusCounts', 'statusTotal', 'statusOptions',
+            'teacher', 'myCandidates', 'filteredCandidates', 'paidByCandidateId', 'voicePartCounts', 'voicePartTotal',
+            'statusCounts', 'statusTotal', 'statusOptions', 'schoolOptions',
             'upcomingDates', 'voiceParts', 'checklistDefs',
             'activeFeeTypes', 'feeEligibleStatuses', 'epaymentStudentEnabled', 'epaymentOptedIn', 'unreconciledPayments',
-            'paymentRegisterRows', 'showOrientation',
+            'paymentRegisterRows', 'showOrientation', 'coTeacherPairings',
         ));
     }
 
@@ -488,6 +579,10 @@ class VersionDashboard extends Component
 
         if ($this->statusFilter !== '') {
             $candidates = $candidates->filter(fn (Candidate $candidate): bool => $candidate->getRawOriginal('status') === $this->statusFilter);
+        }
+
+        if ($this->schoolFilter !== '') {
+            $candidates = $candidates->filter(fn (Candidate $candidate): bool => (string) $candidate->school_id === $this->schoolFilter);
         }
 
         return $candidates->values();

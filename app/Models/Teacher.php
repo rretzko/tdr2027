@@ -116,4 +116,25 @@ class Teacher extends Model
     {
         return $this->hasMany(VersionTeacherPacket::class);
     }
+
+    /**
+     * Co-teaching grants this teacher has given away — "I share my students
+     * with you" (docs/plans/co-teacher-definition.md §2.1).
+     *
+     * @return HasMany<CoTeacherGrant, $this>
+     */
+    public function coTeacherGrantsGiven(): HasMany
+    {
+        return $this->hasMany(CoTeacherGrant::class, 'granting_teacher_id');
+    }
+
+    /**
+     * Co-teaching grants this teacher has received from someone else.
+     *
+     * @return HasMany<CoTeacherGrant, $this>
+     */
+    public function coTeacherGrantsReceived(): HasMany
+    {
+        return $this->hasMany(CoTeacherGrant::class, 'co_teacher_id');
+    }
 }
