@@ -66,7 +66,9 @@ use App\Livewire\Events\VersionPitchFiles;
 use App\Livewire\Events\VersionRooms;
 use App\Livewire\Events\VersionScoringRubric;
 use App\Livewire\Events\WebRegistration;
+use App\Livewire\Feedback\Index as FeedbackIndex;
 use App\Livewire\Founder\Impersonate as FounderImpersonate;
+use App\Livewire\Founder\Issues as FounderIssues;
 use App\Livewire\Founder\MergeStudents as FounderMergeStudents;
 use App\Livewire\Founder\TeacherVerification as FounderTeacherVerification;
 use App\Livewire\Founder\TrackablePages as FounderTrackablePages;
@@ -188,6 +190,7 @@ Route::middleware(['auth', 'verified', 'founder'])->group(function () {
     Route::get('/founder/trackable-pages', FounderTrackablePages::class)->name('founder.trackable-pages');
     Route::get('/founder/merge-students', FounderMergeStudents::class)->name('founder.merge-students');
     Route::get('/founder/teacher-verification', FounderTeacherVerification::class)->name('founder.teacher-verification');
+    Route::get('/founder/issues', FounderIssues::class)->name('founder.issues');
 });
 
 // Not behind the 'founder' middleware: once impersonating, the active user is
@@ -198,6 +201,10 @@ Route::middleware(['auth'])->post('/founder/stop-impersonating', StopImpersonati
 
 Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function () {
     Route::view('/dashboard', 'dashboard')->name('dashboard')->middleware('student.has.active.school');
+
+    // Available to every authenticated account (teacher, student, Founder)
+    // regardless of portal, same as Settings/Profile below.
+    Route::get('/feedback', FeedbackIndex::class)->name('feedback.index');
 
     // StudentFolder.info student portal (studentfolder-module.md). School
     // is reachable without an active school — it's how a student gets one —

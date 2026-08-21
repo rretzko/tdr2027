@@ -128,7 +128,7 @@ test('creating a VersionInvitation for a Sandbox Version DOES auto-enroll the in
 });
 
 test('creating a VersionInvitation for a Sandbox Version still does NOT auto-enroll a teacher who is not the Event Manager', function () {
-    [$manager, ] = makeAutoEnrollTeacherWithSchool();
+    [$manager] = makeAutoEnrollTeacherWithSchool();
     [$teacher, $school] = makeAutoEnrollTeacherWithSchool();
     $version = makeAutoEnrollVersion(active: false);
     attachAutoEnrollVoicePart($version);
