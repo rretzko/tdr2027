@@ -1,0 +1,9 @@
+/storage/framework/phpstan
+/storage/framework/views
+/storage/framework/cache
+/storage/framework/testing
+/storage/logs
+/database/seeders/data
+/database/database.sqlite
+/tests
+/docs
