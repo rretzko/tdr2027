@@ -68,6 +68,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | StudentFolder.info Domain
+    |--------------------------------------------------------------------------
+    |
+    | project_architecture_decisions.md item 7: TDR and SFDI are separate
+    | portals sharing one app/database. The host `/` is requested on decides
+    | which welcome page (welcome-tdr vs welcome-sfdi) is served. Set this
+    | per-environment (e.g. a local hosts-file entry) so both portals can be
+    | exercised locally without touching production config.
+    |
+    */
+
+    'sfdi_domain' => env('SFDI_DOMAIN', 'studentfolder.info'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

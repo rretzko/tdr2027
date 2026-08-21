@@ -94,13 +94,13 @@ use App\Livewire\Students\Index as StudentsIndex;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('welcome-tdr');
+    return request()->getHost() === config('app.sfdi_domain')
+        ? view('welcome-sfdi')
+        : view('welcome-tdr');
 });
 
-// Path-based StudentFolder.info splash, ahead of real domain-based routing
-// (project_architecture_decisions.md item 7, still deferred) — /sfdi now
-// serves the same welcome-sfdi view the eventual studentfolder.info domain
-// will use.
+// Path-based StudentFolder.info splash, kept for local/staging access when
+// SFDI_DOMAIN isn't hit directly (e.g. no local hosts-file entry set up).
 Route::get('/sfdi', function () {
     return view('welcome-sfdi');
 })->name('sfdi.welcome');
