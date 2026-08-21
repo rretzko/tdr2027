@@ -23,6 +23,7 @@ use App\Models\VersionInvitation;
 use App\Models\VersionObligation;
 use App\Models\VersionObligationResponse;
 use App\Models\VoicePart;
+use App\Services\VersionRoleAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -296,6 +297,47 @@ test('an invited teacher with no published obligation sees no Obligations badge'
     Livewire::actingAs($teacher->user)
         ->test(Index::class)
         ->assertDontSee('Obligations:');
+});
+
+test('an invited teacher who is not an Event Manager does not see a Sandbox-status Version', function () {
+    $teacher = makeIndexTeacher();
+    attachIndexTeacherSchool($teacher);
+
+    $organization = Organization::factory()->create();
+    $event = Event::factory()->create(['organization_id' => $organization->id]);
+    $version = Version::factory()->create(['event_id' => $event->id]); // default status: sandbox
+    openTeacherWindow($version);
+
+    VersionInvitation::create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => VersionInvitationStatus::Invited->value,
+        'invited_at' => now(),
+        'invited_by_user_id' => User::factory()->create()->id,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(Index::class)
+        ->assertDontSee($version->name);
+});
+
+test('the Event Manager for a Sandbox-status Version can still see it', function () {
+    $organization = Organization::factory()->create();
+    $event = Event::factory()->create(['organization_id' => $organization->id]);
+    $version = Version::factory()->create(['event_id' => $event->id]); // default status: sandbox
+    openTeacherWindow($version);
+
+    $manager = makeIndexTeacher();
+    attachIndexTeacherSchool($manager);
+
+    // bootstrapEventManager grants "Event Manager" on the Version and
+    // auto-invites the manager's own Teacher, landing them in "open".
+    app(VersionRoleAssignmentService::class)->bootstrapEventManager($manager->user, $version);
+
+    Livewire::actingAs($manager->user)
+        ->test(Index::class)
+        ->assertSee($version->name)
+        ->assertSee('Open for Registration');
 });
 
 test('the empty-state callout shows when nothing is open or active', function () {

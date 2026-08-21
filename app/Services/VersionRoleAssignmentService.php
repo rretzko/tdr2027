@@ -353,6 +353,25 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Events where $user holds "Event Manager" on at least one Version —
+     * lets a Sandbox-status Version stay visible to the manager previewing
+     * it ahead of going Active (Registrations\Index) while everyone else
+     * stays gated until then.
+     *
+     * @return list<int>
+     */
+    public function eventManagerEventIds(User $user): array
+    {
+        $versionIds = $this->matchingVersionIds($user, ['Event Manager']);
+
+        if ($versionIds->isEmpty()) {
+            return [];
+        }
+
+        return Version::whereIn('id', $versionIds)->pluck('event_id')->unique()->values()->all();
+    }
+
+    /**
      * Whether $user may open the Adjudication page for this specific
      * Version: the Version must be active, $user must hold a RoomJudge
      * assignment on *this* Version (not merely a sibling one — unlike

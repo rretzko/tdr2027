@@ -11,6 +11,7 @@ use App\Models\VersionDate;
 use App\Models\VersionInvitation;
 use App\Services\CoTeacherAccessService;
 use App\Services\VersionInvitationEligibilityService;
+use App\Services\VersionRoleAssignmentService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -21,10 +22,13 @@ use Livewire\Component;
 #[Layout('components.layouts.app')]
 class Index extends Component
 {
-    public function render(VersionInvitationEligibilityService $eligibility, CoTeacherAccessService $coTeacherAccess): View
-    {
+    public function render(
+        VersionInvitationEligibilityService $eligibility,
+        CoTeacherAccessService $coTeacherAccess,
+        VersionRoleAssignmentService $roleAssignment,
+    ): View {
         return view('livewire.registrations.index', [
-            'sections' => $this->buildSections($eligibility, $coTeacherAccess),
+            'sections' => $this->buildSections($eligibility, $coTeacherAccess, $roleAssignment),
         ]);
     }
 
@@ -52,13 +56,21 @@ class Index extends Component
      * All three groups are further constrained to Version::status === 'active'
      * — a Version whose lifecycle status has moved to closed belongs on the
      * Results page (ResultsIndex) instead, regardless of whether a stale
-     * `version_dates` row still makes it look date-wise "open".
+     * `version_dates` row still makes it look date-wise "open". The one
+     * exception: a status === 'sandbox' Version also qualifies, but only for
+     * a user holding "Event Manager" on that Version's Event — lets a
+     * manager preview their own Version ahead of going Active while every
+     * other teacher stays gated until then.
      *
      * @return array{open: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null, obligationDecision: string|null}>, eligible: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null}>, active: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null, obligationDecision: string|null}>}
      */
-    private function buildSections(VersionInvitationEligibilityService $eligibility, CoTeacherAccessService $coTeacherAccess): array
-    {
+    private function buildSections(
+        VersionInvitationEligibilityService $eligibility,
+        CoTeacherAccessService $coTeacherAccess,
+        VersionRoleAssignmentService $roleAssignment,
+    ): array {
         $teacher = $this->teacher();
+        $eventManagerEventIds = $roleAssignment->eventManagerEventIds(Auth::user());
 
         $openVersionIds = $eligibility->openForTeacherVersionIds();
 
@@ -85,7 +97,13 @@ class Index extends Component
         // limitation when a closure re-types through push()/sort()/values().
         $versions = Version::with(['event', 'dates', 'obligation'])
             ->whereIn('id', $allVersionIds)
-            ->where('status', 'active')
+            ->where(function ($query) use ($eventManagerEventIds): void {
+                $query->where('status', 'active')
+                    ->orWhere(function ($query) use ($eventManagerEventIds): void {
+                        $query->where('status', 'sandbox')
+                            ->whereIn('event_id', $eventManagerEventIds);
+                    });
+            })
             ->get()
             ->sort(function (Version $a, Version $b): int {
                 $seniorClassOf = $b->senior_class_of <=> $a->senior_class_of;

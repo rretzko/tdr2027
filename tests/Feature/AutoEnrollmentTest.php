@@ -107,6 +107,42 @@ test('creating a VersionInvitation for a Sandbox Version does not auto-enroll an
     expect(Candidate::where('version_id', $version->id)->where('student_id', $student->id)->exists())->toBeFalse();
 });
 
+test('creating a VersionInvitation for a Sandbox Version DOES auto-enroll the invited teacher when they are the Event Manager', function () {
+    [$teacher, $school] = makeAutoEnrollTeacherWithSchool();
+    $version = makeAutoEnrollVersion(active: false);
+    attachAutoEnrollVoicePart($version);
+
+    app(VersionRoleAssignmentService::class)->bootstrapEventManager($teacher->user, $version);
+
+    actingAs($teacher->user);
+    $student = linkAutoEnrollStudent($teacher, $school);
+
+    // bootstrapEventManager() already invited $teacher and ran its own
+    // backfill; re-inviting here (as an Event Manager re-invite, per the
+    // real-world Patricia Danner scenario) exercises the observer path
+    // directly rather than only VersionRoleAssignmentService's backfill.
+    VersionInvitation::where('version_id', $version->id)->where('teacher_id', $teacher->id)->delete();
+    inviteAutoEnrollTeacher($teacher, $version);
+
+    expect(Candidate::where('version_id', $version->id)->where('student_id', $student->id)->exists())->toBeTrue();
+});
+
+test('creating a VersionInvitation for a Sandbox Version still does NOT auto-enroll a teacher who is not the Event Manager', function () {
+    [$manager, ] = makeAutoEnrollTeacherWithSchool();
+    [$teacher, $school] = makeAutoEnrollTeacherWithSchool();
+    $version = makeAutoEnrollVersion(active: false);
+    attachAutoEnrollVoicePart($version);
+
+    app(VersionRoleAssignmentService::class)->bootstrapEventManager($manager->user, $version);
+
+    actingAs($teacher->user);
+    $student = linkAutoEnrollStudent($teacher, $school);
+
+    inviteAutoEnrollTeacher($teacher, $version);
+
+    expect(Candidate::where('version_id', $version->id)->where('student_id', $student->id)->exists())->toBeFalse();
+});
+
 test('adding a new student to a teacher\'s roster auto-enrolls them into every Active Version the teacher is invited to', function () {
     [$teacher, $school] = makeAutoEnrollTeacherWithSchool();
     $version = makeAutoEnrollVersion(active: true);
