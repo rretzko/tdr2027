@@ -1176,6 +1176,18 @@ class Index extends Component
         Flux::toast(text: "{$user->name} added successfully.", variant: 'success');
     }
 
+    /**
+     * Marks the first-visit spotlight tour as seen for this user — mirrors
+     * Events\Index::dismissOrientation(). Called from the client-side tour
+     * engine (resources/views/livewire/students/index.blade.php) via a
+     * hidden wire:click trigger when the tour finishes or is skipped; the
+     * always-visible "Take a tour" button ignores this flag entirely.
+     */
+    public function dismissOrientation(): void
+    {
+        Auth::user()->update(['dismissed_students_orientation_at' => now()]);
+    }
+
     public function render(): View
     {
         $rows = $this->rows();

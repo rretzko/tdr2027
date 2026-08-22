@@ -106,6 +106,18 @@ class Index extends Component
         $this->dispatch('modal-close', name: 'edit-event');
     }
 
+    /**
+     * Marks the first-visit spotlight tour as seen for this user — a single
+     * flag covers the Events index, mirroring Events\Show::dismissOrientation().
+     * Called from the client-side tour engine (resources/views/livewire/events/index.blade.php)
+     * via a hidden wire:click trigger when the tour finishes or is skipped; the
+     * always-visible "Take a tour" button ignores this flag entirely.
+     */
+    public function dismissOrientation(): void
+    {
+        Auth::user()->update(['dismissed_events_index_orientation_at' => now()]);
+    }
+
     public function render(VersionRoleAssignmentService $service): View
     {
         $user = Auth::user();

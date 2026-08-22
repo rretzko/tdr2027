@@ -147,3 +147,22 @@ test('joining a new school deactivates the student\'s previous school', function
     expect(SchoolStudent::where('student_id', $student->id)->where('school_id', $oldSchool->id)->value('is_active'))->toBeFalsy();
     expect(SchoolStudent::where('student_id', $student->id)->where('school_id', $newSchool->id)->value('is_active'))->toBeTruthy();
 });
+
+test('the Take a tour button does not auto-start once the tour has already been taken', function () {
+    $studentUser = makeSfdiStudent();
+    $studentUser->update(['dismissed_sfdi_school_orientation_at' => now()]);
+
+    Livewire::actingAs($studentUser)
+        ->test(School::class)
+        ->assertSeeHtml('data-auto-start="0"');
+});
+
+test('dismissOrientation persists the dismissal for the acting user', function () {
+    $studentUser = makeSfdiStudent();
+
+    Livewire::actingAs($studentUser)
+        ->test(School::class)
+        ->call('dismissOrientation');
+
+    expect($studentUser->fresh()->dismissed_sfdi_school_orientation_at)->not->toBeNull();
+});

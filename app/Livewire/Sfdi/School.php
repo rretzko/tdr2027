@@ -126,6 +126,18 @@ class School extends Component
         $this->redirect(route('dashboard'), navigate: true);
     }
 
+    /**
+     * Marks the first-visit spotlight tour as seen for this user — mirrors
+     * Sfdi\Events\Show::dismissOrientation(). Called from the client-side
+     * tour engine (resources/views/livewire/sfdi/school.blade.php) via a
+     * hidden wire:click trigger when the tour finishes or is skipped; the
+     * always-visible "Take a tour" button ignores this flag entirely.
+     */
+    public function dismissOrientation(): void
+    {
+        Auth::user()->update(['dismissed_sfdi_school_orientation_at' => now()]);
+    }
+
     public function render(): View
     {
         $currentSchool = $this->student()?->current_school;

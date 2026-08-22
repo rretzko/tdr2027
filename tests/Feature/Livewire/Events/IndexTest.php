@@ -173,3 +173,22 @@ test('the Add Event button is hidden for a non-Founder and visible for Founder',
         ->test(Index::class)
         ->assertSee('Add event');
 });
+
+test('the Take a tour button does not auto-start once the tour has already been taken', function () {
+    $founder = makeFounder();
+    $founder->update(['dismissed_events_index_orientation_at' => now()]);
+
+    Livewire::actingAs($founder)
+        ->test(Index::class)
+        ->assertSeeHtml('data-auto-start="0"');
+});
+
+test('dismissOrientation persists the dismissal for the acting user', function () {
+    $founder = makeFounder();
+
+    Livewire::actingAs($founder)
+        ->test(Index::class)
+        ->call('dismissOrientation');
+
+    expect($founder->fresh()->dismissed_events_index_orientation_at)->not->toBeNull();
+});

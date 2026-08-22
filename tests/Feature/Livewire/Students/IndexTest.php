@@ -1702,3 +1702,22 @@ test('edit() refuses to open a pending row and shows a warning toast', function 
     expect($component->get('editingRowId'))->toBeNull();
     expect($component->get('edit_first_name'))->toBe('');
 });
+
+test('the Take a tour button does not auto-start once the tour has already been taken', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $user->update(['dismissed_students_orientation_at' => now()]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSeeHtml('data-auto-start="0"');
+});
+
+test('dismissOrientation persists the dismissal for the acting user', function () {
+    $user = makeStudentsIndexTeacherUser();
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('dismissOrientation');
+
+    expect($user->fresh()->dismissed_students_orientation_at)->not->toBeNull();
+});

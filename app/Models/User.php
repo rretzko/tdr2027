@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Storage;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['email', 'cell_phone', 'password', 'pronoun_id', 'honorific', 'first_name', 'middle_name', 'last_name', 'suffix_name', 'dismissed_registration_orientation_at', 'dismissed_dashboard_orientation_at', 'dismissed_event_orientation_at', 'dismissed_sfdi_candidate_orientation_at', 'photo_path'])]
+#[Fillable(['email', 'cell_phone', 'password', 'pronoun_id', 'honorific', 'first_name', 'middle_name', 'last_name', 'suffix_name', 'dismissed_registration_orientation_at', 'dismissed_dashboard_orientation_at', 'dismissed_event_orientation_at', 'dismissed_sfdi_candidate_orientation_at', 'dismissed_events_index_orientation_at', 'dismissed_students_orientation_at', 'dismissed_sfdi_school_orientation_at', 'photo_path'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmailContract
 {
@@ -58,6 +58,9 @@ class User extends Authenticatable implements MustVerifyEmailContract
             'dismissed_dashboard_orientation_at' => 'datetime',
             'dismissed_event_orientation_at' => 'datetime',
             'dismissed_sfdi_candidate_orientation_at' => 'datetime',
+            'dismissed_events_index_orientation_at' => 'datetime',
+            'dismissed_students_orientation_at' => 'datetime',
+            'dismissed_sfdi_school_orientation_at' => 'datetime',
         ];
     }
 
