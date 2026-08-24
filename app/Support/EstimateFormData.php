@@ -27,11 +27,18 @@ use Illuminate\Support\Facades\Storage;
  */
 final class EstimateFormData
 {
+    /**
+     * voice_parts.id values considered "upper voice" (Descant, Soprano,
+     * Soprano I/II, Alto, Alto I/II) for max_upper_voice_registrants — see
+     * VoicePartSeeder for the fixed seed order these ids come from.
+     */
+    private const UPPER_VOICE_PART_IDS = [1, 2, 3, 4, 5, 6, 7];
+
     public function __construct(
         public readonly Version $version,
         public readonly School $school,
         public readonly Teacher $teacher,
-        /** @var Collection<int, Candidate> registered candidates, ordered by student last/first name, capped at max_registrants */
+        /** @var Collection<int, Candidate> registered candidates, ordered by student last/first name, capped at max_upper_voice_registrants then max_registrants */
         public readonly Collection $candidates,
         public readonly bool $truncated,
         /** @var Collection<int, array{voicePart: VoicePart, count: int}> */
@@ -65,9 +72,17 @@ final class EstimateFormData
             ->sortBy(fn (Candidate $c): string => mb_strtolower($c->student->user->sort_name))
             ->values();
 
+        $upperVoiceCap = $version->max_upper_voice_registrants;
+        $afterUpperVoiceCap = $upperVoiceCap !== null && $upperVoiceCap > 0
+            ? self::capUpperVoiceRegistrants($allRegistered, $upperVoiceCap)
+            : $allRegistered;
+
         $maxRegistrants = $version->max_registrants;
-        $truncated = $maxRegistrants !== null && $maxRegistrants > 0 && $allRegistered->count() > $maxRegistrants;
-        $candidates = $truncated ? $allRegistered->take($maxRegistrants)->values() : $allRegistered;
+        $candidates = $maxRegistrants !== null && $maxRegistrants > 0 && $afterUpperVoiceCap->count() > $maxRegistrants
+            ? $afterUpperVoiceCap->take($maxRegistrants)->values()
+            : $afterUpperVoiceCap;
+
+        $truncated = $candidates->count() < $allRegistered->count();
 
         $voicePartCounts = $version->availableVoiceParts()
             ->reject(fn (VoicePart $vp): bool => $vp->abbr === 'ALL')
@@ -138,6 +153,30 @@ final class EstimateFormData
             'required' => true,
             'imageUrl' => $membership !== null ? self::resolveImageUrl($membership->membership_card) : null,
         ];
+    }
+
+    /**
+     * Keeps every non-upper-voice candidate untouched and, in list order,
+     * only the first $cap upper-voice candidates. Applied before
+     * max_registrants so an upper-voice-capped candidate never displaces a
+     * lower-voice one still under both caps.
+     *
+     * @param Collection<int, Candidate> $candidates
+     * @return Collection<int, Candidate>
+     */
+    private static function capUpperVoiceRegistrants(Collection $candidates, int $cap): Collection
+    {
+        $upperVoiceCount = 0;
+
+        return $candidates->filter(function (Candidate $candidate) use ($cap, &$upperVoiceCount): bool {
+            if (! in_array((int) $candidate->voice_part_id, self::UPPER_VOICE_PART_IDS, true)) {
+                return true;
+            }
+
+            $upperVoiceCount++;
+
+            return $upperVoiceCount <= $cap;
+        })->values();
     }
 
     private static function resolveImageUrl(?string $key): ?string

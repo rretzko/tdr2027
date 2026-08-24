@@ -88,10 +88,9 @@
                 Reject Obligations
             </flux:button>
 
-            <flux:button variant="ghost" icon="arrow-down-tray" disabled>
+            <flux:button variant="ghost" icon="arrow-down-tray" :href="route('registrations.obligations-pdf', $version)">
                 Download PDF
             </flux:button>
         </div>
-        <flux:text size="xs" class="text-zinc-400">PDF export isn't wired up yet.</flux:text>
     @endif
 </div>

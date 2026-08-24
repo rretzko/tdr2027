@@ -26,6 +26,7 @@ use App\Http\Controllers\StopImpersonatingController;
 use App\Http\Controllers\StudentClaimController;
 use App\Http\Controllers\UserGuidePdfController;
 use App\Http\Controllers\VersionInvitationRequestController;
+use App\Http\Controllers\VersionObligationPdfController;
 use App\Http\Controllers\VersionRoomRosterPdfController;
 use App\Http\Controllers\Webhooks\PaypalReturnController;
 use App\Http\Controllers\Webhooks\PaypalWebhookController;
@@ -241,6 +242,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/registrations/{version}', VersionDashboard::class)->name('registrations.version');
         Route::get('/registrations/{version}/request-invitation', RequestInvitation::class)->name('registrations.request-invitation');
         Route::get('/registrations/{version}/obligations', VersionObligations::class)->name('registrations.obligations');
+        Route::get('/registrations/{version}/obligations.pdf', VersionObligationPdfController::class)->name('registrations.obligations-pdf');
         Route::get('/registrations/{version}/results', Results::class)->name('registrations.results');
         Route::get('/registrations/{version}/results/schools/{school}/report.pdf', SchoolScoreReportPdfController::class)->name('registrations.results.school-report-pdf');
         Route::get('/registrations/{version}/results/shared-scores.pdf', SharedScoresPdfController::class)->name('registrations.results.shared-scores-pdf');

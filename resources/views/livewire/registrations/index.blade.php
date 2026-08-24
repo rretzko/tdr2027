@@ -46,6 +46,7 @@
                                     :href="route('registrations.obligations', $version)"
                                     wire:navigate
                                     size="sm"
+                                    class="cursor-pointer"
                                     :color="match ($item['obligationDecision']) {
                                         'accepted' => 'green',
                                         'rejected' => 'red',
@@ -145,6 +146,7 @@
                                     :href="route('registrations.obligations', $version)"
                                     wire:navigate
                                     size="sm"
+                                    class="cursor-pointer"
                                     :color="match ($item['obligationDecision']) {
                                         'accepted' => 'green',
                                         'rejected' => 'red',
