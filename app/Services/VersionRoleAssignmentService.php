@@ -125,6 +125,26 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Whether $user holds any of the six version-scoped roles on a Version
+     * that is currently Active or Sandbox — gates the Event Manager Guide
+     * link in the sidebar's User Guides section (Sandbox included so a
+     * newly-assigned manager previewing an unopened Version, per
+     * bootstrapEventManager() above, can still reach the guide).
+     */
+    public function hasActiveOrSandboxVersionRole(User $user): bool
+    {
+        $versionIds = $this->matchingVersionIds($user, self::VERSION_SCOPED_ROLES);
+
+        if ($versionIds->isEmpty()) {
+            return false;
+        }
+
+        return Version::whereIn('id', $versionIds)
+            ->whereIn('status', [EventStatus::Active->value, EventStatus::Sandbox->value])
+            ->exists();
+    }
+
+    /**
      * Grants "Event Manager" on a brand-new Version with no prior authorization
      * check — used only by the self-service event-creation flow, where the
      * creator has no standing role yet because the Version they're being

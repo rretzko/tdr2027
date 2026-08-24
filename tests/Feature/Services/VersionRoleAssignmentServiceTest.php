@@ -924,3 +924,40 @@ test('a global role assignment (e.g. Teacher) does not make eventIdsVisibleTo or
     expect($service->canViewEvent($user, $event))->toBeFalse();
     expect($service->eventIdsVisibleTo($user))->toBe([]);
 });
+
+test('hasActiveOrSandboxVersionRole is false for a user with no version-scoped role at all', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+
+    expect($service->hasActiveOrSandboxVersionRole($user))->toBeFalse();
+});
+
+test('hasActiveOrSandboxVersionRole is true for a role held on a Sandbox Version (the factory default)', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    expect($service->hasActiveOrSandboxVersionRole($user))->toBeTrue();
+});
+
+test('hasActiveOrSandboxVersionRole is true for a role held on an Active Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+    grantVersionRole($user, $version, 'Tab Room Manager');
+
+    expect($service->hasActiveOrSandboxVersionRole($user))->toBeTrue();
+});
+
+test('hasActiveOrSandboxVersionRole is false when the only role is on a Closed Version', function () {
+    $service = app(VersionRoleAssignmentService::class);
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'closed']);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    expect($service->hasActiveOrSandboxVersionRole($user))->toBeFalse();
+});

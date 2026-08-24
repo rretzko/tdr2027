@@ -24,6 +24,7 @@ use App\Http\Controllers\SchoolScoreReportPdfController;
 use App\Http\Controllers\SharedScoresPdfController;
 use App\Http\Controllers\StopImpersonatingController;
 use App\Http\Controllers\StudentClaimController;
+use App\Http\Controllers\UserGuidePdfController;
 use App\Http\Controllers\VersionInvitationRequestController;
 use App\Http\Controllers\VersionRoomRosterPdfController;
 use App\Http\Controllers\Webhooks\PaypalReturnController;
@@ -205,6 +206,10 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
     // Available to every authenticated account (teacher, student, Founder)
     // regardless of portal, same as Settings/Profile below.
     Route::get('/feedback', FeedbackIndex::class)->name('feedback.index');
+
+    // Sidebar "User Guides" downloads — {guide} is allowlisted in the
+    // controller, same pattern as the {provider} social-login routes.
+    Route::get('/guides/{guide}', UserGuidePdfController::class)->name('guides.show');
 
     // StudentFolder.info student portal (studentfolder-module.md). School
     // is reachable without an active school — it's how a student gets one —

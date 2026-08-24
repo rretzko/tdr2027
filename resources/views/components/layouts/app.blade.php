@@ -183,6 +183,21 @@
             <flux:sidebar.item id="tour-sidebar-feedback" icon="chat-bubble-left-right" :href="route('feedback.index')" :current="request()->routeIs('feedback.index')">
                 Feedback
             </flux:sidebar.item>
+
+            <flux:sidebar.group heading="User Guides" icon="book-open" expandable>
+                <flux:sidebar.item icon="document-text" :href="route('guides.show', 'student-guide')" target="_blank">
+                    Student Guide
+                </flux:sidebar.item>
+                <flux:sidebar.item icon="document-text" :href="route('guides.show', 'teacher-guide')" target="_blank">
+                    Teacher Guide
+                </flux:sidebar.item>
+                @if (app(\App\Services\VersionRoleAssignmentService::class)->hasActiveOrSandboxVersionRole(auth()->user()))
+                    <flux:sidebar.item icon="document-text" :href="route('guides.show', 'event-manager-guide')" target="_blank">
+                        Event Manager Guide
+                    </flux:sidebar.item>
+                @endif
+            </flux:sidebar.group>
+
             <flux:sidebar.item id="tour-sidebar-profile" icon="user" :href="route('settings.profile')" :current="request()->routeIs('settings.profile')">
                 Profile
             </flux:sidebar.item>
