@@ -57,10 +57,14 @@ class Index extends Component
      * — a Version whose lifecycle status has moved to closed belongs on the
      * Results page (ResultsIndex) instead, regardless of whether a stale
      * `version_dates` row still makes it look date-wise "open". The one
-     * exception: a status === 'sandbox' Version also qualifies, but only for
-     * a user holding "Event Manager" on that Version's Event — lets a
-     * manager preview their own Version ahead of going Active while every
-     * other teacher stays gated until then.
+     * exception: a status === 'sandbox' Version also qualifies for a user
+     * holding "Event Manager" on that Version's Event (event-wide — any
+     * sibling Version's assignment counts), or "Registration Manager"/"Web
+     * Registration Manager" held specifically on that Version (per-Version
+     * — a sibling Version's assignment does not count, matching how those
+     * two roles are gated everywhere else). Lets these managers preview
+     * their own Version ahead of going Active while every other teacher
+     * stays gated until then.
      *
      * @return array{open: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null, obligationDecision: string|null}>, eligible: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null}>, active: Collection<int, array{version: Version, candidateCount: int, nextDate: VersionDate|null, obligationDecision: string|null}>}
      */
@@ -71,6 +75,7 @@ class Index extends Component
     ): array {
         $teacher = $this->teacher();
         $eventManagerEventIds = $roleAssignment->eventManagerEventIds(Auth::user());
+        $sandboxPreviewVersionIds = $roleAssignment->registrationManagerSandboxPreviewVersionIds(Auth::user());
 
         $openVersionIds = $eligibility->openForTeacherVersionIds();
 
@@ -97,11 +102,14 @@ class Index extends Component
         // limitation when a closure re-types through push()/sort()/values().
         $versions = Version::with(['event', 'dates', 'obligation'])
             ->whereIn('id', $allVersionIds)
-            ->where(function ($query) use ($eventManagerEventIds): void {
+            ->where(function ($query) use ($eventManagerEventIds, $sandboxPreviewVersionIds): void {
                 $query->where('status', 'active')
-                    ->orWhere(function ($query) use ($eventManagerEventIds): void {
+                    ->orWhere(function ($query) use ($eventManagerEventIds, $sandboxPreviewVersionIds): void {
                         $query->where('status', 'sandbox')
-                            ->whereIn('event_id', $eventManagerEventIds);
+                            ->where(function ($query) use ($eventManagerEventIds, $sandboxPreviewVersionIds): void {
+                                $query->whereIn('event_id', $eventManagerEventIds)
+                                    ->orWhereIn('id', $sandboxPreviewVersionIds);
+                            });
                     });
             })
             ->get()

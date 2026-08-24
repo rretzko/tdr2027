@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Livewire\Auth;
 
+use App\Enums\LoginMethod;
+use App\Models\LoginEvent;
 use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Support\Facades\Auth;
@@ -15,7 +17,7 @@ use Livewire\Component;
 
 class Login extends Component
 {
-    public string $cell_phone = '';
+    public string $identifier = '';
 
     public string $password = '';
 
@@ -24,29 +26,44 @@ class Login extends Component
     public function login(): void
     {
         $this->validate([
-            'cell_phone' => ['required', 'string'],
+            'identifier' => ['required', 'string'],
             'password' => ['required', 'string'],
         ]);
 
         $this->ensureIsNotRateLimited();
 
-        $user = User::where('cell_phone', preg_replace('/\D/', '', $this->cell_phone))->first();
+        $user = $this->findUser();
 
-        if (! $user || ! Hash::check($this->password, $user->password)) {
+        if (! $user || ! $user->password || ! Hash::check($this->password, $user->password)) {
             RateLimiter::hit($this->throttleKey(), 60);
 
             throw ValidationException::withMessages([
-                'cell_phone' => trans('auth.failed'),
+                'identifier' => trans('auth.failed'),
             ]);
         }
 
         RateLimiter::clear($this->throttleKey());
 
         Auth::login($user, $this->remember);
+        LoginEvent::record($user, $this->identifierMethod());
 
         session()->regenerate();
 
         $this->redirectIntended(route('dashboard'), navigate: true);
+    }
+
+    protected function findUser(): ?User
+    {
+        if (str_contains($this->identifier, '@')) {
+            return User::whereRaw('LOWER(email) = ?', [Str::lower(trim($this->identifier))])->first();
+        }
+
+        return User::where('cell_phone', preg_replace('/\D/', '', $this->identifier))->first();
+    }
+
+    protected function identifierMethod(): LoginMethod
+    {
+        return str_contains($this->identifier, '@') ? LoginMethod::Email : LoginMethod::CellPhone;
     }
 
     protected function ensureIsNotRateLimited(): void
@@ -60,7 +77,7 @@ class Login extends Component
         $seconds = RateLimiter::availableIn($this->throttleKey());
 
         throw ValidationException::withMessages([
-            'cell_phone' => trans('auth.throttle', [
+            'identifier' => trans('auth.throttle', [
                 'seconds' => $seconds,
                 'minutes' => ceil($seconds / 60),
             ]),
@@ -69,6 +86,6 @@ class Login extends Component
 
     protected function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->cell_phone).'|'.request()->ip());
+        return Str::transliterate(Str::lower($this->identifier).'|'.request()->ip());
     }
 }

@@ -372,6 +372,22 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Version ids where $user holds "Registration Manager" or "Web
+     * Registration Manager" directly on that Version — unlike
+     * eventManagerEventIds() above, these two roles are never treated as
+     * event-wide elsewhere in this class (canManageAuditionEnvironment(),
+     * canManageWebRegistration()), so a sibling Version's assignment does
+     * not carry over; only the specific sandbox Version they're assigned to
+     * is unlocked for preview (Registrations\Index).
+     *
+     * @return list<int>
+     */
+    public function registrationManagerSandboxPreviewVersionIds(User $user): array
+    {
+        return $this->matchingVersionIds($user, ['Registration Manager', 'Web Registration Manager'])->values()->all();
+    }
+
+    /**
      * Whether $user may open the Adjudication page for this specific
      * Version: the Version must be active, $user must hold a RoomJudge
      * assignment on *this* Version (not merely a sibling one — unlike

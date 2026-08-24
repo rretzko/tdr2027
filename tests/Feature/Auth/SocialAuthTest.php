@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Enums\LoginMethod;
 use App\Livewire\Auth\SocialPhoneCheck;
+use App\Models\LoginEvent;
 use App\Models\SocialAccount;
 use App\Models\Teacher;
 use App\Models\User;
@@ -98,6 +100,7 @@ test('phone check creates new teacher when phone is not registered', function ()
     expect(SocialAccount::where('provider', 'google')->where('provider_user_id', 'google-uid-123')->exists())->toBeTrue();
     expect(Auth::id())->toBe($user->id);
     expect(session()->has('social_oauth_payload'))->toBeFalse();
+    expect(LoginEvent::where('user_id', $user->id)->value('method'))->toBe(LoginMethod::Google);
 });
 
 // ── SocialPhoneCheck: existing phone links social account ─────────────────────
@@ -128,6 +131,7 @@ test('phone check links social account to existing user and goes to dashboard', 
     // Only one user with this cell phone (no duplicate account created).
     expect(User::where('cell_phone', '5551234567')->count())->toBe(1);
     expect(session()->has('social_oauth_payload'))->toBeFalse();
+    expect(LoginEvent::where('user_id', $user->id)->value('method'))->toBe(LoginMethod::Google);
 });
 
 // ── Returning users ───────────────────────────────────────────────────────────
@@ -150,6 +154,7 @@ test('existing user by provider_user_id is logged in and token updated', functio
     expect(Auth::id())->toBe($user->id);
     expect(SocialAccount::where('provider_user_id', 'google-uid-456')->first()->provider_token)
         ->toBe('new-token');
+    expect(LoginEvent::where('user_id', $user->id)->value('method'))->toBe(LoginMethod::Google);
 });
 
 test('existing user found by email gets social account linked', function () {
@@ -164,6 +169,7 @@ test('existing user found by email gets social account linked', function () {
 
     expect(SocialAccount::where('user_id', $user->id)->where('provider', 'google')->exists())->toBeTrue();
     expect(Auth::id())->toBe($user->id);
+    expect(LoginEvent::where('user_id', $user->id)->value('method'))->toBe(LoginMethod::Google);
 });
 
 // ── Error handling ────────────────────────────────────────────────────────────

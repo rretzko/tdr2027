@@ -113,6 +113,14 @@ class User extends Authenticatable implements MustVerifyEmailContract
     }
 
     /**
+     * @return HasMany<LoginEvent, $this>
+     */
+    public function loginEvents(): HasMany
+    {
+        return $this->hasMany(LoginEvent::class);
+    }
+
+    /**
      * A self-uploaded photo takes priority over a social-login provider's
      * avatar — it's the more deliberate, current choice of the two. Signed,
      * not a public URL — the private-by-default S3 bucket convention this

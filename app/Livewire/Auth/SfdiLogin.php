@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Livewire\Auth;
 
+use App\Enums\LoginMethod;
+use App\Models\LoginEvent;
 use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Support\Facades\Auth;
@@ -53,6 +55,7 @@ class SfdiLogin extends Component
         RateLimiter::clear($this->throttleKey());
 
         Auth::login($user, $this->remember);
+        LoginEvent::record($user, LoginMethod::Email);
 
         session()->regenerate();
 

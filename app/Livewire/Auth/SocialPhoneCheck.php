@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Livewire\Auth;
 
+use App\Enums\LoginMethod;
+use App\Models\LoginEvent;
 use App\Models\SocialAccount;
 use App\Models\Teacher;
 use App\Models\User;
@@ -52,11 +54,13 @@ class SocialPhoneCheck extends Component
                 );
 
                 Auth::login($existingUser, remember: true);
+                LoginEvent::record($existingUser, LoginMethod::from($payload['provider']));
                 session()->regenerate();
             } else {
                 $user = $this->registerSocialTeacher($phone, $payload);
 
                 Auth::login($user, remember: true);
+                LoginEvent::record($user, LoginMethod::from($payload['provider']));
                 session()->regenerate();
             }
         });

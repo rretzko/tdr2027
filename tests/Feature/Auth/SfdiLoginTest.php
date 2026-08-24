@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Enums\LoginMethod;
 use App\Livewire\Auth\SfdiLogin;
+use App\Models\LoginEvent;
 use App\Models\Student;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -35,6 +37,7 @@ test('a student can log in with email and password', function () {
         ->assertRedirect(route('dashboard'));
 
     expect(auth()->id())->toBe($user->id);
+    expect(LoginEvent::where('user_id', $user->id)->value('method'))->toBe(LoginMethod::Email);
 });
 
 test('an incorrect password is rejected', function () {

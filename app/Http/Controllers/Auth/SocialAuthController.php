@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Auth;
 
+use App\Enums\LoginMethod;
 use App\Http\Controllers\Controller;
+use App\Models\LoginEvent;
 use App\Models\SocialAccount;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -62,6 +64,7 @@ class SocialAuthController extends Controller
         if ($socialAccount !== null) {
             $this->updateTokens($socialAccount, $socialUser);
             Auth::login($socialAccount->user, remember: true);
+            LoginEvent::record($socialAccount->user, LoginMethod::from($provider));
             session()->regenerate();
 
             return redirect()->intended(route('dashboard'));
@@ -73,6 +76,7 @@ class SocialAuthController extends Controller
             if ($user !== null) {
                 $this->createSocialAccount($user, $provider, $socialUser);
                 Auth::login($user, remember: true);
+                LoginEvent::record($user, LoginMethod::from($provider));
                 session()->regenerate();
 
                 return redirect()->intended(route('dashboard'));

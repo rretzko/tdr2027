@@ -340,6 +340,61 @@ test('the Event Manager for a Sandbox-status Version can still see it', function
         ->assertSee('Open for Registration');
 });
 
+test('the Registration Manager for a Sandbox-status Version can still see it', function () {
+    $organization = Organization::factory()->create();
+    $event = Event::factory()->create(['organization_id' => $organization->id]);
+    $version = Version::factory()->create(['event_id' => $event->id]); // default status: sandbox
+    openTeacherWindow($version);
+
+    $founder = makeFounder();
+    $manager = makeIndexTeacher();
+    attachIndexTeacherSchool($manager);
+
+    app(VersionRoleAssignmentService::class)->assignRole($founder, $version, $manager->user, 'Registration Manager');
+
+    Livewire::actingAs($manager->user)
+        ->test(Index::class)
+        ->assertSee($version->name)
+        ->assertSee('Open for Registration');
+});
+
+test('the Web Registration Manager for a Sandbox-status Version can still see it', function () {
+    $organization = Organization::factory()->create();
+    $event = Event::factory()->create(['organization_id' => $organization->id]);
+    $version = Version::factory()->create(['event_id' => $event->id]); // default status: sandbox
+    openTeacherWindow($version);
+
+    $founder = makeFounder();
+    $manager = makeIndexTeacher();
+    attachIndexTeacherSchool($manager);
+
+    app(VersionRoleAssignmentService::class)->assignRole($founder, $version, $manager->user, 'Web Registration Manager');
+
+    Livewire::actingAs($manager->user)
+        ->test(Index::class)
+        ->assertSee($version->name)
+        ->assertSee('Open for Registration');
+});
+
+test('a Registration Manager on a sibling Version does not see this Sandbox-status Version (per-Version, not event-wide)', function () {
+    $organization = Organization::factory()->create();
+    $event = Event::factory()->create(['organization_id' => $organization->id]);
+    $versionA = Version::factory()->create(['event_id' => $event->id]); // default status: sandbox
+    $versionB = Version::factory()->create(['event_id' => $event->id]); // default status: sandbox
+    openTeacherWindow($versionA);
+
+    $founder = makeFounder();
+    $manager = makeIndexTeacher();
+    attachIndexTeacherSchool($manager);
+
+    // Grants Registration Manager on versionB only — versionA must stay hidden.
+    app(VersionRoleAssignmentService::class)->assignRole($founder, $versionB, $manager->user, 'Registration Manager');
+
+    Livewire::actingAs($manager->user)
+        ->test(Index::class)
+        ->assertDontSee($versionA->name);
+});
+
 test('the empty-state callout shows when nothing is open or active', function () {
     $teacher = makeIndexTeacher();
     attachIndexTeacherSchool($teacher);
