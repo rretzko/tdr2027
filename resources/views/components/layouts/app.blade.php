@@ -196,6 +196,12 @@
                         <flux:sidebar.item icon="document-text" :href="route('guides.show', 'event-manager-guide')" target="_blank">
                             Event Manager Guide
                         </flux:sidebar.item>
+                        <flux:modal.trigger name="student-folder-slides">
+                            <flux:sidebar.item icon="photo">
+                                Student Folder Slides
+                            </flux:sidebar.item>
+                        </flux:modal.trigger>
+                        <livewire:guides.student-folder-slides lazy />
                     @endif
                 @endunless
             </flux:sidebar.group>

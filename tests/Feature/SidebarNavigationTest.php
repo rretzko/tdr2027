@@ -192,3 +192,37 @@ test('a non-founder does not see the Founder menu', function () {
         ->assertOk()
         ->assertDontSeeText('Impersonate User');
 });
+
+test('a user holding an active-or-sandbox version-scoped role sees Student Folder Slides in User Guides', function () {
+    $user = User::factory()->create();
+    Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
+    $organization = Organization::factory()->create();
+    $event = Event::factory()->create(['organization_id' => $organization->id]);
+    $version = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    actingAs($user)->get(route('dashboard'))
+        ->assertOk()
+        ->assertSeeText('Student Folder Slides');
+});
+
+test('a teacher with no version-scoped role does not see Student Folder Slides', function () {
+    $user = User::factory()->create();
+    Teacher::factory()->create(['user_id' => $user->id, 'onboarding_completed_at' => now()]);
+
+    actingAs($user)->get(route('dashboard'))
+        ->assertOk()
+        ->assertDontSeeText('Student Folder Slides');
+});
+
+test('a student does not see Student Folder Slides', function () {
+    $user = User::factory()->create();
+    $user->markEmailAsVerified();
+    $student = Student::factory()->create(['user_id' => $user->id]);
+    $school = School::factory()->create();
+    $student->schools()->attach($school->id, ['is_active' => true, 'class_of' => 2030]);
+
+    actingAs($user)->get(route('dashboard'))
+        ->assertOk()
+        ->assertDontSeeText('Student Folder Slides');
+});
