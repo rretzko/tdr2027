@@ -161,7 +161,7 @@ final class EstimateFormData
      * max_registrants so an upper-voice-capped candidate never displaces a
      * lower-voice one still under both caps.
      *
-     * @param Collection<int, Candidate> $candidates
+     * @param  Collection<int, Candidate>  $candidates
      * @return Collection<int, Candidate>
      */
     private static function capUpperVoiceRegistrants(Collection $candidates, int $cap): Collection
