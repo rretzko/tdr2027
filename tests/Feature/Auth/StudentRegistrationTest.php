@@ -24,6 +24,7 @@ test('new students can register with an email and phone', function () {
     Notification::fake();
 
     Livewire::test(StudentRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
         ->set('first_name', 'Alex')
         ->set('last_name', 'Lee')
         ->set('email', 'alex@example.com')
@@ -55,6 +56,7 @@ test('students registering with a school email are exempt from verification', fu
     Notification::fake();
 
     Livewire::test(StudentRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
         ->set('first_name', 'Alex')
         ->set('last_name', 'Lee')
         ->set('email', 'alex@classroom.k12.nj.us')
@@ -79,6 +81,7 @@ test('students registering with a school email are exempt from verification', fu
 
 test('students can register without an email', function () {
     Livewire::test(StudentRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
         ->set('first_name', 'Alex')
         ->set('last_name', 'Lee')
         ->set('cell_phone', '5551234567')
@@ -96,6 +99,7 @@ test('students can register without an email', function () {
 
 test('students can register without a phone', function () {
     Livewire::test(StudentRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
         ->set('first_name', 'Alex')
         ->set('last_name', 'Lee')
         ->set('email', 'alex@example.com')
@@ -111,6 +115,7 @@ test('students can register without a phone', function () {
 
 test('first name, last name, and password are required', function () {
     Livewire::test(StudentRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
         ->call('register')
         ->assertHasErrors(['first_name', 'last_name', 'password']);
 });

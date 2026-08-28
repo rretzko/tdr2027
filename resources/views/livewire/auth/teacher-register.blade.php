@@ -34,7 +34,12 @@
 
     <flux:separator text="or register manually" />
 
-    <form wire:submit="register" class="flex flex-col gap-6">
+    <form wire:submit="register" class="relative flex flex-col gap-6">
+        <div class="absolute left-[-9999px] top-auto h-px w-px overflow-hidden" aria-hidden="true">
+            <label for="company">Company</label>
+            <input wire:model="company" id="company" name="company" type="text" tabindex="-1" autocomplete="off" />
+        </div>
+
         <div class="grid grid-cols-1 gap-4">
             <flux:select wire:model="honorific" label="Honorific (optional)" placeholder="Select...">
                 <flux:select.option value="Mr.">Mr.</flux:select.option>

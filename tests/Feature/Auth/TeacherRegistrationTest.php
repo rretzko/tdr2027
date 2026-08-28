@@ -21,6 +21,7 @@ test('teacher registration screen can be rendered', function () {
 
 test('new teachers can register', function () {
     Livewire::test(TeacherRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
         ->set('first_name', 'Jane')
         ->set('last_name', 'Smith')
         ->set('pronoun_id', '2')
@@ -44,6 +45,7 @@ test('new teachers can register', function () {
 
 test('cell phone is required', function () {
     Livewire::test(TeacherRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
         ->set('first_name', 'Jane')
         ->set('last_name', 'Smith')
         ->set('pronoun_id', '2')
@@ -58,6 +60,7 @@ test('cell phone must be unique', function () {
     User::factory()->create(['cell_phone' => '5551234567']);
 
     Livewire::test(TeacherRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
         ->set('first_name', 'Jane')
         ->set('last_name', 'Smith')
         ->set('pronoun_id', '2')
@@ -71,6 +74,7 @@ test('cell phone must be unique', function () {
 
 test('first name, last name, and email are required', function () {
     Livewire::test(TeacherRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
         ->set('cell_phone', '5551234567')
         ->set('pronoun_id', '2')
         ->set('password', 'Tdr-Zx9Quokka!')
@@ -83,6 +87,7 @@ test('email must be unique', function () {
     User::factory()->create(['email' => 'duplicate@example.com']);
 
     Livewire::test(TeacherRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
         ->set('first_name', 'Jane')
         ->set('last_name', 'Smith')
         ->set('pronoun_id', '2')
@@ -98,6 +103,7 @@ test('teachers receive a verification email and must verify before reaching the 
     Notification::fake();
 
     Livewire::test(TeacherRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
         ->set('first_name', 'Jane')
         ->set('last_name', 'Smith')
         ->set('pronoun_id', '2')

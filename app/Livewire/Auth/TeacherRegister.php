@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\Auth;
 
 use App\Actions\Fortify\PasswordValidationRules;
+use App\Livewire\Auth\Concerns\GuardsAgainstBotRegistration;
 use App\Models\Pronoun;
 use App\Models\Teacher;
 use Illuminate\Support\Facades\Auth;
@@ -17,6 +18,7 @@ use Livewire\Component;
 #[Layout('components.layouts.auth')]
 class TeacherRegister extends Component
 {
+    use GuardsAgainstBotRegistration;
     use PasswordValidationRules;
 
     public string $honorific = '';
@@ -55,6 +57,12 @@ class TeacherRegister extends Component
 
     public function register(): void
     {
+        if ($this->isSuspectedBot()) {
+            return;
+        }
+
+        $this->ensureRegistrationIsNotRateLimited();
+
         $this->validate([
             'cell_phone' => ['required', 'string', 'min:10', 'max:20', Rule::unique('users', 'cell_phone')],
         ]);

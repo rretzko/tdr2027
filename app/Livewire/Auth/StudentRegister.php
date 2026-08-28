@@ -6,6 +6,7 @@ namespace App\Livewire\Auth;
 
 use App\Actions\Fortify\PasswordValidationRules;
 use App\Enums\PhoneType;
+use App\Livewire\Auth\Concerns\GuardsAgainstBotRegistration;
 use App\Models\Phone;
 use App\Models\Pronoun;
 use App\Models\Student;
@@ -20,6 +21,7 @@ use Livewire\Component;
 #[Layout('components.layouts.auth-sfdi')]
 class StudentRegister extends Component
 {
+    use GuardsAgainstBotRegistration;
     use PasswordValidationRules;
 
     public string $honorific = '';
@@ -58,6 +60,12 @@ class StudentRegister extends Component
 
     public function register(): void
     {
+        if ($this->isSuspectedBot()) {
+            return;
+        }
+
+        $this->ensureRegistrationIsNotRateLimited();
+
         $generatedEmail = $this->email === '';
 
         $email = $generatedEmail ? Str::uuid().'@studentfolder.info' : $this->email;
