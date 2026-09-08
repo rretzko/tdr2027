@@ -61,6 +61,7 @@ Gate: `auth`, `verified`, `founder` — a Founder account has no Teacher profile
 | GET | `/founder/trackable-pages` | Trackable pages | |
 | GET | `/founder/merge-students` | Merge students | |
 | GET | `/founder/teacher-verification` | Teacher verification | |
+| GET | `/founder/remove-bot-registrations` | Remove bot-registrations | Finds pre-honeypot registrations with no verification, login, page visit, or school link |
 | GET | `/founder/issues` | Issues | |
 | POST | `/founder/stop-impersonating` | Stop impersonating | Gate: `auth` only — the active user during impersonation is the teacher, not the Founder; the controller checks the session itself |
 

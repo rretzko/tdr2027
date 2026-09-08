@@ -78,6 +78,14 @@ class Teacher extends Model
     }
 
     /**
+     * @return HasMany<Candidate, $this>
+     */
+    public function candidates(): HasMany
+    {
+        return $this->hasMany(Candidate::class);
+    }
+
+    /**
      * @return HasMany<Membership, $this>
      */
     public function memberships(): HasMany
