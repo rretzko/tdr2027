@@ -91,6 +91,21 @@
             @endif
             <flux:error name="teacherSubjects" />
 
+            @if ($duplicateMatches->isNotEmpty())
+                <div class="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+                    <flux:text size="sm" class="font-medium">
+                        Someone named {{ $duplicateMatches->first()['student']->user->name }} is already enrolled at this school. If that's you, sign out and sign back in with your original account instead of joining again here.
+                    </flux:text>
+
+                    @foreach ($duplicateMatches as $match)
+                        <div class="flex items-center justify-between gap-3 rounded-md border border-zinc-200 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-800">
+                            <flux:text class="font-medium">{{ $match['student']->user->name }}</flux:text>
+                            <flux:button size="sm" variant="ghost" wire:click="dismissDuplicateMatch({{ $match['student']->id }})">That's a different person</flux:button>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
             <div class="flex justify-end">
                 <flux:button variant="primary" wire:click="join">Join School</flux:button>
             </div>

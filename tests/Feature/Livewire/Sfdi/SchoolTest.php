@@ -148,6 +148,75 @@ test('joining a new school deactivates the student\'s previous school', function
     expect(SchoolStudent::where('student_id', $student->id)->where('school_id', $newSchool->id)->value('is_active'))->toBeTruthy();
 });
 
+test('joining is blocked when another active student with the same name is already at the school', function () {
+    $school = App\Models\School::factory()->create();
+    SchoolGrade::factory()->create(['school_id' => $school->id, 'grade' => 9]);
+    $teacher = makeVerifiedTeacherAt($school);
+
+    $existingUser = User::factory()->create(['first_name' => 'Benson', 'last_name' => 'Li']);
+    $existingStudent = Student::factory()->create(['user_id' => $existingUser->id]);
+    SchoolStudent::create(['student_id' => $existingStudent->id, 'school_id' => $school->id, 'is_active' => true, 'class_of' => 2029]);
+
+    $newUser = User::factory()->create(['first_name' => 'Benson', 'last_name' => 'Li']);
+    Student::factory()->create(['user_id' => $newUser->id]);
+
+    Livewire::actingAs($newUser)
+        ->test(School::class)
+        ->call('selectSchool', $school->id)
+        ->set('grade', 9)
+        ->set("teacherSubjects.{$teacher->id}", ['chorus'])
+        ->call('join')
+        ->assertViewHas('duplicateMatches', fn ($matches) => $matches->pluck('student.id')->contains($existingStudent->id));
+
+    expect(SchoolStudent::where('student_id', $newUser->student->id)->where('school_id', $school->id)->exists())->toBeFalse();
+});
+
+test('dismissing a duplicate match allows the join to proceed', function () {
+    $school = App\Models\School::factory()->create();
+    SchoolGrade::factory()->create(['school_id' => $school->id, 'grade' => 9]);
+    $teacher = makeVerifiedTeacherAt($school);
+
+    $existingUser = User::factory()->create(['first_name' => 'Benson', 'last_name' => 'Li']);
+    $existingStudent = Student::factory()->create(['user_id' => $existingUser->id]);
+    SchoolStudent::create(['student_id' => $existingStudent->id, 'school_id' => $school->id, 'is_active' => true, 'class_of' => 2029]);
+
+    $newUser = User::factory()->create(['first_name' => 'Benson', 'last_name' => 'Li']);
+    Student::factory()->create(['user_id' => $newUser->id]);
+
+    Livewire::actingAs($newUser)
+        ->test(School::class)
+        ->call('selectSchool', $school->id)
+        ->set('grade', 9)
+        ->set("teacherSubjects.{$teacher->id}", ['chorus'])
+        ->call('dismissDuplicateMatch', $existingStudent->id)
+        ->call('join')
+        ->assertRedirect(route('dashboard'));
+
+    expect(SchoolStudent::where('student_id', $newUser->student->id)->where('school_id', $school->id)->where('is_active', true)->exists())->toBeTrue();
+});
+
+test('a name match at a different school does not block joining', function () {
+    $otherSchool = App\Models\School::factory()->create();
+    $existingUser = User::factory()->create(['first_name' => 'Benson', 'last_name' => 'Li']);
+    $existingStudent = Student::factory()->create(['user_id' => $existingUser->id]);
+    SchoolStudent::create(['student_id' => $existingStudent->id, 'school_id' => $otherSchool->id, 'is_active' => true, 'class_of' => 2029]);
+
+    $school = App\Models\School::factory()->create();
+    SchoolGrade::factory()->create(['school_id' => $school->id, 'grade' => 9]);
+    $teacher = makeVerifiedTeacherAt($school);
+
+    $newUser = User::factory()->create(['first_name' => 'Benson', 'last_name' => 'Li']);
+    Student::factory()->create(['user_id' => $newUser->id]);
+
+    Livewire::actingAs($newUser)
+        ->test(School::class)
+        ->call('selectSchool', $school->id)
+        ->set('grade', 9)
+        ->set("teacherSubjects.{$teacher->id}", ['chorus'])
+        ->call('join')
+        ->assertRedirect(route('dashboard'));
+});
+
 test('the Take a tour button does not auto-start once the tour has already been taken', function () {
     $studentUser = makeSfdiStudent();
     $studentUser->update(['dismissed_sfdi_school_orientation_at' => now()]);

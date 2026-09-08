@@ -14,6 +14,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Support\ClassOfCalculator;
 use App\Support\SchoolMatcher;
+use App\Support\StudentMatcher;
 use Flux\Flux;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -48,6 +49,9 @@ class School extends Component
     /** @var array<int, list<string>> teacher_id => selected Subject values */
     public array $teacherSubjects = [];
 
+    /** @var list<int> Student ids the current user has confirmed are a different person. */
+    public array $dismissedDuplicateMatchIds = [];
+
     public function mount(): void
     {
         abort_if($this->student() === null, 403);
@@ -70,6 +74,45 @@ class School extends Component
         $this->selected_school_id = null;
         $this->grade = '';
         $this->teacherSubjects = [];
+    }
+
+    /**
+     * Other students already active at the selected school whose name closely
+     * matches this student's own — the same-name/same-school pattern behind
+     * the Sept 2026 incident where a student self-registered twice under two
+     * different emails and joined the same teacher's roster both times.
+     * Scoped to the selected school (rather than StudentMatcher's usual
+     * global candidate pool) since a same-school match is the actionable
+     * signal here; unlike the teacher-facing Add Student flow, a name match
+     * alone at the exact school being joined is treated as blocking, not
+     * merely advisory.
+     *
+     * @return Collection<int, array{student: Student, tier: string}>
+     */
+    public function duplicateMatches(): Collection
+    {
+        if ($this->selected_school_id === null) {
+            return collect();
+        }
+
+        $self = $this->student();
+        $user = Auth::user();
+
+        return StudentMatcher::suggestions($user->first_name, $user->last_name, null, null, null)
+            ->reject(fn (array $match) => $self !== null && $match['student']->id === $self->id)
+            ->filter(fn (array $match) => SchoolStudent::where('student_id', $match['student']->id)
+                ->where('school_id', $this->selected_school_id)
+                ->where('is_active', true)
+                ->exists())
+            ->reject(fn (array $match) => in_array($match['student']->id, $this->dismissedDuplicateMatchIds, true))
+            ->values();
+    }
+
+    public function dismissDuplicateMatch(int $studentId): void
+    {
+        if (! in_array($studentId, $this->dismissedDuplicateMatchIds, true)) {
+            $this->dismissedDuplicateMatchIds[] = $studentId;
+        }
     }
 
     public function join(): void
@@ -95,6 +138,10 @@ class School extends Component
         $eligibleTeacherIds = $this->availableTeachers($school)->pluck('id');
 
         abort_unless($selectedTeacherIds->diff($eligibleTeacherIds)->isEmpty(), 403);
+
+        if ($this->duplicateMatches()->isNotEmpty()) {
+            return;
+        }
 
         $student = $this->student();
 
@@ -147,6 +194,7 @@ class School extends Component
             'currentSchool' => $currentSchool,
             'selectedSchool' => $selectedSchool,
             'gradeOptions' => self::GRADES,
+            'duplicateMatches' => $this->duplicateMatches(),
             'availableTeachers' => $selectedSchool !== null ? $this->availableTeachers($selectedSchool) : collect(),
             'subjectOptions' => Subject::cases(),
             'schoolSuggestions' => $this->selected_school_id === null
