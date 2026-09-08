@@ -163,6 +163,9 @@
                     <flux:sidebar.item icon="user-circle" :href="route('founder.impersonate')" :current="request()->routeIs('founder.impersonate')">
                         Impersonate User
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="calendar-days" :href="route('founder.event-deadlines')" :current="request()->routeIs('founder.event-deadlines')">
+                        Event Deadlines
+                    </flux:sidebar.item>
                     <flux:sidebar.item icon="arrow-path" :href="route('founder.merge-students')" :current="request()->routeIs('founder.merge-students')">
                         Merge Students
                     </flux:sidebar.item>

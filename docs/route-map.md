@@ -57,6 +57,7 @@ Gate: `auth`, `verified`, `founder` — a Founder account has no Teacher profile
 | Method | Path | Destination | Notes |
 |---|---|---|---|
 | GET | `/founder/impersonate` | Impersonate | |
+| GET | `/founder/event-deadlines` | Event deadlines | Cross-event dashboard of `version_dates`, active/sandbox versions only |
 | GET | `/founder/trackable-pages` | Trackable pages | |
 | GET | `/founder/merge-students` | Merge students | |
 | GET | `/founder/teacher-verification` | Teacher verification | |

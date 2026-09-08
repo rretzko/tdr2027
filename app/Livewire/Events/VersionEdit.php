@@ -44,6 +44,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -59,6 +60,7 @@ class VersionEdit extends Component
 
     public Version $version;
 
+    #[Url(as: 'tab')]
     public string $activeTab = 'general';
 
     // General tab
