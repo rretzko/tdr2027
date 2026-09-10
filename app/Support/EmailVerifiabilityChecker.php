@@ -18,6 +18,7 @@ final class EmailVerifiabilityChecker
         '*.k12.*',
         '*.school.*',
         '*.*sd*.*',
+        '*sd.*',
     ];
 
     /**

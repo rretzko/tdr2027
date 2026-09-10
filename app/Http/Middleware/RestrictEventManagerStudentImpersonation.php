@@ -19,10 +19,24 @@ use Symfony\Component\HttpFoundation\Response;
  * different real student's data by editing the URL. Every other route
  * (teacher/Event/Registrations/settings pages) is blocked outright. Other
  * impersonation scopes (none, or 'web_registration_manager') are untouched.
+ *
+ * The verification.* routes are allowed so that a student whose email
+ * genuinely isn't verified sends the previewing Event Manager to the same
+ * "verify your email" page the real student would hit (Laravel's `verified`
+ * middleware redirects there on its own) — without this, that legitimate
+ * redirect was itself blocked by this middleware, producing a dead-end 403
+ * with no visible way back (2026-09-10 incident: the destination page never
+ * rendered, so the "Return to Web Registration" banner never appeared
+ * either — the session was only recoverable by clearing cookies). `logout`
+ * is allowed for the same reason: always leave at least one guaranteed way
+ * out that doesn't depend on this list being exhaustive.
  */
 class RestrictEventManagerStudentImpersonation
 {
-    private const ALLOWED_ROUTES = ['dashboard', 'feedback.index', 'guides.show', 'founder.stop-impersonating'];
+    private const ALLOWED_ROUTES = [
+        'dashboard', 'feedback.index', 'guides.show', 'founder.stop-impersonating',
+        'verification.notice', 'verification.verify', 'verification.send', 'logout',
+    ];
 
     public function handle(Request $request, Closure $next): Response
     {

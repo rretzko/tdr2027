@@ -47,6 +47,30 @@ test('an Event-Manager-student-preview session can reach the shared sfdi routes'
         ->assertOk();
 });
 
+test('an Event-Manager-student-preview session lands on the real email-verification prompt instead of a dead-end 403, when the student has not verified their email', function () {
+    $manager = User::factory()->create();
+    $version = makeEventManagerPreviewVersion();
+
+    $studentUser = User::factory()->unverified()->create();
+    $student = Student::factory()->create(['user_id' => $studentUser->id]);
+    $school = School::factory()->create();
+    $student->schools()->attach($school->id, ['is_active' => true, 'class_of' => $school->senior_year + 1]);
+    actingAs($studentUser);
+    $candidate = Candidate::factory()->create(['student_id' => $student->id, 'version_id' => $version->id, 'school_id' => $school->id]);
+
+    // The route Laravel's own `verified` middleware would redirect to.
+    actingAs($studentUser)
+        ->withSession(eventManagerPreviewSession($manager->id, $version->id, $candidate->id))
+        ->get(route('sfdi.events.candidate', $candidate))
+        ->assertRedirect(route('verification.notice'));
+
+    // And that redirect target itself must render, not 403.
+    actingAs($studentUser)
+        ->withSession(eventManagerPreviewSession($manager->id, $version->id, $candidate->id))
+        ->get(route('verification.notice'))
+        ->assertOk();
+});
+
 test('an Event-Manager-student-preview session cannot reach the teacher/Founder/settings surface', function () {
     $manager = User::factory()->create();
     $version = makeEventManagerPreviewVersion();
