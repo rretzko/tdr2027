@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\RestrictEventManagerStudentImpersonation;
 use App\Models\Candidate;
 use App\Models\Event;
 use App\Models\Organization;
@@ -10,6 +11,8 @@ use App\Models\Student;
 use App\Models\User;
 use App\Models\Version;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Route as RoutingRoute;
 
 use function Pest\Laravel\actingAs;
 
@@ -45,6 +48,38 @@ test('an Event-Manager-student-preview session can reach the shared sfdi routes'
         ->withSession(eventManagerPreviewSession($manager->id, $version->id, $candidate->id))
         ->get(route('sfdi.student-details'))
         ->assertOk();
+});
+
+test('an Event-Manager-student-preview session can still reach Livewire\'s own update endpoint (every wire:click/save/modal goes through it, regardless of page)', function () {
+    // Exercised as a direct unit call against the middleware, not via a real
+    // HTTP request to a registered route: this whole test suite shares one
+    // PHP process, so registering a fake global route named
+    // 'default-livewire.update' (or anything ending in '.livewire.update')
+    // would collide with Livewire's own route (vendor/livewire/livewire's
+    // HandleRequests::findUpdateRoute() prefers non-default matches by that
+    // exact suffix) and silently corrupt every other Livewire-driven test
+    // for the rest of the run — confirmed the hard way: it broke an
+    // unrelated bot-guard test until this was rewritten to build a
+    // standalone, never-registered Route object instead.
+    $manager = User::factory()->create();
+    $version = makeEventManagerPreviewVersion();
+
+    $studentUser = User::factory()->create();
+    $student = Student::factory()->create(['user_id' => $studentUser->id]);
+    actingAs($studentUser);
+    $candidate = Candidate::factory()->create(['student_id' => $student->id, 'version_id' => $version->id]);
+
+    session(eventManagerPreviewSession($manager->id, $version->id, $candidate->id));
+
+    foreach (['default-livewire.update', 'tenant.livewire.update'] as $routeName) {
+        $route = (new RoutingRoute(['POST'], '/never-registered', fn () => null))->name($routeName);
+        $request = Request::create('/never-registered', 'POST');
+        $request->setRouteResolver(fn () => $route);
+
+        $response = (new RestrictEventManagerStudentImpersonation)->handle($request, fn () => response('ok'));
+
+        expect($response->getContent())->toBe('ok');
+    }
 });
 
 test('an Event-Manager-student-preview session lands on the real email-verification prompt instead of a dead-end 403, when the student has not verified their email', function () {

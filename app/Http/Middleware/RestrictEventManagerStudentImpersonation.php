@@ -30,6 +30,22 @@ use Symfony\Component\HttpFoundation\Response;
  * either — the session was only recoverable by clearing cookies). `logout`
  * is allowed for the same reason: always leave at least one guaranteed way
  * out that doesn't depend on this list being exhaustive.
+ *
+ * Livewire's own update endpoint (named `livewire.update`, or
+ * `default-livewire.update` before a custom name is applied — see
+ * vendor/livewire/livewire's HandleRequests::findUpdateRoute(), which
+ * matches by suffix for the same reason) carries EVERY component
+ * interaction — every wire:click, form save, modal open — regardless of
+ * which page initiated it, so it can't be scoped by route name the way a
+ * page load can. It's allowed unconditionally here: the candidate lock
+ * still holds because Livewire's own signed component snapshot ties a
+ * hydrated component to the exact candidate it was rendered for (it can't
+ * be swapped via this endpoint), and the write-action guards
+ * (Show::isEventManagerPreviewSession(), School::join()) check the session
+ * scope directly inside the component method, independent of the route
+ * that carried the request. Without this, no button/save/modal on an
+ * otherwise-allowed page actually works (2026-09-10: surfaced via "Skip
+ * Tour" 403ing, but it affected every interaction on the page).
  */
 class RestrictEventManagerStudentImpersonation
 {
@@ -50,7 +66,9 @@ class RestrictEventManagerStudentImpersonation
             return $next($request);
         }
 
-        $allowed = str_starts_with($routeName, 'sfdi.') || in_array($routeName, self::ALLOWED_ROUTES, true);
+        $allowed = str_starts_with($routeName, 'sfdi.')
+            || in_array($routeName, self::ALLOWED_ROUTES, true)
+            || str_ends_with($routeName, 'livewire.update');
 
         abort_unless($allowed, 403);
 
