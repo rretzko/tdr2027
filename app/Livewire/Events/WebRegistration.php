@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Events;
 
+use App\Models\Candidate;
 use App\Models\School;
 use App\Models\Teacher;
 use App\Models\User;
@@ -33,6 +34,9 @@ class WebRegistration extends Component
 
     // Impersonate Teacher
     public string $impersonateSearch = '';
+
+    // Preview Student
+    public string $previewStudentSearch = '';
 
     // Transfer Students
     public ?int $fromSchoolId = null;
@@ -225,6 +229,44 @@ class WebRegistration extends Component
         $this->redirect(route('registrations.version', $this->version), navigate: true);
     }
 
+    /**
+     * @return Collection<int, Candidate>
+     */
+    public function candidatesForStudentPreview(): Collection
+    {
+        $search = trim($this->previewStudentSearch);
+
+        if ($search === '') {
+            return new Collection;
+        }
+
+        return Candidate::query()
+            ->where('version_id', $this->version->id)
+            ->with(['student.user', 'school'])
+            ->get()
+            ->filter(fn (Candidate $candidate): bool => str_contains(mb_strtolower($candidate->student->user->name), mb_strtolower($search)))
+            ->values();
+    }
+
+    public function previewAsStudent(int $candidateId, VersionRoleAssignmentService $roles): void
+    {
+        abort_unless($roles->canManageWebRegistration(Auth::user(), $this->version), 403);
+
+        $candidate = Candidate::where('version_id', $this->version->id)->find($candidateId);
+        abort_if($candidate === null, 404);
+
+        $target = $candidate->student->user;
+
+        session()->put('impersonator_id', Auth::id());
+        session()->put('impersonation_scope', 'event_manager_student_preview');
+        session()->put('impersonation_version_id', $this->version->id);
+        session()->put('impersonation_candidate_id', $candidate->id);
+
+        Auth::login($target);
+
+        $this->redirect(route('sfdi.events.candidate', $candidate), navigate: true);
+    }
+
     public function transferStudents(TeacherStudentTransferService $service, VersionRoleAssignmentService $roles, VersionInvitationEligibilityService $eligibility): void
     {
         abort_unless($roles->canManageWebRegistration(Auth::user(), $this->version), 403);
@@ -276,6 +318,7 @@ class WebRegistration extends Component
 
         return view('livewire.events.web-registration', [
             'teachersForImpersonation' => $this->teachersForImpersonation($eligibility),
+            'candidatesForStudentPreview' => $this->candidatesForStudentPreview(),
             'schoolOptions' => $schoolOptions,
             'fromTeacherOptions' => $fromTeacherOptions,
             'toTeacherOptions' => $toTeacherOptions,

@@ -6,6 +6,7 @@ use App\Http\Middleware\EnsureTeacherHasActiveSchool;
 use App\Http\Middleware\EnsureTeacherOnboardingComplete;
 use App\Http\Middleware\EnsureUserIsFounder;
 use App\Http\Middleware\ResetVersionRoleContext;
+use App\Http\Middleware\RestrictEventManagerStudentImpersonation;
 use App\Http\Middleware\RestrictWebRegistrationImpersonation;
 use App\Http\Middleware\TrackVisitedPage;
 use Illuminate\Foundation\Application;
@@ -30,7 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->prepend(ResetVersionRoleContext::class);
 
-        $middleware->web(append: [TrackVisitedPage::class, RestrictWebRegistrationImpersonation::class]);
+        $middleware->web(append: [TrackVisitedPage::class, RestrictWebRegistrationImpersonation::class, RestrictEventManagerStudentImpersonation::class]);
 
         // Vendor e-payment webhooks (epayment-integration.md §2.4) — a
         // vendor server has no CSRF token to send; each gateway verifies its

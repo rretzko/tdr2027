@@ -67,6 +67,27 @@ test('a student can search for and join an existing school with a teacher and su
         ->exists())->toBeTrue();
 });
 
+test('join aborts with 403 during an Event-Manager-student-preview session', function () {
+    $studentUser = makeSfdiStudent();
+    $school = App\Models\School::factory()->create(['name' => 'Central High School']);
+    SchoolGrade::factory()->create(['school_id' => $school->id, 'grade' => 9]);
+    $teacher = makeVerifiedTeacherAt($school);
+
+    session(['impersonation_scope' => 'event_manager_student_preview']);
+
+    Livewire::actingAs($studentUser)
+        ->test(School::class)
+        ->set('school_search', 'Central')
+        ->call('selectSchool', $school->id)
+        ->set('grade', 9)
+        ->set("teacherSubjects.{$teacher->id}", ['chorus'])
+        ->call('join')
+        ->assertForbidden();
+
+    $student = $studentUser->student;
+    expect(SchoolStudent::where('student_id', $student->id)->where('school_id', $school->id)->exists())->toBeFalse();
+});
+
 test('grade options are always 4-12 regardless of whether the school has SchoolGrade rows configured', function () {
     $studentUser = makeSfdiStudent();
     $school = App\Models\School::factory()->create();

@@ -271,6 +271,8 @@ class Show extends Component
      */
     public function payNow(PaymentGatewayFactory $factory, string $feeType): void
     {
+        abort_if($this->isEventManagerPreviewSession(), 403);
+
         $feeType = FeeType::from($feeType);
 
         abort_unless($this->version->epaymentStudentEnabled(), 403);
@@ -460,6 +462,7 @@ class Show extends Component
             'checklistDefs' => $checklistDefs,
             'writeActionsBlocked' => $this->writeActionsBlocked(),
             'obligationsBlocked' => $this->isObligationsBlocked(),
+            'previewSession' => $this->isEventManagerPreviewSession(),
             'candidateRequirementsMet' => $this->candidateRequirementsMet($checklistDefs),
             'uploadSlots' => $this->version->getRawOriginal('audition_type') === AuditionType::Remote->value
                 ? $this->version->uploadFiles
@@ -479,7 +482,21 @@ class Show extends Component
      */
     private function writeActionsBlocked(): bool
     {
-        return $this->isLocked() || $this->isObligationsBlocked();
+        return $this->isLocked() || $this->isObligationsBlocked() || $this->isEventManagerPreviewSession();
+    }
+
+    /**
+     * True when this session is an Event Manager previewing a real
+     * student's pages (WebRegistration::previewAsStudent()) rather than the
+     * student's own session — blocks every consequential write action
+     * (signing, withdrawing, uploading, paying) while still allowing the
+     * completeness fields (home address, emergency contact, etc.) to be
+     * filled in via the separate Student Details/Emergency Contacts pages,
+     * which aren't gated by this method.
+     */
+    private function isEventManagerPreviewSession(): bool
+    {
+        return session('impersonation_scope') === 'event_manager_student_preview';
     }
 
     private function isLocked(): bool

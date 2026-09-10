@@ -21,10 +21,11 @@ class StopImpersonatingController extends Controller
 
         $scope = $request->session()->pull('impersonation_scope');
         $versionId = $request->session()->pull('impersonation_version_id');
+        $request->session()->pull('impersonation_candidate_id');
 
         Auth::login(User::findOrFail($originalUserId));
 
-        if ($scope === 'web_registration_manager' && $versionId !== null) {
+        if (in_array($scope, ['web_registration_manager', 'event_manager_student_preview'], true) && $versionId !== null) {
             return redirect()->route('events.versions.web-registration', $versionId);
         }
 

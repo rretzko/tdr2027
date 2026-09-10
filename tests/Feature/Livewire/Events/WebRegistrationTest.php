@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\TeacherRole;
 use App\Livewire\Events\WebRegistration;
+use App\Models\Candidate;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Pivots\StudentTeacher;
@@ -15,6 +16,8 @@ use App\Models\Version;
 use App\Models\VersionInvitation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
+
+use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
@@ -464,6 +467,64 @@ test('impersonate rejects a teacher not invited to this Version', function () {
         ->test(WebRegistration::class, ['version' => $version])
         ->call('impersonate', $teacherUser->id)
         ->assertStatus(403);
+});
+
+test('candidatesForStudentPreview only returns candidates on this Version matching the search term', function () {
+    $version = makeWebRegVersion();
+    $manager = User::factory()->create();
+    grantVersionRole($manager, $version, 'Web Registration Manager');
+    actingAs($manager);
+
+    $matchingUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Lannister']);
+    $matchingStudent = Student::factory()->create(['user_id' => $matchingUser->id]);
+    Candidate::factory()->create(['student_id' => $matchingStudent->id, 'version_id' => $version->id]);
+
+    $otherVersionUser = User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Stark']);
+    $otherVersionStudent = Student::factory()->create(['user_id' => $otherVersionUser->id]);
+    Candidate::factory()->create(['student_id' => $otherVersionStudent->id]);
+
+    Livewire::actingAs($manager)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->set('previewStudentSearch', 'Lannister')
+        ->assertSee('Jamie Lannister')
+        ->set('previewStudentSearch', 'Stark')
+        ->assertDontSee('Jamie Stark');
+});
+
+test('previewAsStudent logs the manager in as the candidate\'s student, scoped to this Version and candidate', function () {
+    $version = makeWebRegVersion();
+    $manager = User::factory()->create();
+    grantVersionRole($manager, $version, 'Web Registration Manager');
+    actingAs($manager);
+
+    $studentUser = User::factory()->create();
+    $student = Student::factory()->create(['user_id' => $studentUser->id]);
+    $candidate = Candidate::factory()->create(['student_id' => $student->id, 'version_id' => $version->id]);
+
+    Livewire::actingAs($manager)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->call('previewAsStudent', $candidate->id)
+        ->assertRedirect(route('sfdi.events.candidate', $candidate));
+
+    expect(auth()->id())->toBe($studentUser->id);
+    expect(session('impersonator_id'))->toBe($manager->id);
+    expect(session('impersonation_scope'))->toBe('event_manager_student_preview');
+    expect(session('impersonation_version_id'))->toBe($version->id);
+    expect(session('impersonation_candidate_id'))->toBe($candidate->id);
+});
+
+test('previewAsStudent rejects a candidate not on this Version', function () {
+    $version = makeWebRegVersion();
+    $manager = User::factory()->create();
+    grantVersionRole($manager, $version, 'Web Registration Manager');
+    actingAs($manager);
+
+    $candidate = Candidate::factory()->create();
+
+    Livewire::actingAs($manager)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->call('previewAsStudent', $candidate->id)
+        ->assertStatus(404);
 });
 
 test('transferStudents moves an invited-teacher-owned student to another invited teacher', function () {

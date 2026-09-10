@@ -106,8 +106,12 @@
                 </div>
             @endif
 
+            @if ($previewSession)
+                <flux:text size="sm" class="text-zinc-500 mb-2">Joining a school is disabled while previewing as this student.</flux:text>
+            @endif
+
             <div class="flex justify-end">
-                <flux:button variant="primary" wire:click="join">Join School</flux:button>
+                <flux:button variant="primary" wire:click="join" :disabled="$previewSession">Join School</flux:button>
             </div>
         </flux:card>
     @endif

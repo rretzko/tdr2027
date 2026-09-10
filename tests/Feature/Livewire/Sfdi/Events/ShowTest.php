@@ -927,6 +927,48 @@ test('application signature toggles are blocked once the candidate is locked or 
     expect($candidate->fresh()->application_candidate_signed_at)->toBeNull();
 });
 
+test('during an Event-Manager-student-preview session, the Candidate Requirements gate still applies exactly as it would for the student, but signing and withdrawing stay blocked even once met', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create([
+        'status' => EventStatus::Active,
+        'application_type' => ApplicationType::EApplication->value,
+        'emergency_contact_name' => false,
+        'birthday' => true,
+    ]);
+    publishSfdiApplication($version);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id]);
+
+    session(['impersonation_scope' => 'event_manager_student_preview']);
+
+    // Same blocker a real student would hit: birthday still null.
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertSee('Applications are enabled after Candidate Requirements have been met.')
+        ->call('viewApplication')
+        ->assertForbidden();
+
+    // Filling it in through this same (impersonated) session clears the gate...
+    $user->student->update(['birthday' => '2010-01-01']);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate->fresh()])
+        ->assertDontSee('Applications are enabled after Candidate Requirements have been met.')
+        ->call('viewApplication')->assertOk();
+
+    // ...but signing and withdrawing stay off-limits regardless.
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate->fresh()])
+        ->call('toggleApplicationCandidateSigned')->assertForbidden();
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate->fresh()])
+        ->call('withdraw')->assertForbidden();
+
+    expect($candidate->fresh()->application_candidate_signed_at)->toBeNull();
+    expect($candidate->fresh()->status)->not->toBe(CandidateStatus::Withdrew);
+});
+
 // --- Payment (studentfolder-module.md §5.7, step 8) ---
 
 /**
@@ -1104,6 +1146,28 @@ test('payNow aborts with 403 for housing/participation before the Version is clo
         ->test(Show::class, ['candidate' => $candidate])
         ->call('payNow', 'participation')
         ->assertStatus(403);
+});
+
+test('payNow aborts with 403 during an Event-Manager-student-preview session, even when otherwise fully eligible', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+    ]);
+
+    session(['impersonation_scope' => 'event_manager_student_preview']);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->call('payNow', 'registration')
+        ->assertForbidden();
+
+    expect(PaymentTransaction::count())->toBe(0);
 });
 
 test('a successful payNow creates a payment_transactions row with payer_student_id set, not payer_teacher_id, and redirects to checkout', function () {

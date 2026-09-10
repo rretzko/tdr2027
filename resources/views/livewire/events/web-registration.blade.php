@@ -16,6 +16,7 @@
     <flux:tab.group>
         <flux:tabs wire:model="activeTab">
             <flux:tab name="impersonate">Impersonate Teacher</flux:tab>
+            <flux:tab name="preview-student">Preview Student</flux:tab>
             <flux:tab name="transfer">Transfer Students</flux:tab>
         </flux:tabs>
 
@@ -44,6 +45,40 @@
                                     </div>
                                     <flux:button size="sm" wire:click="impersonate({{ $teacher->user->id }})" wire:confirm="Impersonate {{ $teacher->user->name }} for {{ $version->name }}?">
                                         Impersonate
+                                    </flux:button>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+                @endif
+            </div>
+        </flux:tab.panel>
+
+        {{-- Preview Student --}}
+        <flux:tab.panel name="preview-student">
+            <div class="mt-6 max-w-xl space-y-4">
+                <flux:callout variant="info" icon="information-circle">
+                    <flux:callout.text>You'll see this student's actual StudentFolder.info pages exactly as they do, including any incomplete-profile blockers — you can fill those in on their behalf if needed. Signing, uploading, paying, and changing schools stay disabled. Use "Return to..." at the top of the page to end the session.</flux:callout.text>
+                </flux:callout>
+
+                <flux:field>
+                    <flux:label>Student</flux:label>
+                    <flux:input wire:model.live.debounce.300ms="previewStudentSearch" placeholder="Search this Version's students by name..." icon="magnifying-glass" />
+                </flux:field>
+
+                @if (trim($previewStudentSearch) !== '')
+                    @if ($candidatesForStudentPreview->isEmpty())
+                        <flux:text size="sm" class="text-zinc-400">No student matches that name.</flux:text>
+                    @else
+                        <div class="flex flex-col gap-2">
+                            @foreach ($candidatesForStudentPreview as $candidate)
+                                <div class="flex items-center justify-between gap-4 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                                    <div>
+                                        <flux:text class="font-medium">{{ $candidate->student->user->name }}</flux:text>
+                                        <flux:text size="sm" class="text-zinc-500">{{ $candidate->school->name }}</flux:text>
+                                    </div>
+                                    <flux:button size="sm" wire:click="previewAsStudent({{ $candidate->id }})" wire:confirm="Preview as {{ $candidate->student->user->name }} for {{ $version->name }}?">
+                                        Preview
                                     </flux:button>
                                 </div>
                             @endforeach

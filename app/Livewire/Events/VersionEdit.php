@@ -353,9 +353,13 @@ class VersionEdit extends Component
         $this->payment_vendor = $eventConfig === null ? '' : ((string) $eventConfig->getRawOriginal('vendor'));
         $this->payment_vendor_account_id = $eventConfig === null ? '' : ($eventConfig->vendor_account_id ?? '');
         $this->payment_secret = '';
-        $this->payment_has_secret = $eventConfig !== null && $eventConfig->secret !== null;
+        // getRawOriginal(), not the encrypted-cast property — checking
+        // presence never needs to decrypt, and decrypting here would throw
+        // if the ciphertext was written under a different APP_KEY (e.g. a
+        // row seeded from a prod DB copy onto a local environment).
+        $this->payment_has_secret = $eventConfig !== null && $eventConfig->getRawOriginal('secret') !== null;
         $this->payment_webhook_signature_key = '';
-        $this->payment_has_webhook_signature_key = $eventConfig !== null && $eventConfig->webhook_signature_key !== null;
+        $this->payment_has_webhook_signature_key = $eventConfig !== null && $eventConfig->getRawOriginal('webhook_signature_key') !== null;
     }
 
     public function updatedPaymentEnvironment(string $value): void

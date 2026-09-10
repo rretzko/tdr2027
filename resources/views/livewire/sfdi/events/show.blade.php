@@ -278,15 +278,19 @@
                              housing can both be due at once once the Version
                              closes — independent @if blocks, not @elseif. --}}
                         @if ($registrationFeeDue)
-                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('registration')">Pay Registration Fee</flux:button>
+                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('registration')" :disabled="$previewSession">Pay Registration Fee</flux:button>
                         @endif
                         @if ($participationFeeDue)
-                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('participation')">Pay Participation Fee</flux:button>
+                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('participation')" :disabled="$previewSession">Pay Participation Fee</flux:button>
                         @endif
                         @if ($housingFeeDue)
-                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('housing')">Pay Housing Fee</flux:button>
+                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('housing')" :disabled="$previewSession">Pay Housing Fee</flux:button>
                         @endif
                     </div>
+                @endif
+
+                @if ($previewSession && ($registrationFeeDue || $participationFeeDue || $housingFeeDue))
+                    <flux:text size="sm" class="text-zinc-500 mt-1">Payment is disabled while previewing as this student.</flux:text>
                 @endif
             </div>
 

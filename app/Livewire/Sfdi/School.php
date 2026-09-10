@@ -117,6 +117,7 @@ class School extends Component
 
     public function join(): void
     {
+        abort_if($this->isEventManagerPreviewSession(), 403);
         abort_if($this->selected_school_id === null, 422);
 
         $school = SchoolModel::findOrFail($this->selected_school_id);
@@ -193,6 +194,7 @@ class School extends Component
         return view('livewire.sfdi.school', [
             'currentSchool' => $currentSchool,
             'selectedSchool' => $selectedSchool,
+            'previewSession' => $this->isEventManagerPreviewSession(),
             'gradeOptions' => self::GRADES,
             'duplicateMatches' => $this->duplicateMatches(),
             'availableTeachers' => $selectedSchool !== null ? $this->availableTeachers($selectedSchool) : collect(),
@@ -225,5 +227,15 @@ class School extends Component
     private function student(): ?Student
     {
         return Auth::user()->student;
+    }
+
+    /**
+     * True when an Event Manager is previewing this student's pages
+     * (WebRegistration::previewAsStudent()) rather than the student
+     * themselves — blocks reassigning the real student's school/teacher.
+     */
+    private function isEventManagerPreviewSession(): bool
+    {
+        return session('impersonation_scope') === 'event_manager_student_preview';
     }
 }
