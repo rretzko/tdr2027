@@ -160,6 +160,9 @@
                 <flux:separator />
 
                 <flux:sidebar.group heading="Founder" expandable>
+                    <flux:sidebar.item icon="user-plus" :href="route('founder.add-teacher')" :current="request()->routeIs('founder.add-teacher')">
+                        Add Teacher
+                    </flux:sidebar.item>
                     <flux:sidebar.item icon="user-circle" :href="route('founder.impersonate')" :current="request()->routeIs('founder.impersonate')">
                         Impersonate User
                     </flux:sidebar.item>

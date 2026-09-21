@@ -69,6 +69,7 @@ use App\Livewire\Events\VersionRooms;
 use App\Livewire\Events\VersionScoringRubric;
 use App\Livewire\Events\WebRegistration;
 use App\Livewire\Feedback\Index as FeedbackIndex;
+use App\Livewire\Founder\AddTeacher as FounderAddTeacher;
 use App\Livewire\Founder\EventDeadlines as FounderEventDeadlines;
 use App\Livewire\Founder\Impersonate as FounderImpersonate;
 use App\Livewire\Founder\Issues as FounderIssues;
@@ -190,6 +191,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 // Founder account has no Teacher profile, so that middleware would redirect it
 // to the onboarding wizard.
 Route::middleware(['auth', 'verified', 'founder'])->group(function () {
+    Route::get('/founder/add-teacher', FounderAddTeacher::class)->name('founder.add-teacher');
     Route::get('/founder/impersonate', FounderImpersonate::class)->name('founder.impersonate');
     Route::get('/founder/event-deadlines', FounderEventDeadlines::class)->name('founder.event-deadlines');
     Route::get('/founder/trackable-pages', FounderTrackablePages::class)->name('founder.trackable-pages');
