@@ -30,3 +30,4 @@ Homestead.yaml
 Thumbs.db
 /.env.staging
 /.vapor
+/docs/proposals/
