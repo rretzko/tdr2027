@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\CandidateStatus;
 use App\Models\Candidate;
 use App\Models\Ensemble;
+use App\Models\EnsembleGrade;
 use App\Models\Event;
 use App\Models\Pivots\SchoolStudent;
 use App\Models\Pivots\StudentTeacher;
@@ -338,6 +339,67 @@ test('auto-enrollment is skipped when the Version\'s Event has no ensemble voice
     $student = linkAutoEnrollStudent($teacher, $school);
 
     inviteAutoEnrollTeacher($teacher, $version);
+
+    expect(Candidate::where('version_id', $version->id)->where('student_id', $student->id)->exists())->toBeFalse();
+});
+
+/**
+ * Mirrors the NJ Elementary & Junior High All-State shape: an Elementary
+ * Ensemble grade-restricted to 4-6 and a Junior High Ensemble restricted to
+ * 7-9, each with its own exclusive VoicePart, on the same Event/Version.
+ */
+function attachGradeRestrictedVoicePart(Version $version, string $ensembleName, array $grades, string $voicePartName, int $sortOrder): VoicePart
+{
+    $voicePart = VoicePart::factory()->create(['name' => $voicePartName, 'sort_order' => $sortOrder]);
+    $ensemble = Ensemble::factory()->create(['event_id' => $version->event_id, 'name' => $ensembleName]);
+    $ensemble->voiceParts()->attach($voicePart->id);
+    foreach ($grades as $grade) {
+        EnsembleGrade::create(['ensemble_id' => $ensemble->id, 'grade' => $grade]);
+    }
+
+    return $voicePart;
+}
+
+function linkAutoEnrollStudentAtGrade(Teacher $teacher, School $school, int $grade): Student
+{
+    $student = Student::factory()->create();
+    $student->schools()->attach($school->id, ['is_active' => true, 'class_of' => $school->senior_year + (12 - $grade)]);
+    $student->teachers()->attach($teacher->id, [
+        'school_id' => $school->id,
+        'subject' => 'chorus',
+        'role' => 'primary',
+        'is_active' => true,
+    ]);
+
+    return $student;
+}
+
+test('auto-enrollment assigns the grade-appropriate voice part, not just the first sort-ordered one', function () {
+    [$teacher, $school] = makeAutoEnrollTeacherWithSchool();
+    $version = makeAutoEnrollVersion(active: true);
+    // Soprano (Jr High, sorts first) would win a plain "first available"
+    // fallback — Treble I (Elementary) must win instead for a 4th grader.
+    attachGradeRestrictedVoicePart($version, 'Junior High Choir', [7, 8, 9], 'Soprano', 1);
+    $trebleI = attachGradeRestrictedVoicePart($version, 'Elementary Choir', [4, 5, 6], 'Treble I', 2);
+    inviteAutoEnrollTeacher($teacher, $version);
+
+    actingAs($teacher->user);
+    $student = linkAutoEnrollStudentAtGrade($teacher, $school, 4);
+
+    $candidate = Candidate::where('version_id', $version->id)->where('student_id', $student->id)->first();
+
+    expect($candidate)->not->toBeNull();
+    expect($candidate->voice_part_id)->toBe($trebleI->id);
+});
+
+test('auto-enrollment is skipped when no Ensemble\'s grade config admits the student\'s grade', function () {
+    [$teacher, $school] = makeAutoEnrollTeacherWithSchool();
+    $version = makeAutoEnrollVersion(active: true);
+    attachGradeRestrictedVoicePart($version, 'Elementary Choir', [4, 5, 6], 'Treble I', 1);
+    inviteAutoEnrollTeacher($teacher, $version);
+
+    actingAs($teacher->user);
+    $student = linkAutoEnrollStudentAtGrade($teacher, $school, 9);
 
     expect(Candidate::where('version_id', $version->id)->where('student_id', $student->id)->exists())->toBeFalse();
 });

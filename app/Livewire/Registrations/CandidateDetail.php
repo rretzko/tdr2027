@@ -27,6 +27,7 @@ use App\Models\Version;
 use App\Models\VersionApplication;
 use App\Models\VersionInvitation;
 use App\Models\VersionUploadFile;
+use App\Services\AuditionCapService;
 use App\Services\CandidateService;
 use App\Services\CoTeacherAccessService;
 use App\Services\Payments\PaymentGatewayFactory;
@@ -177,7 +178,7 @@ class CandidateDetail extends Component
         $this->validate([
             'edit_first_name' => ['required', 'string', 'max:255', "regex:/^[\pL\s'-]+$/u"],
             'edit_last_name' => ['required', 'string', 'max:255', "regex:/^[\pL\s'-]+$/u"],
-            'edit_voice_part_id' => ['required', 'integer', Rule::in($this->version->availableVoiceParts()->pluck('id')->all())],
+            'edit_voice_part_id' => ['required', 'integer', Rule::in($this->version->availableVoicePartsForGrade($this->candidate->student->grade)->pluck('id')->all())],
             'edit_birthday' => [
                 'nullable', 'date',
                 'before_or_equal:'.now()->subYears(9)->format('Y-m-d'),
@@ -690,6 +691,15 @@ class CandidateDetail extends Component
 
         $checklistDefs = $this->checklistDefs($this->version);
 
+        // Checklist-complete but held below Registered by the school's
+        // audition-group cap (Version::audition_cap_per_school) — see
+        // AuditionCapService and CandidateService::recalculateStatus().
+        $checklistComplete = collect($checklistDefs)->every(fn (array $item): bool => ($item['check'])($this->candidate));
+        $overAuditionCap = $checklistComplete && ! app(AuditionCapService::class)->isWithinCap($this->candidate);
+        $auditionCapEnsembleNames = $overAuditionCap
+            ? app(AuditionCapService::class)->auditionGroupEnsembleNames($this->version, $this->candidate->voicePart)
+            : collect();
+
         $epaymentTeacherReady = $this->version->epaymentTeacherReady();
 
         // getRawOriginal(), not the magic-cast property — Larastan can't
@@ -748,8 +758,10 @@ class CandidateDetail extends Component
 
         return view('livewire.registrations.candidate-detail', [
             'checklistDefs' => $checklistDefs,
+            'overAuditionCap' => $overAuditionCap,
+            'auditionCapEnsembleNames' => $auditionCapEnsembleNames,
             'relationships' => EmergencyContactRelationship::cases(),
-            'voiceParts' => $this->version->availableVoiceParts(),
+            'voiceParts' => $this->version->availableVoicePartsForGrade($this->candidate->student->grade),
             'uploadSlots' => $this->version->getRawOriginal('audition_type') === AuditionType::Remote->value
                 ? $this->version->uploadFiles
                 : collect(),

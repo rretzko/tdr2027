@@ -239,7 +239,7 @@ class Show extends Component
             'versions' => $versions,
             'ensembles' => $ensembles,
             'allVoiceParts' => VoicePart::ordered()->get(),
-            'gradeOptions' => range(6, 12),
+            'gradeOptions' => range(4, 12),
             'canManageEvent' => $service->canManageEvent(Auth::user(), $this->event),
             // Rooms/Scoring Rubric are version-scoped (Registration/Co-Registration
             // Manager included, per-Version) — distinct from canManageEvent above.

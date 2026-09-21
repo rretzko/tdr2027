@@ -36,6 +36,17 @@
         </div>
     </div>
 
+    @if ($overAuditionCap)
+        <flux:callout variant="warning" icon="exclamation-triangle" class="mb-6">
+            <flux:callout.heading>Audition cap reached</flux:callout.heading>
+            <flux:callout.text>
+                This candidate's checklist is complete, but their school has reached this Version's audition cap
+                for {{ $auditionCapEnsembleNames->implode(' / ') }} and cannot be marked Registered. Contact the
+                event coordinators if this candidate should be admitted as an exception.
+            </flux:callout.text>
+        </flux:callout>
+    @endif
+
     {{-- Checklist summary --}}
     <flux:card class="mb-6">
         <flux:heading size="sm" class="mb-3">Registration Checklist</flux:heading>

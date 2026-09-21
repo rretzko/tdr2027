@@ -31,7 +31,7 @@ use Illuminate\Support\Collection;
     'application_type', 'audition_timeslot', 'audition_type',
     'birthday', 'emergency_contact_name', 'emergency_contact_cell', 'emergency_contact_email',
     'height', 'home_address', 'judge_count',
-    'max_registrants', 'max_upper_voice_registrants',
+    'max_registrants', 'max_upper_voice_registrants', 'audition_cap_per_school',
     'pitch_file_visibility',
     'score_order', 'cutoff_strategy', 'results_released_at', 'share_results', 'shirt_size', 'teacher_cell', 'upload_type',
 ])]
@@ -410,6 +410,43 @@ class Version extends Model
                     ->from('ensemble_voice_parts')
                     ->join('ensembles', 'ensembles.id', '=', 'ensemble_voice_parts.ensemble_id')
                     ->where('ensembles.event_id', $this->event_id);
+            })
+            ->ordered()
+            ->get();
+    }
+
+    /**
+     * availableVoiceParts() narrowed to Ensembles whose EnsembleGrade list
+     * either includes $grade or is empty (unrestricted — same "empty =
+     * unrestricted" convention as GradeSegmentedEnsemblesStrategy::
+     * gradeMatches()/EventGrade/counties()). A Voice Part belonging to more
+     * than one Ensemble (e.g. Soprano on both SATB and SSA) is included if
+     * ANY of those Ensembles admits $grade.
+     *
+     * $grade === null (Student::grade can't be computed — no active school
+     * yet) falls back to availableVoiceParts() unfiltered, rather than
+     * hiding every option from a candidate whose grade isn't resolvable.
+     *
+     * @return Collection<int, VoicePart>
+     */
+    public function availableVoicePartsForGrade(?int $grade): Collection
+    {
+        if ($grade === null) {
+            return $this->availableVoiceParts();
+        }
+
+        $ensembleIds = Ensemble::where('event_id', $this->event_id)
+            ->with('grades')
+            ->get()
+            ->filter(fn (Ensemble $ensemble): bool => $ensemble->grades->isEmpty()
+                || $ensemble->grades->pluck('grade')->map(fn ($g): int => (int) $g)->contains($grade))
+            ->pluck('id');
+
+        return VoicePart::query()
+            ->whereIn('id', function ($query) use ($ensembleIds): void {
+                $query->select('ensemble_voice_parts.voice_part_id')
+                    ->from('ensemble_voice_parts')
+                    ->whereIn('ensemble_voice_parts.ensemble_id', $ensembleIds);
             })
             ->ordered()
             ->get();

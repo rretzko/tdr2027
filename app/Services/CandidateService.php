@@ -144,6 +144,14 @@ class CandidateService
             default => CandidateStatus::Eligible->value,
         };
 
+        // A checklist-complete candidate whose school is over its
+        // audition-group cap for this Version stays at Pending rather than
+        // Registered — see AuditionCapService and CandidateDetail's cap
+        // banner, which explains the hold to the teacher.
+        if ($newStatus === CandidateStatus::Registered->value && ! app(AuditionCapService::class)->isWithinCap($candidate)) {
+            $newStatus = CandidateStatus::Pending->value;
+        }
+
         if ($newStatus !== $currentRaw) {
             $candidate->update(['status' => $newStatus]);
         }

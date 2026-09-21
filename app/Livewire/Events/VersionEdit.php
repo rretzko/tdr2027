@@ -71,7 +71,7 @@ class VersionEdit extends Component
     public string $senior_class_of = '';
 
     /**
-     * Grades (6-12) eligible for this Version, translated to graduating
+     * Grades (4-12) eligible for this Version, translated to graduating
      * class years (version_class_ofs) via senior_class_of on save — an
      * additional filter on top of the Event's own eligible grades, see
      * EligibilityService::eligibleStudents().
@@ -103,6 +103,8 @@ class VersionEdit extends Component
     public string $max_registrants = '';
 
     public string $max_upper_voice_registrants = '0';
+
+    public string $audition_cap_per_school = '';
 
     /** @var array<int, array{name: string, order_by: int}> keyed by version_upload_files.id */
     public array $upload_files = [];
@@ -253,6 +255,7 @@ class VersionEdit extends Component
         $this->share_results = (bool) $version->share_results;
         $this->max_registrants = $version->max_registrants !== null ? (string) $version->max_registrants : '';
         $this->max_upper_voice_registrants = $version->max_upper_voice_registrants !== null ? (string) $version->max_upper_voice_registrants : '';
+        $this->audition_cap_per_school = $version->audition_cap_per_school !== null ? (string) $version->audition_cap_per_school : '';
         $this->birthday = (bool) $version->birthday;
         $this->emergency_contact_name = (bool) $version->emergency_contact_name;
         $this->emergency_contact_cell = (bool) $version->emergency_contact_cell;
@@ -440,6 +443,7 @@ class VersionEdit extends Component
             'share_results' => ['boolean'],
             'max_registrants' => ['nullable', 'integer', 'min:0'],
             'max_upper_voice_registrants' => ['nullable', 'integer', 'min:0'],
+            'audition_cap_per_school' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $this->version->update([
@@ -458,6 +462,7 @@ class VersionEdit extends Component
             'share_results' => $validated['share_results'],
             'max_registrants' => ($validated['max_registrants'] ?? '') !== '' && (int) $validated['max_registrants'] !== 0 ? (int) $validated['max_registrants'] : null,
             'max_upper_voice_registrants' => ($validated['max_upper_voice_registrants'] ?? '') !== '' ? (int) $validated['max_upper_voice_registrants'] : null,
+            'audition_cap_per_school' => ($validated['audition_cap_per_school'] ?? '') !== '' ? (int) $validated['audition_cap_per_school'] : null,
         ]);
 
         $this->version->classOfs()->delete();
@@ -974,7 +979,7 @@ class VersionEdit extends Component
             'cutoffStrategies' => CutoffStrategy::cases(),
             'pitchVisibilities' => PitchFileVisibility::cases(),
             'dateTypes' => VersionDateType::cases(),
-            'gradeOptions' => range(6, 12),
+            'gradeOptions' => range(4, 12),
             'counties' => County::orderBy('name')->get(),
             'geostates' => Geostate::orderBy('name')->get(),
             'eventEnsembles' => $this->version->event->ensembles()->orderBy('name')->get()

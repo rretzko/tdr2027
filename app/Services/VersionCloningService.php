@@ -64,7 +64,7 @@ class VersionCloningService
                     'application_type', 'audition_timeslot', 'audition_type',
                     'birthday', 'emergency_contact_name', 'emergency_contact_cell', 'emergency_contact_email',
                     'height', 'home_address', 'judge_count',
-                    'max_registrants', 'max_upper_voice_registrants',
+                    'max_registrants', 'max_upper_voice_registrants', 'audition_cap_per_school',
                     'pitch_file_visibility',
                     'score_order', 'shirt_size', 'teacher_cell', 'upload_type',
                 ]),

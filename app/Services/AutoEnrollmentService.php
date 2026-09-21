@@ -121,15 +121,19 @@ class AutoEnrollmentService
 
     /**
      * The student's own voice_part_id if it's one of the Version's
-     * available (ensemble-linked) voice parts; otherwise the first
-     * available voice part, so the NOT NULL column is always satisfiable.
-     * Returns null only if the Event has no ensemble voice parts configured
-     * at all yet — nothing sensible to default to, so the enrollment is
-     * skipped rather than guessed.
+     * available (ensemble-linked) voice parts for the student's own grade
+     * (Version::availableVoicePartsForGrade() — an Ensemble configured with
+     * EnsembleGrade rows only offers its voice parts to matching grades);
+     * otherwise the first grade-available voice part, so the NOT NULL
+     * column is always satisfiable. Returns null if there's no grade-
+     * eligible voice part at all (either the Event has none configured
+     * yet, or every Ensemble's grade config excludes this student) —
+     * nothing sensible to default to, so the enrollment is skipped rather
+     * than guessed into a mismatched Ensemble.
      */
     private function resolveVoicePartId(Version $version, Student $student): ?int
     {
-        $available = $version->availableVoiceParts();
+        $available = $version->availableVoicePartsForGrade($student->grade);
 
         if ($available->isEmpty()) {
             return null;

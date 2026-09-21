@@ -524,7 +524,7 @@
             <flux:field>
                 <flux:label>Voice Part</flux:label>
                 <flux:select wire:model="edit_voice_part_id" placeholder="Select a voice part...">
-                    @foreach ($version->availableVoiceParts() as $voicePart)
+                    @foreach ($version->availableVoicePartsForGrade($candidate->student->grade) as $voicePart)
                         <flux:select.option value="{{ $voicePart->id }}">{{ $voicePart->name }}</flux:select.option>
                     @endforeach
                 </flux:select>

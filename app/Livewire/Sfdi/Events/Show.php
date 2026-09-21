@@ -195,7 +195,7 @@ class Show extends Component
         abort_if($this->writeActionsBlocked(), 403);
 
         $this->validate([
-            'edit_voice_part_id' => ['required', 'integer', Rule::in($this->version->availableVoiceParts()->pluck('id')->all())],
+            'edit_voice_part_id' => ['required', 'integer', Rule::in($this->version->availableVoicePartsForGrade($this->candidate->student->grade)->pluck('id')->all())],
         ]);
 
         $this->candidate->update(['voice_part_id' => (int) $this->edit_voice_part_id]);

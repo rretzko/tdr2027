@@ -214,6 +214,13 @@
                         <flux:input wire:model="max_upper_voice_registrants" type="number" min="0" placeholder="No limit" />
                         <flux:error name="max_upper_voice_registrants" />
                     </flux:field>
+
+                    <flux:field>
+                        <flux:label>Audition Cap Per School</flux:label>
+                        <flux:input wire:model="audition_cap_per_school" type="number" min="0" placeholder="No limit" />
+                        <flux:description>Max active candidates one school may have per audition group (Ensembles sharing a Voice Part count as one group). Leave blank for no limit.</flux:description>
+                        <flux:error name="audition_cap_per_school" />
+                    </flux:field>
                 </div>
 
                 @if ($errors->any())
@@ -729,19 +736,19 @@
                         </flux:field>
 
                         <flux:field>
-                            <flux:label>Account / Client ID</flux:label>
+                            <flux:label>Account/Client ID/Location ID</flux:label>
                             <flux:input wire:model="payment_vendor_account_id" placeholder="Square location id, or PayPal Client ID" />
                             <flux:error name="payment_vendor_account_id" />
                         </flux:field>
 
                         <flux:field>
-                            <flux:label>API Secret</flux:label>
+                            <flux:label>API Secret/Access Token</flux:label>
                             <flux:input wire:model="payment_secret" type="password" placeholder="{{ $payment_has_secret ? 'A secret is already saved — leave blank to keep it' : 'Square access token, or PayPal Client Secret' }}" />
                             <flux:error name="payment_secret" />
                         </flux:field>
 
                         <flux:field>
-                            <flux:label>Webhook Signing Key</flux:label>
+                            <flux:label>Webhook Signing Key/Signature Key</flux:label>
                             <flux:input wire:model="payment_webhook_signature_key" type="password" placeholder="{{ $payment_has_webhook_signature_key ? 'A webhook key is already saved — leave blank to keep it' : 'Square webhook signature key, or PayPal Webhook ID' }}" />
                             <flux:error name="payment_webhook_signature_key" />
                         </flux:field>
