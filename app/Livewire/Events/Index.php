@@ -4,13 +4,22 @@ declare(strict_types=1);
 
 namespace App\Livewire\Events;
 
+use App\Enums\ApplicationType;
+use App\Enums\AuditionType;
 use App\Enums\EventStatus;
 use App\Enums\Frequency;
+use App\Enums\PitchFileVisibility;
+use App\Enums\ScoreOrder;
+use App\Enums\UploadType;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Models\User;
+use App\Models\Version;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -34,6 +43,19 @@ class Index extends Component
 
     public string $edit_ensemble_count = '1';
 
+    // Event Managers picker — only meaningful when adding a new Event, since
+    // "Event Manager" is always stored scoped to a Version and a brand-new
+    // Event has none yet; save() creates a first Version for the picks to
+    // attach to (see save() below). Editing an existing Event shows its
+    // current managers read-only instead — see the "existingEventManagers"
+    // render() data and event-version-orientation.md's Version-scoping note.
+    public string $event_manager_search = '';
+
+    /**
+     * @var list<int>
+     */
+    public array $event_manager_ids = [];
+
     public function add(): void
     {
         abort_unless(Auth::user()->isFounder(), 403);
@@ -46,6 +68,8 @@ class Index extends Component
         $this->edit_frequency = Frequency::Annual->value;
         $this->edit_audition_count = '1';
         $this->edit_ensemble_count = '1';
+        $this->event_manager_search = '';
+        $this->event_manager_ids = [];
         $this->resetValidation();
     }
 
@@ -62,10 +86,56 @@ class Index extends Component
         $this->edit_frequency = $event->getRawOriginal('frequency');
         $this->edit_audition_count = (string) $event->audition_count;
         $this->edit_ensemble_count = (string) $event->ensemble_count;
+        $this->event_manager_search = '';
+        $this->event_manager_ids = [];
         $this->resetValidation();
     }
 
-    public function save(): void
+    public function addEventManager(int $userId): void
+    {
+        if ($userId === Auth::id() || in_array($userId, $this->event_manager_ids, true)) {
+            $this->event_manager_search = '';
+
+            return;
+        }
+
+        $exists = User::query()->whereHas('teacher')->whereKey($userId)->exists();
+
+        if (! $exists) {
+            return;
+        }
+
+        $this->event_manager_ids[] = $userId;
+        $this->event_manager_search = '';
+    }
+
+    public function removeEventManager(int $userId): void
+    {
+        $this->event_manager_ids = array_values(array_diff($this->event_manager_ids, [$userId]));
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    public function eventManagerSearchResults(): Collection
+    {
+        $term = trim($this->event_manager_search);
+
+        if ($term === '') {
+            return collect();
+        }
+
+        return User::query()
+            ->whereHas('teacher')
+            ->where('id', '!=', Auth::id())
+            ->whereNotIn('id', $this->event_manager_ids)
+            ->where('name', 'like', "%{$term}%")
+            ->orderBy('name')
+            ->limit(8)
+            ->get();
+    }
+
+    public function save(VersionRoleAssignmentService $service): void
     {
         abort_unless(Auth::user()->isFounder(), 403);
 
@@ -90,14 +160,47 @@ class Index extends Component
         ];
 
         if ($this->editingEventId === null) {
-            Event::create($data);
-            $label = $validated['edit_name'];
-            Flux::toast("{$label} has been created.");
+            $event = DB::transaction(function () use ($data, $service) {
+                $event = Event::create($data);
+
+                // A brand-new Event needs a Version for "Event Manager" to be
+                // scoped to (see the picker's docblock above) — mirrors the
+                // no-prior-version branch of Show::createVersion().
+                $version = Version::create([
+                    'event_id' => $event->id,
+                    'name' => $data['name'],
+                    'short_name' => $data['short_name'],
+                    'senior_class_of' => (int) date('Y') + 1,
+                    'status' => EventStatus::Sandbox->value,
+                    'application_type' => ApplicationType::Pdf->value,
+                    'audition_timeslot' => 0,
+                    'audition_type' => AuditionType::Remote->value,
+                    'birthday' => false,
+                    'emergency_contact_name' => true,
+                    'emergency_contact_cell' => true,
+                    'emergency_contact_email' => false,
+                    'height' => false,
+                    'home_address' => false,
+                    'judge_count' => 1,
+                    'pitch_file_visibility' => PitchFileVisibility::Both->value,
+                    'score_order' => ScoreOrder::Asc->value,
+                    'shirt_size' => false,
+                    'teacher_cell' => true,
+                    'upload_type' => UploadType::None->value,
+                ]);
+
+                foreach (User::query()->whereKey($this->event_manager_ids)->get() as $manager) {
+                    $service->assignRole(Auth::user(), $version, $manager, 'Event Manager');
+                }
+
+                return $event;
+            });
+
+            Flux::toast("{$event->name} has been created.");
         } else {
             $event = Event::findOrFail($this->editingEventId);
             $event->update($data);
-            $label = $validated['edit_name'];
-            Flux::toast("{$label} has been updated.");
+            Flux::toast("{$event->name} has been updated.");
         }
 
         // Flux's <flux:modal> Alpine component listens for a document-level
@@ -138,6 +241,10 @@ class Index extends Component
             fn (Event $event) => [$event->id => $service->holdsAnyVersionScopedRoleForEvent($user, $event)],
         );
 
+        $existingEventManagers = $this->editingEventId !== null
+            ? $service->eventManagersForEvent(Event::findOrFail($this->editingEventId))
+            : collect();
+
         return view('livewire.events.index', [
             'events' => $events,
             'adjudicatableVersions' => $adjudicatableVersions,
@@ -146,6 +253,9 @@ class Index extends Component
             'statuses' => EventStatus::cases(),
             'frequencies' => Frequency::cases(),
             'isFounder' => $user->isFounder(),
+            'selectedEventManagers' => User::query()->whereKey($this->event_manager_ids)->orderBy('name')->get(),
+            'eventManagerSearchResults' => $this->eventManagerSearchResults(),
+            'existingEventManagers' => $existingEventManagers,
         ]);
     }
 }

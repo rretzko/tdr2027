@@ -13,9 +13,11 @@ use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Models\User;
 use App\Models\Version;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
@@ -40,9 +42,63 @@ class CreateEvent extends Component
 
     public string $frequency = '';
 
+    // Event Managers section — the creator is always bootstrapped as Event
+    // Manager separately (see create() below); these are additional teachers
+    // picked up front rather than invited afterward via the Roles tab.
+    public string $event_manager_search = '';
+
+    /**
+     * @var list<int>
+     */
+    public array $event_manager_ids = [];
+
     public function mount(): void
     {
         $this->frequency = Frequency::Annual->value;
+    }
+
+    public function addEventManager(int $userId): void
+    {
+        if ($userId === Auth::id() || in_array($userId, $this->event_manager_ids, true)) {
+            $this->event_manager_search = '';
+
+            return;
+        }
+
+        $exists = User::query()->whereHas('teacher')->whereKey($userId)->exists();
+
+        if (! $exists) {
+            return;
+        }
+
+        $this->event_manager_ids[] = $userId;
+        $this->event_manager_search = '';
+    }
+
+    public function removeEventManager(int $userId): void
+    {
+        $this->event_manager_ids = array_values(array_diff($this->event_manager_ids, [$userId]));
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    public function eventManagerSearchResults(): Collection
+    {
+        $term = trim($this->event_manager_search);
+
+        if ($term === '') {
+            return collect();
+        }
+
+        return User::query()
+            ->whereHas('teacher')
+            ->where('id', '!=', Auth::id())
+            ->whereNotIn('id', $this->event_manager_ids)
+            ->where('name', 'like', "%{$term}%")
+            ->orderBy('name')
+            ->limit(8)
+            ->get();
     }
 
     public function create(VersionRoleAssignmentService $service): void
@@ -90,6 +146,10 @@ class CreateEvent extends Component
 
             $service->bootstrapEventManager(Auth::user(), $version);
 
+            foreach (User::query()->whereKey($this->event_manager_ids)->get() as $additionalManager) {
+                $service->assignRole(Auth::user(), $version, $additionalManager, 'Event Manager');
+            }
+
             return [$event, $version];
         });
 
@@ -103,6 +163,8 @@ class CreateEvent extends Component
         return view('livewire.events.create-event', [
             'organizations' => Organization::orderBy('name')->get(),
             'frequencies' => Frequency::cases(),
+            'selectedEventManagers' => User::query()->whereKey($this->event_manager_ids)->orderBy('name')->get(),
+            'eventManagerSearchResults' => $this->eventManagerSearchResults(),
         ]);
     }
 }

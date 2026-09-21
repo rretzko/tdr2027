@@ -47,6 +47,49 @@
             <flux:error name="frequency" />
         </flux:field>
 
+        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 space-y-4">
+            <div>
+                <flux:heading size="sm">Event Managers</flux:heading>
+                <flux:text size="sm" class="text-zinc-500">
+                    You'll automatically be the Event Manager. Add any other teachers who should help manage this
+                    event.
+                </flux:text>
+            </div>
+
+            @if ($selectedEventManagers->isNotEmpty())
+                <div class="flex flex-col gap-2">
+                    @foreach ($selectedEventManagers as $manager)
+                        <div class="flex items-center justify-between gap-4 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                            <div>
+                                <flux:text class="font-medium">{{ $manager->name }}</flux:text>
+                                <flux:text size="sm" class="text-zinc-500">{{ $manager->email }}</flux:text>
+                            </div>
+                            <flux:button size="sm" icon="x-mark" wire:click="removeEventManager({{ $manager->id }})" type="button" />
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            <flux:field>
+                <flux:label>Add a Teacher</flux:label>
+                <flux:input wire:model.live.debounce.300ms="event_manager_search" placeholder="Search by name..." />
+            </flux:field>
+
+            @if ($eventManagerSearchResults->isNotEmpty())
+                <div class="flex flex-col gap-2">
+                    @foreach ($eventManagerSearchResults as $user)
+                        <div class="flex items-center justify-between gap-4 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                            <div>
+                                <flux:text class="font-medium">{{ $user->name }}</flux:text>
+                                <flux:text size="sm" class="text-zinc-500">{{ $user->email }}</flux:text>
+                            </div>
+                            <flux:button size="sm" wire:click="addEventManager({{ $user->id }})" type="button">Add</flux:button>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+
         @if ($errors->any())
             <flux:callout variant="danger" icon="exclamation-triangle">
                 <flux:callout.text>Please correct the errors above.</flux:callout.text>
