@@ -239,10 +239,14 @@ class VersionDashboard extends Component
      */
     public function openAllocate(int $transactionId): void
     {
-        PaymentTransaction::where('id', $transactionId)
+        $transaction = PaymentTransaction::where('id', $transactionId)
             ->where('version_id', $this->version->id)
             ->where('payer_teacher_id', $this->teacher()->id)
             ->firstOrFail();
+
+        // The pending panel offers no Allocate button, so this only catches
+        // a stale page or a hand-crafted Livewire call.
+        abort_unless($transaction->isAllocatable(), 422, 'This payment has not been completed, so it cannot be allocated yet.');
 
         $this->allocatingTransactionId = $transactionId;
         $this->allocationAmounts = [];
@@ -538,14 +542,25 @@ class VersionDashboard extends Component
             ->where('teacher_id', $teacher->id)
             ->value('opted_in');
 
-        // "Your Unreconciled Payments" (§3) — this teacher's own
-        // transactions with a remaining unallocated balance. Eager-loading
-        // allocations avoids an N+1 in unallocatedAmount() across the list.
-        $unreconciledPayments = PaymentTransaction::where('version_id', $this->version->id)
+        // "Your Unreconciled Payments" (§3) — this teacher's own transactions
+        // with a remaining unallocated balance. Completed only: a pending
+        // payment is money that hasn't settled, and is split out into its own
+        // read-only "Pending Payments" panel instead (see
+        // PaymentTransaction::isAllocatable()). Failed/refunded rows appear in
+        // neither. Eager-loading allocations avoids an N+1 in
+        // unallocatedAmount() across both lists.
+        $teacherTransactions = PaymentTransaction::where('version_id', $this->version->id)
             ->where('payer_teacher_id', $teacher->id)
+            ->whereIn('status', [PaymentTransactionStatus::Completed->value, PaymentTransactionStatus::Pending->value])
             ->with('allocations')
-            ->get()
+            ->get();
+
+        $unreconciledPayments = $teacherTransactions
             ->filter(fn (PaymentTransaction $transaction): bool => $transaction->needsReconciliation())
+            ->values();
+
+        $pendingPayments = $teacherTransactions
+            ->filter(fn (PaymentTransaction $transaction): bool => $transaction->isAwaitingConfirmation())
             ->values();
 
         $paymentRegisterRows = self::paymentRegisterRows($this->version, $teacher);
@@ -556,7 +571,7 @@ class VersionDashboard extends Component
             'teacher', 'myCandidates', 'filteredCandidates', 'paidByCandidateId', 'voicePartCounts', 'voicePartTotal',
             'statusCounts', 'statusTotal', 'statusOptions', 'schoolOptions',
             'upcomingDates', 'voiceParts', 'checklistDefs',
-            'activeFeeTypes', 'feeEligibleStatuses', 'epaymentStudentEnabled', 'epaymentOptedIn', 'unreconciledPayments',
+            'activeFeeTypes', 'feeEligibleStatuses', 'epaymentStudentEnabled', 'epaymentOptedIn', 'unreconciledPayments', 'pendingPayments',
             'paymentRegisterRows', 'showOrientation', 'coTeacherPairings',
         ));
     }

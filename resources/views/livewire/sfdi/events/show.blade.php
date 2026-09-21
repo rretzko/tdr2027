@@ -314,6 +314,7 @@
                                     \App\Enums\PaymentTransactionStatus::Pending => 'amber',
                                     \App\Enums\PaymentTransactionStatus::Failed => 'red',
                                     \App\Enums\PaymentTransactionStatus::Refunded => 'zinc',
+                                    \App\Enums\PaymentTransactionStatus::Expired => 'zinc',
                                 };
                             @endphp
                             <flux:badge size="sm" :color="$statusColor">{{ $payment->status->label() }}</flux:badge>

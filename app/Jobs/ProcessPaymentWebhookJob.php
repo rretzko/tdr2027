@@ -82,7 +82,11 @@ class ProcessPaymentWebhookJob implements ShouldQueue
     private function statusRank(PaymentTransactionStatus $status): int
     {
         return match ($status) {
-            PaymentTransactionStatus::Pending => 0,
+            // Expired ranks with Pending, not as a final status — it's our
+            // own timeout guess, not a vendor confirmation, so a webhook
+            // that does eventually arrive (unlikely, but not impossible)
+            // still overrides it. See ExpireAbandonedPaymentTransactions.
+            PaymentTransactionStatus::Pending, PaymentTransactionStatus::Expired => 0,
             PaymentTransactionStatus::Failed, PaymentTransactionStatus::Completed => 1,
             PaymentTransactionStatus::Refunded => 2,
         };

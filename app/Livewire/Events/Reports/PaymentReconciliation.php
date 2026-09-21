@@ -72,6 +72,7 @@ class PaymentReconciliation extends Component
             ->firstOrFail();
 
         abort_unless($this->withinReportScope($transaction->school?->county_id), 403);
+        abort_unless($transaction->isAllocatable(), 422, 'This payment has not been completed, so it cannot be allocated yet.');
 
         $this->allocatingTransactionId = $transaction->id;
         $this->allocationAmounts = [];
@@ -249,9 +250,13 @@ class PaymentReconciliation extends Component
     }
 
     /**
-     * Every payment_transactions row still short of fully allocated,
-     * Version-wide, county-scoped via the transaction's own denormalized
-     * (triage-only) school_id — see the class docblock.
+     * Every completed payment_transactions row still short of fully
+     * allocated, Version-wide, county-scoped via the transaction's own
+     * denormalized (triage-only) school_id — see the class docblock.
+     * Completed only, matching VersionDashboard's teacher-scoped queue:
+     * pending/failed/refunded money can't be allocated to a candidate (see
+     * PaymentTransaction::isAllocatable()), and the school/Version balance
+     * rollups above already count Completed allocations only.
      *
      * @param  list<int>|null  $countyIds
      * @return Collection<int, PaymentTransaction>
@@ -259,6 +264,7 @@ class PaymentReconciliation extends Component
     public static function unreconciledTransactions(Version $version, ?array $countyIds): Collection
     {
         return PaymentTransaction::where('version_id', $version->id)
+            ->where('status', PaymentTransactionStatus::Completed->value)
             ->with(['allocations', 'school', 'payerTeacher.user'])
             ->get()
             ->filter(fn (PaymentTransaction $t): bool => $t->needsReconciliation())

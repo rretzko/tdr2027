@@ -256,6 +256,50 @@
                     </div>
                 @endif
 
+                {{-- Pending (unsettled) group payments — read-only. Shown so a
+                     teacher who just paid can see the payment is in flight and
+                     doesn't pay a second time, but deliberately without an
+                     Allocate button: unsettled money must not credit a
+                     candidate's balance (PaymentTransaction::isAllocatable()).
+                     Moves to the Unreconciled panel above once the vendor
+                     webhook marks it completed. --}}
+                @if ($pendingPayments->isNotEmpty())
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/40 p-4">
+                        <flux:heading size="xs" class="text-zinc-700 dark:text-zinc-300 mb-1">Pending Payments</flux:heading>
+                        <flux:text size="sm" class="text-zinc-600 dark:text-zinc-400 mb-3">
+                            These payments haven't been confirmed by the payment processor yet. You'll be able to
+                            allocate them to your candidates once they clear.
+                        </flux:text>
+
+                        <div class="space-y-3">
+                            @foreach ($pendingPayments as $payment)
+                                <flux:card size="sm">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <div>
+                                            <span class="font-medium">${{ number_format($payment->amountInDollars(), 2) }}</span>
+                                            <span class="text-zinc-500"> total</span>
+                                            @if ($payment->paid_at)
+                                                <span class="text-zinc-500"> — {{ $payment->paid_at->format('M j, Y') }}</span>
+                                            @endif
+                                            {{-- Names the vendor so the teacher knows where to go
+                                                 looking for the payment. A manual row can't be
+                                                 pending (it's recorded as completed), but vendor is
+                                                 nullable on the column, so fall back. --}}
+                                            <div class="text-sm text-zinc-500">
+                                                Awaiting {{ $payment->vendor?->label() ?? 'payment processor' }} confirmation
+                                            </div>
+                                            @if ($payment->reference_number)
+                                                <div class="text-sm text-zinc-500">Ref: {{ $payment->reference_number }}</div>
+                                            @endif
+                                        </div>
+                                        <flux:badge size="sm" color="zinc">Pending</flux:badge>
+                                    </div>
+                                </flux:card>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
                 @if ($activeFeeTypes->isNotEmpty())
                     <div class="flex items-center justify-between">
                         <div>

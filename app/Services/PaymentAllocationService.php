@@ -23,6 +23,16 @@ class PaymentAllocationService
      */
     public function allocateMany(PaymentTransaction $transaction, array $amountsByCandidateId, User $allocatedBy): void
     {
+        // Completed-only, enforced here rather than only in the two callers'
+        // queues — an unsettled (pending/failed/refunded) payment must never
+        // reach payment_allocations, however the request got here. See
+        // PaymentTransaction::isAllocatable().
+        abort_unless(
+            $transaction->isAllocatable(),
+            422,
+            'This payment has not been completed, so it cannot be allocated yet.',
+        );
+
         $totalRequested = array_sum($amountsByCandidateId);
 
         abort_if(

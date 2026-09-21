@@ -1255,3 +1255,138 @@ test('the Payment Register PDF export is scoped to this teacher\'s own candidate
     $response->assertOk();
     expect($response->headers->get('content-type'))->toBe('application/pdf');
 });
+
+test('a pending group payment is shown read-only and never offered for allocation', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+
+    // The exact shape reported: a teacher creates a group payment via
+    // /registrations/{version} that never settles (abandoned checkout, or a
+    // webhook that hasn't landed). It must not be allocatable.
+    $pending = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => PaymentSource::TeacherEpayment,
+        'vendor' => Vendor::Square,
+        'vendor_transaction_id' => 'ORDER-PENDING',
+        'payer_teacher_id' => $teacher->id,
+        'amount' => 6000,
+        'status' => PaymentTransactionStatus::Pending,
+        'reference_number' => 'PENDING-1',
+        'paid_at' => null,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee('Pending Payments')
+        ->assertSee('Awaiting Square confirmation')
+        ->assertDontSee('Your Unreconciled Payments')
+        ->assertDontSeeHtml("wire:click=\"openAllocate({$pending->id})\"");
+});
+
+test('openAllocate rejects a pending transaction even when it belongs to this teacher', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+
+    $pending = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => PaymentSource::TeacherEpayment,
+        'payer_teacher_id' => $teacher->id,
+        'amount' => 6000,
+        'status' => PaymentTransactionStatus::Pending,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->call('openAllocate', $pending->id)
+        ->assertStatus(422);
+});
+
+test('saveAllocations rejects a pending transaction even if the modal was opened while it was completed', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+
+    $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => PaymentSource::TeacherEpayment,
+        'payer_teacher_id' => $teacher->id,
+        'amount' => 6000,
+        'status' => PaymentTransactionStatus::Completed,
+    ]);
+
+    $component = Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->call('openAllocate', $transaction->id)
+        ->set("allocationAmounts.{$candidate->id}", '20.00');
+
+    // A refund webhook lands between opening the modal and saving it.
+    $transaction->update(['status' => PaymentTransactionStatus::Refunded]);
+
+    $component->call('saveAllocations')->assertStatus(422);
+
+    expect($transaction->refresh()->allocations)->toHaveCount(0);
+});
+
+test('failed and refunded transactions appear in neither the unreconciled nor the pending panel', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+
+    foreach ([PaymentTransactionStatus::Failed, PaymentTransactionStatus::Refunded] as $status) {
+        PaymentTransaction::create([
+            'version_id' => $version->id,
+            'source' => PaymentSource::TeacherEpayment,
+            'payer_teacher_id' => $teacher->id,
+            'amount' => 6000,
+            'status' => $status,
+        ]);
+    }
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertDontSee('Your Unreconciled Payments')
+        ->assertDontSee('Pending Payments');
+});
+
+test('a pending single-candidate payment does not surface as a pending group payment', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+
+    $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+
+    // Single-candidate checkouts are auto-allocated 100% at creation, so
+    // they have no unallocated balance to report either way.
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => PaymentSource::CandidateEpayment,
+        'payer_teacher_id' => $teacher->id,
+        'amount' => 4000,
+        'status' => PaymentTransactionStatus::Pending,
+    ]);
+
+    PaymentAllocation::create([
+        'payment_transaction_id' => $transaction->id,
+        'candidate_id' => $candidate->id,
+        'amount' => 4000,
+        'allocated_at' => now(),
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertDontSee('Pending Payments')
+        ->assertDontSee('Your Unreconciled Payments');
+});

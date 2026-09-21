@@ -278,3 +278,54 @@ test('PDF export aborts with 403 for a user with no relevant role', function () 
     get(route('events.versions.reports.payment-reconciliation.pdf', $version))
         ->assertForbidden();
 });
+
+test('the Needs Reconciliation queue lists completed transactions only', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    ['school' => $school, 'teacher' => $teacher] = makeReconciliationCandidate($version);
+
+    $completed = makeUnallocatedGroupPayment($version, $school, $teacher, 5000);
+
+    $unsettled = collect([
+        PaymentTransactionStatus::Pending,
+        PaymentTransactionStatus::Failed,
+        PaymentTransactionStatus::Refunded,
+    ])->map(fn (PaymentTransactionStatus $status): PaymentTransaction => PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => PaymentSource::TeacherEpayment,
+        'payer_teacher_id' => $teacher->id,
+        'school_id' => $school->id,
+        'amount' => 5000,
+        'status' => $status,
+    ]));
+
+    $component = Livewire::actingAs($founder)
+        ->test(PaymentReconciliation::class, ['version' => $version])
+        ->assertSeeHtml("wire:click=\"openAllocate({$completed->id})\"");
+
+    foreach ($unsettled as $transaction) {
+        $component->assertDontSeeHtml("wire:click=\"openAllocate({$transaction->id})\"");
+    }
+});
+
+test('openAllocate rejects an unsettled transaction', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    ['school' => $school, 'teacher' => $teacher] = makeReconciliationCandidate($version);
+
+    $pending = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => PaymentSource::TeacherEpayment,
+        'payer_teacher_id' => $teacher->id,
+        'school_id' => $school->id,
+        'amount' => 5000,
+        'status' => PaymentTransactionStatus::Pending,
+    ]);
+
+    Livewire::actingAs($founder)
+        ->test(PaymentReconciliation::class, ['version' => $version])
+        ->call('openAllocate', $pending->id)
+        ->assertStatus(422);
+});

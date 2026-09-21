@@ -116,8 +116,39 @@ class PaymentTransaction extends Model
         return $this->amount - $this->allocations->sum('amount');
     }
 
+    /**
+     * Only a settled payment may be allocated to candidates. A pending row
+     * is money that hasn't arrived (an abandoned checkout, or one whose
+     * vendor webhook hasn't landed yet); failed never will; refunded has
+     * gone back out again. Allocating any of those would credit a
+     * candidate's balance for money the Event doesn't have — the balance
+     * rollups already count Completed allocations only (see
+     * PaymentReconciliation::baseRows() and VersionDashboard's "Paid"
+     * column), so the allocation queues have to agree with them.
+     */
+    public function isAllocatable(): bool
+    {
+        // getRawOriginal(), not the magic-cast property — Larastan can't
+        // infer the enum cast through this model's method-based casts()
+        // return (cataloged PHPStan-quirks memory).
+        return $this->getRawOriginal('status') === PaymentTransactionStatus::Completed->value;
+    }
+
     public function needsReconciliation(): bool
     {
-        return $this->unallocatedAmount() > 0;
+        return $this->isAllocatable() && $this->unallocatedAmount() > 0;
+    }
+
+    /**
+     * A group payment whose checkout hasn't settled yet — shown read-only
+     * so a teacher who just paid can see the payment is in flight (and
+     * doesn't pay a second time), without being able to allocate it.
+     * Single-candidate transactions are auto-allocated 100% at creation
+     * (see the gateways) so they never surface here.
+     */
+    public function isAwaitingConfirmation(): bool
+    {
+        return $this->getRawOriginal('status') === PaymentTransactionStatus::Pending->value
+            && $this->unallocatedAmount() > 0;
     }
 }
