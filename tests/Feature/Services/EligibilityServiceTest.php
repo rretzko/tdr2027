@@ -130,6 +130,32 @@ test('eligibleStudents excludes a student already enrolled as a Candidate for th
     expect($result->pluck('id'))->not->toContain($student->id);
 });
 
+test('eligibleStudents includes a student already enrolled as a Candidate when excludeEnrolled is false', function () {
+    actingAs(User::factory()->create());
+
+    $teacher = Teacher::factory()->create();
+    $school = School::factory()->create();
+    $student = Student::factory()->create();
+
+    attachTeacherToSchool($teacher, $school);
+    attachStudentToSchool($student, $school);
+    linkStudentToTeacher($student, $teacher, $school);
+
+    $version = Version::factory()->create();
+    inviteEligibilityTeacher($teacher, $version);
+
+    Candidate::factory()->create([
+        'version_id' => $version->id,
+        'student_id' => $student->id,
+        'school_id' => $school->id,
+        'teacher_id' => $teacher->id,
+    ]);
+
+    $result = (new EligibilityService)->eligibleStudents($version, $teacher, excludeEnrolled: false);
+
+    expect($result->pluck('id'))->toContain($student->id);
+});
+
 test('eligibleStudents excludes an inactive student-teacher link', function () {
     $teacher = Teacher::factory()->create();
     $school = School::factory()->create();

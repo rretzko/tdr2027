@@ -45,7 +45,8 @@ class EligibilityService
      * - Invited (or obligations-accepted) for this Version — see isNotInvited()
      * - Active + verified at one of the teacher's active+verified schools
      * - Linked to this teacher (student_teacher.is_active = true)
-     * - Not already a candidate for this version
+     * - Not already a candidate for this version (unless $excludeEnrolled is
+     *   false — see param doc below)
      * - Not blocked by a rejected obligations response (iron gate)
      * - In one of the Event's eligible grades (event_grades), unrestricted
      *   if the Event has none configured — same "zero rows means
@@ -60,9 +61,20 @@ class EligibilityService
      * directly (a real graduation year), not a value re-derived through the
      * Version's senior_class_of — the two are independent per-school data.
      *
+     * @param  bool  $excludeEnrolled  True (default) gives the "who can I still
+     *                                 add" pool every existing caller (enroll
+     *                                 pickers, AutoEnrollmentService) needs.
+     *                                 False includes students already a
+     *                                 Candidate for this version — for callers
+     *                                 that want the whole eligible pool as a
+     *                                 point-in-time size, e.g.
+     *                                 VersionScorecardService's "Invited
+     *                                 Students" count, which would otherwise
+     *                                 collapse toward zero as a Version fills
+     *                                 up with Candidates.
      * @return Collection<int, Student>
      */
-    public function eligibleStudents(Version $version, Teacher $teacher): Collection
+    public function eligibleStudents(Version $version, Teacher $teacher, bool $excludeEnrolled = true): Collection
     {
         if ($this->isNotInvited($version, $teacher) || $this->isBlockedByRejectedObligations($version, $teacher)) {
             /** @var Collection<int, Student> */
@@ -79,10 +91,7 @@ class EligibilityService
             return collect();
         }
 
-        $enrolledStudentIds = Candidate::where('version_id', $version->id)
-            ->pluck('student_id');
-
-        $students = Student::query()
+        $query = Student::query()
             ->whereHas('teachers', function ($q) use ($teacher): void {
                 $q->where('teacher_id', $teacher->id)
                     ->where('student_teacher.is_active', true);
@@ -90,9 +99,16 @@ class EligibilityService
             ->whereHas('schools', function ($q) use ($schoolIds): void {
                 $q->whereIn('schools.id', $schoolIds)
                     ->where('school_student.is_active', true);
-            })
-            ->whereNotIn('id', $enrolledStudentIds)
-            ->with('user')
+            });
+
+        if ($excludeEnrolled) {
+            $enrolledStudentIds = Candidate::where('version_id', $version->id)
+                ->pluck('student_id');
+
+            $query->whereNotIn('id', $enrolledStudentIds);
+        }
+
+        $students = $query->with('user')
             ->orderByRaw('(SELECT last_name FROM users WHERE users.id = students.user_id)')
             ->get();
 
