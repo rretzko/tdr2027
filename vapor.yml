@@ -26,6 +26,9 @@ environments:
         timeout: 30
         runtime: 'php-8.4:al2023'
         database: mfr-staging
+        # Vapor creates this bucket and injects AWS_BUCKET. Without it the S3 disk
+        # throws a TypeError, which Livewire turns into a 419 "page expired" prompt.
+        storage: tdr2027-staging-files
         scheduler: false
         build:
             - 'composer install --no-dev --optimize-autoloader'

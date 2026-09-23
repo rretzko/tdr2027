@@ -56,6 +56,16 @@ or call it by full path):
 vapor deploy staging
 ```
 
+**Staging environment variables.** Staging needs its own values for a few
+settings production already has. `storage:` in `vapor.yml` makes Vapor create
+a staging S3 bucket and inject `AWS_BUCKET`. If that bucket is missing, every
+Livewire action shows the **"This page has expired"** prompt: the S3 disk
+throws a `TypeError`, and Livewire returns 419 when `APP_DEBUG=false`. Set
+`APP_NAME` in the staging environment (`vapor env staging`) to the name
+prospects should see in the sidebar; without it the sidebar says "Laravel".
+If a 419 prompt shows up again, check the staging function's CloudWatch log
+group (`/aws/lambda/vapor-tdr2027-staging`) for the real exception.
+
 `vapor.yml`'s `staging` environment has no build step that runs migrations
 automatically. After the deploy finishes, run migrations once:
 
