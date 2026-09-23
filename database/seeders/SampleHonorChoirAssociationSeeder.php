@@ -69,6 +69,10 @@ class SampleHonorChoirAssociationSeeder extends Seeder
         'Sample North High School',
         'Sample Valley High School',
         'Sample Ridge Middle School',
+        // The demo Event Manager's own school — event managers are working
+        // teachers too, so that login gets the same roster/candidates as the
+        // demo Teacher login.
+        'Sample Lakeside High School',
     ];
 
     private const CLOSED_VERSION_NAME = 'Fall 2025 Sample Cycle';
@@ -130,7 +134,7 @@ class SampleHonorChoirAssociationSeeder extends Seeder
 
             $ensembles = $this->buildEnsembles($event);
             $schools = $this->buildSchools();
-            $teachers = $this->buildTeachers($schools);
+            $teachers = $this->buildTeachers($schools, $eventManagerTeacher);
 
             $closedVersion = Version::factory()->create([
                 'event_id' => $event->id,
@@ -208,9 +212,9 @@ class SampleHonorChoirAssociationSeeder extends Seeder
 
     /**
      * @param  array<int, School>  $schools
-     * @return array<int, Teacher> keyed by school index (0, 1, 2), one primary teacher per school
+     * @return array<int, Teacher> keyed by school index, one primary teacher per school; the last school's is the demo Event Manager
      */
-    private function buildTeachers(array $schools): array
+    private function buildTeachers(array $schools, Teacher $eventManagerTeacher): array
     {
         $names = [
             ['Dana', 'Whitfield'],
@@ -221,21 +225,26 @@ class SampleHonorChoirAssociationSeeder extends Seeder
         $teachers = [];
 
         foreach ($schools as $i => $school) {
-            [$first, $last] = $names[$i];
+            if (isset($names[$i])) {
+                [$first, $last] = $names[$i];
 
-            $user = User::factory()->create([
-                'first_name' => $first,
-                'last_name' => $last,
-                'email' => strtolower($first.'.'.$last).'@sample-honorchoir.example',
-                'password' => Hash::make(self::DEMO_PASSWORD),
-            ]);
-            $user->assignRole('Teacher');
+                $user = User::factory()->create([
+                    'first_name' => $first,
+                    'last_name' => $last,
+                    'email' => strtolower($first.'.'.$last).'@sample-honorchoir.example',
+                    'password' => Hash::make(self::DEMO_PASSWORD),
+                ]);
+                $user->assignRole('Teacher');
 
-            $teacher = Teacher::factory()->create([
-                'user_id' => $user->id,
-                'onboarding_step' => 1,
-                'onboarding_completed_at' => now()->subYear(),
-            ]);
+                $teacher = Teacher::factory()->create([
+                    'user_id' => $user->id,
+                    'onboarding_step' => 1,
+                    'onboarding_completed_at' => now()->subYear(),
+                ]);
+            } else {
+                $teacher = $eventManagerTeacher;
+                $user = $teacher->user;
+            }
 
             SchoolTeacher::factory()->create([
                 'school_id' => $school->id,
@@ -291,7 +300,7 @@ class SampleHonorChoirAssociationSeeder extends Seeder
             $teacher = $teachers[$i];
             $students = [];
 
-            // 8 students per school = 24 total.
+            // 8 students per school = 32 total.
             foreach (range(1, 8) as $n) {
                 $user = User::factory()->create();
 
@@ -488,6 +497,7 @@ class SampleHonorChoirAssociationSeeder extends Seeder
             $studentIds = DB::table('school_student')->whereIn('school_id', $schoolIds)->pluck('student_id')->unique();
 
             $teacherUserIds = Teacher::whereIn('id', $teacherIds)->pluck('user_id');
+            TeacherSupervisor::whereIn('teacher_id', $teacherIds)->delete();
             $studentUserIds = Student::whereIn('id', $studentIds)->pluck('user_id');
             $demoUserIds = $teacherUserIds->merge($studentUserIds)->unique();
 
@@ -504,7 +514,8 @@ class SampleHonorChoirAssociationSeeder extends Seeder
             School::whereIn('id', $schoolIds)->delete();
         }
 
-        // The demo Event Manager login is outside any school, so wipe it by email.
+        // Normally already removed with its school above; this also catches data
+        // seeded before the Event Manager had a school of its own.
         $eventManager = User::where('email', 'demo.eventmanager@sample-honorchoir.example')->first();
 
         if ($eventManager !== null) {

@@ -206,11 +206,11 @@
                             Event Manager Guide
                         </flux:sidebar.item>
                         <flux:modal.trigger name="student-folder-slides">
-                            <flux:sidebar.item icon="photo">
+                            <flux:sidebar.item icon="photo" x-on:click="Livewire.dispatch('student-folder-slides-opened')">
                                 Student Folder Slides
                             </flux:sidebar.item>
                         </flux:modal.trigger>
-                        <livewire:guides.student-folder-slides lazy />
+                        <livewire:guides.student-folder-slides />
                     @endif
                 @endunless
             </flux:sidebar.group>

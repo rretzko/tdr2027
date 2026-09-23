@@ -1,6 +1,11 @@
 <div>
     <flux:modal name="student-folder-slides" scroll="body" class="md:w-[64rem]">
-        @if (count($slides) > 0)
+        @if (! $loaded)
+            <div class="flex items-center gap-2 py-8 text-zinc-500 dark:text-white/60">
+                <flux:icon.loading variant="mini" />
+                <span>Loading slides…</span>
+            </div>
+        @elseif (count($slides) > 0)
             <div class="space-y-4">
                 <div class="flex items-center justify-between">
                     <div>

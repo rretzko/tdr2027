@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 /**
@@ -19,6 +20,10 @@ use Livewire\Component;
  * sidebar only renders the trigger for those users, but this component
  * re-checks independently in case it's ever reached another way, same
  * pattern as UserGuidePdfController.
+ *
+ * Rendered in the sidebar on every page, so mount() never touches S3: the
+ * slide list is only fetched when the sidebar trigger dispatches
+ * 'student-folder-slides-opened' (i.e. the modal is actually opened).
  */
 class StudentFolderSlides extends Component
 {
@@ -29,11 +34,22 @@ class StudentFolderSlides extends Component
 
     public int $current = 0;
 
+    public bool $loaded = false;
+
     public function mount(): void
     {
         abort_unless(app(VersionRoleAssignmentService::class)->hasActiveOrSandboxVersionRole(Auth::user()), 403);
+    }
+
+    #[On('student-folder-slides-opened')]
+    public function load(): void
+    {
+        if ($this->loaded) {
+            return;
+        }
 
         $this->slides = $this->loadSlides();
+        $this->loaded = true;
     }
 
     public function next(): void

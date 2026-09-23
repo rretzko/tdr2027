@@ -54,14 +54,33 @@ test('mount aborts with 403 for a user with no active or sandbox version-scoped 
         ->assertStatus(403);
 });
 
-test('mount loads all slides in filename order with titles derived from filenames', function () {
+test('mount does not touch S3 until the modal is opened', function () {
     $user = User::factory()->create();
     $version = makeStudentFolderSlidesVersion();
     grantVersionRole($user, $version, 'Event Manager');
 
+    // Rendered in the sidebar on every page — a missing/misconfigured bucket
+    // must not break page loads for Event Managers.
+    Storage::shouldReceive('disk')->never();
+
     $component = Livewire::actingAs($user)->test(StudentFolderSlides::class);
 
+    $component->assertOk()->assertSee('Loading slides');
+    expect($component->get('loaded'))->toBeFalse();
+    expect($component->get('slides'))->toBe([]);
+});
+
+test('opening the modal loads all slides in filename order with titles derived from filenames', function () {
+    $user = User::factory()->create();
+    $version = makeStudentFolderSlidesVersion();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    $component = Livewire::actingAs($user)
+        ->test(StudentFolderSlides::class)
+        ->dispatch('student-folder-slides-opened');
+
     $component->assertOk();
+    expect($component->get('loaded'))->toBeTrue();
     expect($component->get('slides'))->toHaveCount(10);
     expect($component->get('slides')[0]['title'])->toBe('Welcome');
     expect($component->get('slides')[9]['title'])->toBe('My Events 2');
@@ -72,7 +91,7 @@ test('next, previous, and goTo clamp within slide bounds', function () {
     $version = makeStudentFolderSlidesVersion();
     grantVersionRole($user, $version, 'Event Manager');
 
-    $component = Livewire::actingAs($user)->test(StudentFolderSlides::class);
+    $component = Livewire::actingAs($user)->test(StudentFolderSlides::class)->dispatch('student-folder-slides-opened');
 
     $component->call('previous');
     expect($component->get('current'))->toBe(0);
@@ -92,7 +111,7 @@ test('downloadUrl requests an attachment content disposition', function () {
     $version = makeStudentFolderSlidesVersion();
     grantVersionRole($user, $version, 'Event Manager');
 
-    $component = Livewire::actingAs($user)->test(StudentFolderSlides::class);
+    $component = Livewire::actingAs($user)->test(StudentFolderSlides::class)->dispatch('student-folder-slides-opened');
 
     /** @var StudentFolderSlides $instance */
     $instance = $component->instance();

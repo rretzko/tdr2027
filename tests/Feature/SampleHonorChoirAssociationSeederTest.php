@@ -42,14 +42,14 @@ test('SampleHonorChoirAssociationSeeder builds a complete fictional demo dataset
     expect($event->status)->toBe(EventStatus::Active);
 
     $schoolIds = School::whereIn('name', [
-        'Sample North High School', 'Sample Valley High School', 'Sample Ridge Middle School',
+        'Sample North High School', 'Sample Valley High School', 'Sample Ridge Middle School', 'Sample Lakeside High School',
     ])->pluck('id');
-    expect($schoolIds)->toHaveCount(3);
+    expect($schoolIds)->toHaveCount(4);
 
     $teacherIds = SchoolTeacher::whereIn('school_id', $schoolIds)->pluck('teacher_id')->unique();
-    expect($teacherIds)->toHaveCount(3);
+    expect($teacherIds)->toHaveCount(4);
 
-    expect(Student::whereIn('home_school_id', $schoolIds)->count())->toBe(24); // 3 schools x 8 students
+    expect(Student::whereIn('home_school_id', $schoolIds)->count())->toBe(32); // 4 schools x 8 students
 
     expect(Ensemble::where('event_id', $event->id)->count())->toBe(3);
 
@@ -60,26 +60,26 @@ test('SampleHonorChoirAssociationSeeder builds a complete fictional demo dataset
     expect($closedVersion->status)->toBe(EventStatus::Closed);
     expect($activeVersion->status)->toBe(EventStatus::Active);
 
-    // 6 candidates per school in each cycle = 18 per cycle.
-    expect(Candidate::where('version_id', $closedVersion->id)->count())->toBe(18);
-    expect(Candidate::where('version_id', $activeVersion->id)->count())->toBe(18);
+    // 6 candidates per school in each cycle = 24 per cycle.
+    expect(Candidate::where('version_id', $closedVersion->id)->count())->toBe(24);
+    expect(Candidate::where('version_id', $activeVersion->id)->count())->toBe(24);
 
     $accepted = Candidate::where('version_id', $closedVersion->id)->where('status', CandidateStatus::Accepted)->get();
-    expect($accepted)->toHaveCount(12); // 4 of 6 per school x 3 schools
+    expect($accepted)->toHaveCount(16); // 4 of 6 per school x 4 schools
     expect($accepted->every(fn (Candidate $c) => $c->accepted_ensemble_id !== null))->toBeTrue();
 
     $notAccepted = Candidate::where('version_id', $closedVersion->id)->where('status', CandidateStatus::NotAccepted)->count();
-    expect($notAccepted)->toBe(3);
+    expect($notAccepted)->toBe(4);
 
     $noShow = Candidate::where('version_id', $closedVersion->id)->where('status', CandidateStatus::NoShow)->count();
-    expect($noShow)->toBe(3);
+    expect($noShow)->toBe(4);
 
     // AuditionResult rows exist only for resolved (accepted/not-accepted) candidates.
     expect(AuditionResult::whereIn('candidate_id', Candidate::where('version_id', $closedVersion->id)->pluck('id'))->count())
-        ->toBe(12 + 3);
+        ->toBe(16 + 4);
 
     // Recordings exist for every closed-cycle candidate except no-shows.
-    expect(Recording::where('version_id', $closedVersion->id)->count())->toBe(18 - 3);
+    expect(Recording::where('version_id', $closedVersion->id)->count())->toBe(24 - 4);
 
     // No results/recordings/ensemble assignments on the still-open cycle.
     expect(AuditionResult::whereIn('candidate_id', Candidate::where('version_id', $activeVersion->id)->pluck('id'))->count())->toBe(0);
@@ -108,6 +108,16 @@ test('SampleHonorChoirAssociationSeeder builds a complete fictional demo dataset
         ->toBe([Organization::where('name', 'Sample County Honor Choir Association')->value('id')]);
     expect(app(VersionRoleAssignmentService::class)->canAccessEventsSection($eventManagerUser))->toBeTrue();
 
+    // The Event Manager is also a working teacher: its own school, active and
+    // verified, with a full roster and candidates in both cycles.
+    $lakeside = School::where('name', 'Sample Lakeside High School')->first();
+    $eventManagerSchoolLink = SchoolTeacher::where('teacher_id', $eventManagerTeacher->id)->where('school_id', $lakeside->id)->first();
+    expect($eventManagerSchoolLink->is_active)->toBeTrue();
+    expect($eventManagerSchoolLink->verified_at)->not->toBeNull();
+    expect(Student::where('home_school_id', $lakeside->id)->count())->toBe(8);
+    expect(Candidate::where('teacher_id', $eventManagerTeacher->id)->where('version_id', $closedVersion->id)->count())->toBe(6);
+    expect(Candidate::where('teacher_id', $eventManagerTeacher->id)->where('version_id', $activeVersion->id)->count())->toBe(6);
+
     expect($teacherUser->hasRole('Teacher'))->toBeTrue();
 
     // The demo teacher's school link is active and verified, satisfying the
@@ -123,13 +133,13 @@ test('SampleHonorChoirAssociationSeeder is idempotent when run twice', function 
     Artisan::call('db:seed', ['--class' => SampleHonorChoirAssociationSeeder::class]);
 
     $schoolIds = School::whereIn('name', [
-        'Sample North High School', 'Sample Valley High School', 'Sample Ridge Middle School',
+        'Sample North High School', 'Sample Valley High School', 'Sample Ridge Middle School', 'Sample Lakeside High School',
     ])->pluck('id');
 
     expect(Organization::where('name', 'Sample County Honor Choir Association')->count())->toBe(1);
-    expect($schoolIds)->toHaveCount(3);
-    expect(Student::whereIn('home_school_id', $schoolIds)->count())->toBe(24);
-    expect(SchoolTeacher::whereIn('school_id', $schoolIds)->pluck('teacher_id')->unique())->toHaveCount(3);
+    expect($schoolIds)->toHaveCount(4);
+    expect(Student::whereIn('home_school_id', $schoolIds)->count())->toBe(32);
+    expect(SchoolTeacher::whereIn('school_id', $schoolIds)->pluck('teacher_id')->unique())->toHaveCount(4);
     expect(User::where('email', 'demo.eventmanager@sample-honorchoir.example')->count())->toBe(1);
     expect(Teacher::whereHas('user', fn ($q) => $q->where('email', 'demo.eventmanager@sample-honorchoir.example'))->count())->toBe(1);
     expect(User::where('email', 'demo.teacher@sample-honorchoir.example')->count())->toBe(1);

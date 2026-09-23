@@ -18,12 +18,13 @@ A fully fictional "Sample County Honor Choir Association" dataset, built by
 `database/seeders/SampleHonorChoirAssociationSeeder.php`:
 
 - 1 Organization, 1 Event ("Sample All-State Honor Choir"), 3 Ensembles
-- 3 fictional schools (Sample North/Valley/Ridge), 3 teachers, 24 students
+- 4 fictional schools (Sample North/Valley/Ridge/Lakeside), 4 teachers
+  (one of them is the demo Event Manager), 32 students
 - **Two registration cycles** on the same Event:
-  - **Fall 2025 Sample Cycle** — closed, with full results: 12 accepted
-    candidates (each assigned to an ensemble), 3 not accepted, 3 no-shows.
+  - **Fall 2025 Sample Cycle** — closed, with full results: 16 accepted
+    candidates (each assigned to an ensemble), 4 not accepted, 4 no-shows.
     This is what a prospect sees when you show the finished pipeline.
-  - **Fall 2026 Sample Cycle** — open now, with 18 candidates already
+  - **Fall 2026 Sample Cycle** — open now, with 24 candidates already
     registered/pending, **and 2 students per school held back specifically
     so you can register a brand-new candidate live on a call** without
     reusing someone already seen in the closed cycle.
@@ -118,7 +119,7 @@ Both use the password **`password`**.
 
 | Role | Email | Notes |
 |---|---|---|
-| Event Manager | `demo.eventmanager@sample-honorchoir.example` | Has the Event Manager role on **both** cycles — use this to show the admin/registration-manager side: candidate lists, results, ensemble rosters, the still-open Fall 2026 cycle. |
+| Event Manager | `demo.eventmanager@sample-honorchoir.example` | Has the Event Manager role on **both** cycles — use this to show the admin/registration-manager side: candidate lists, results, ensemble rosters, the still-open Fall 2026 cycle. Also a working teacher at Sample Lakeside High School (active, verified school link, 8 students, 6 candidates per cycle, 2 held back), so the same login can show a manager registering their own students. |
 | Teacher | `demo.teacher@sample-honorchoir.example` | This is "Dana Whitfield" at Sample North High School — an active, verified school link with a full roster of students and candidates in both cycles. Use this to show the teacher-side registration experience. |
 
 ## 4. Getting to the staging URL
