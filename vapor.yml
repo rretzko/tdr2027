@@ -29,5 +29,7 @@ environments:
         scheduler: false
         build:
             - 'composer install --no-dev --optimize-autoloader'
+            # Staging only: SampleHonorChoirAssociationSeeder (demo data) uses model factories, which need Faker.
+            - 'composer require fakerphp/faker:^1.23 --update-no-dev --optimize-autoloader --no-interaction'
             - 'php artisan event:cache'
             - 'npm ci && npm run build && rm -rf node_modules'

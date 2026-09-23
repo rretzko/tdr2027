@@ -83,6 +83,18 @@ just the lookup tables (Geostate, County, Pronoun, VoicePart, Instrument,
 Roles) plus one generic `test@example.com` user — no real student/teacher
 data ever touches staging.
 
+**Faker dependency:** both commands create rows through model factories,
+which need `fakerphp/faker`. Faker is a `require-dev` package and deploys
+are built with `composer install --no-dev`, so the `staging` build in
+`vapor.yml` adds it back with a separate
+`composer require fakerphp/faker ... --update-no-dev` step. It adds about
+11 MB, and production doesn't get it. Without that step, both commands fail
+with `Class "Faker\Factory" not found`: the default seeder stops after the
+lookup tables (so `users` stays empty), and the demo seeder's single
+transaction rolls back completely (no schools, events, versions, or users).
+If you see empty tables after this step, check the command output for that
+error first, then confirm the deployed build includes the Faker step.
+
 The second command builds the fictional demo dataset described in §0. It's
 **idempotent** — safe to re-run before any specific prospect call. It wipes
 its own previously-seeded rows (matched by the fixed organization/school
