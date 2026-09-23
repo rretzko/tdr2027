@@ -20,6 +20,7 @@ use App\Models\Organization;
 use App\Models\Pivots\SchoolStudent;
 use App\Models\Pivots\SchoolTeacher;
 use App\Models\Pivots\StudentTeacher;
+use App\Models\Pivots\TeacherSupervisor;
 use App\Models\Recording;
 use App\Models\School;
 use App\Models\Student;
@@ -101,6 +102,21 @@ class SampleHonorChoirAssociationSeeder extends Seeder
                 'parent_id' => null,
                 'logo_file_url' => null,
                 'logo_file_alt' => null,
+            ]);
+
+            // The sidebar nav (Schools/Organizations/Events) and the dashboard
+            // cards all hang off $user->teacher with onboarding completed, so an
+            // Event Manager with no Teacher row sees an empty app. The
+            // organization link feeds the dashboard's "open events" card.
+            $eventManager->assignRole('Teacher');
+            $eventManagerTeacher = Teacher::factory()->create([
+                'user_id' => $eventManager->id,
+                'onboarding_step' => 1,
+                'onboarding_completed_at' => now()->subYear(),
+            ]);
+            TeacherSupervisor::create([
+                'organization_id' => $organization->id,
+                'teacher_id' => $eventManagerTeacher->id,
             ]);
 
             $event = Event::factory()->create([
@@ -492,6 +508,10 @@ class SampleHonorChoirAssociationSeeder extends Seeder
         $eventManager = User::where('email', 'demo.eventmanager@sample-honorchoir.example')->first();
 
         if ($eventManager !== null) {
+            $eventManagerTeacherIds = Teacher::where('user_id', $eventManager->id)->pluck('id');
+            TeacherSupervisor::whereIn('teacher_id', $eventManagerTeacherIds)->delete();
+            Teacher::whereIn('id', $eventManagerTeacherIds)->delete();
+
             DB::table('model_has_roles')->where('model_type', User::class)->where('model_id', $eventManager->id)->delete();
             $eventManager->delete();
         }

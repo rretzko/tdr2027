@@ -16,6 +16,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Services\VersionRoleAssignmentService;
 use App\Services\VersionRoleService;
 use Database\Seeders\SampleHonorChoirAssociationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -98,6 +99,15 @@ test('SampleHonorChoirAssociationSeeder builds a complete fictional demo dataset
     expect($hasClosedRole)->toBeTrue();
     expect($hasActiveRole)->toBeTrue();
 
+    // The sidebar/dashboard only render for a user with an onboarded Teacher
+    // row, so the Event Manager login needs one, linked to the organization.
+    $eventManagerTeacher = $eventManagerUser->teacher;
+    expect($eventManagerTeacher)->not->toBeNull();
+    expect($eventManagerTeacher->onboarding_completed_at)->not->toBeNull();
+    expect($eventManagerTeacher->teacherSupervisors()->pluck('organization_id')->all())
+        ->toBe([Organization::where('name', 'Sample County Honor Choir Association')->value('id')]);
+    expect(app(VersionRoleAssignmentService::class)->canAccessEventsSection($eventManagerUser))->toBeTrue();
+
     expect($teacherUser->hasRole('Teacher'))->toBeTrue();
 
     // The demo teacher's school link is active and verified, satisfying the
@@ -121,5 +131,6 @@ test('SampleHonorChoirAssociationSeeder is idempotent when run twice', function 
     expect(Student::whereIn('home_school_id', $schoolIds)->count())->toBe(24);
     expect(SchoolTeacher::whereIn('school_id', $schoolIds)->pluck('teacher_id')->unique())->toHaveCount(3);
     expect(User::where('email', 'demo.eventmanager@sample-honorchoir.example')->count())->toBe(1);
+    expect(Teacher::whereHas('user', fn ($q) => $q->where('email', 'demo.eventmanager@sample-honorchoir.example'))->count())->toBe(1);
     expect(User::where('email', 'demo.teacher@sample-honorchoir.example')->count())->toBe(1);
 });
