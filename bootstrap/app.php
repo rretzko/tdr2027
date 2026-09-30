@@ -37,6 +37,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // vendor server has no CSRF token to send; each gateway verifies its
         // own signature instead (SquarePaymentGateway::verifyWebhookSignature()).
         $middleware->validateCsrfTokens(except: ['webhooks/payments/*']);
+
+        // Sidebar group expand/collapse state is written client-side by the
+        // app layout's script, so it can't be encrypted.
+        $middleware->encryptCookies(except: ['sidebar_group_founder', 'sidebar_group_guides']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

@@ -159,7 +159,7 @@
             @if (auth()->user()->isFounder())
                 <flux:separator />
 
-                <flux:sidebar.group heading="Founder" expandable>
+                <flux:sidebar.group heading="Founder" expandable :expanded="request()->cookie('sidebar_group_founder', '1') === '1'" data-sidebar-group-cookie="sidebar_group_founder">
                     <flux:sidebar.item icon="user-plus" :href="route('founder.add-teacher')" :current="request()->routeIs('founder.add-teacher')">
                         Add Teacher
                     </flux:sidebar.item>
@@ -193,7 +193,7 @@
                 Feedback
             </flux:sidebar.item>
 
-            <flux:sidebar.group heading="User Guides" icon="book-open" expandable>
+            <flux:sidebar.group heading="User Guides" icon="book-open" expandable :expanded="request()->cookie('sidebar_group_guides', '1') === '1'" data-sidebar-group-cookie="sidebar_group_guides">
                 <flux:sidebar.item icon="document-text" :href="route('guides.show', 'student-guide')" target="_blank">
                     Student Guide
                 </flux:sidebar.item>
@@ -274,5 +274,15 @@
         <flux:toast />
 
         @fluxScripts
+
+        {{-- Persist expandable sidebar groups' open/closed state across page
+             loads; the layout reads these cookies to render :expanded. --}}
+        <script>
+            document.addEventListener('lofi-disclosable-change', (e) => {
+                const name = e.target.dataset?.sidebarGroupCookie;
+                if (! name) return;
+                document.cookie = `${name}=${e.target.value ? '1' : '0'}; path=/; max-age=31536000; SameSite=Lax`;
+            });
+        </script>
     </body>
 </html>
