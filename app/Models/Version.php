@@ -8,6 +8,7 @@ use App\Enums\ApplicationType;
 use App\Enums\AuditionType;
 use App\Enums\CutoffStrategy;
 use App\Enums\EventStatus;
+use App\Enums\PaymentEnvironment;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
@@ -145,6 +146,19 @@ class Version extends Model
 
         return $versionConfig !== null && $versionConfig->epayment_teacher
             && $eventConfig !== null && $eventConfig->epaymentAccepted();
+    }
+
+    /**
+     * A Sandbox-status Version is a visibility state only — the payment
+     * environment is deployment-wide (services.payments.environment), so on
+     * production any Pay Now made while previewing a Sandbox Version is a
+     * real charge. Drives the warning banner on the payment-capable pages.
+     */
+    public function livePaymentsWhileSandbox(): bool
+    {
+        return $this->getRawOriginal('status') === EventStatus::Sandbox->value
+            && config('services.payments.environment') === PaymentEnvironment::Production->value
+            && $this->eventEpaymentConfig()?->epaymentAccepted() === true;
     }
 
     public function epaymentStudentEnabled(): bool

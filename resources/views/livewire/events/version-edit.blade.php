@@ -1,4 +1,6 @@
 <div>
+    <x-live-payments-sandbox-warning :version="$version" />
+
     {{-- Breadcrumb --}}
     <div class="flex items-center gap-2 mb-1 text-sm text-zinc-500">
         <a href="{{ route('events.index') }}" wire:navigate class="hover:text-zinc-800 dark:hover:text-zinc-200">Events</a>
