@@ -189,7 +189,7 @@ class PaypalPaymentGateway implements PaymentGatewayContract
         return $response->successful() && $response->json('verification_status') === 'SUCCESS';
     }
 
-    public function parseWebhookEvent(Request $request): WebhookEvent
+    public function parseWebhookEvent(Request $request): ?WebhookEvent
     {
         /** @var array<string, mixed> $payload */
         $payload = $request->json()->all();
@@ -226,8 +226,8 @@ class PaypalPaymentGateway implements PaymentGatewayContract
         // Approval alone doesn't move money (see captureOrder()'s docblock)
         // — this app's own return-flow always captures explicitly, so this
         // event is a no-op signal in practice (Pending -> Pending), kept
-        // only so an unrecognized-event abort() doesn't fire on a real,
-        // expected PayPal event.
+        // so the approval payload is still recorded on the transaction for
+        // audit (an unhandled type would be acknowledged but dropped).
         if ($eventType === 'CHECKOUT.ORDER.APPROVED') {
             return new WebhookEvent(
                 vendorTransactionId: (string) ($resource['id'] ?? ''),
@@ -237,7 +237,7 @@ class PaypalPaymentGateway implements PaymentGatewayContract
             );
         }
 
-        abort(422, 'Unrecognized PayPal webhook event type: '.($eventType ?? 'unknown'));
+        return null;
     }
 
     /**

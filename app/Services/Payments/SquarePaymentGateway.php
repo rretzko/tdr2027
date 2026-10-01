@@ -160,7 +160,7 @@ class SquarePaymentGateway implements PaymentGatewayContract
         );
     }
 
-    public function parseWebhookEvent(Request $request): WebhookEvent
+    public function parseWebhookEvent(Request $request): ?WebhookEvent
     {
         /** @var array<string, mixed> $payload */
         $payload = $request->json()->all();
@@ -192,7 +192,7 @@ class SquarePaymentGateway implements PaymentGatewayContract
             );
         }
 
-        abort(422, 'Unrecognized Square webhook event type: '.($payload['type'] ?? 'unknown'));
+        return null;
     }
 
     /**

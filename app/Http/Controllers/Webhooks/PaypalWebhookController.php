@@ -11,6 +11,7 @@ use App\Models\Event;
 use App\Services\Payments\PaypalPaymentGateway;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 
 /**
  * See epayment-integration.md §2.3/§2.4. Per-Event route, same reasoning as
@@ -25,6 +26,15 @@ class PaypalWebhookController extends Controller
         abort_unless($gateway->verifyWebhookSignature($request, $event), 400, 'Invalid PayPal webhook signature.');
 
         $webhookEvent = $gateway->parseWebhookEvent($request);
+
+        if ($webhookEvent === null) {
+            Log::info('PaypalWebhookController: ignored unhandled PayPal webhook event type', [
+                'event_id' => $event->id,
+                'type' => $request->json('event_type'),
+            ]);
+
+            return response()->noContent();
+        }
 
         ProcessPaymentWebhookJob::dispatch(Vendor::Paypal, $webhookEvent);
 

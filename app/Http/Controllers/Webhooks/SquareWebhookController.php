@@ -11,6 +11,7 @@ use App\Models\Event;
 use App\Services\Payments\SquarePaymentGateway;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 
 /**
  * See epayment-integration.md §2.2/§2.4. Per-Event route ({event} identifies
@@ -26,6 +27,15 @@ class SquareWebhookController extends Controller
         abort_unless($gateway->verifyWebhookSignature($request, $event), 400, 'Invalid Square webhook signature.');
 
         $webhookEvent = $gateway->parseWebhookEvent($request);
+
+        if ($webhookEvent === null) {
+            Log::info('SquareWebhookController: ignored unhandled Square webhook event type', [
+                'event_id' => $event->id,
+                'type' => $request->json('type'),
+            ]);
+
+            return response()->noContent();
+        }
 
         ProcessPaymentWebhookJob::dispatch(Vendor::Square, $webhookEvent);
 

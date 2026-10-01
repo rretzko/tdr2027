@@ -48,5 +48,10 @@ interface PaymentGatewayContract
      */
     public function verifyWebhookSignature(Request $request, Event $event): bool;
 
-    public function parseWebhookEvent(Request $request): WebhookEvent;
+    /**
+     * Null means a verified event type this app doesn't act on. The caller
+     * acknowledges it with a 2xx anyway, because vendors retry any non-2xx
+     * delivery and eventually disable the subscription.
+     */
+    public function parseWebhookEvent(Request $request): ?WebhookEvent;
 }
