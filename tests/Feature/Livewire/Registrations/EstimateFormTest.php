@@ -11,6 +11,7 @@ use App\Models\School;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionEpaymentConfig;
 use App\Models\VersionInvitation;
 use App\Models\VersionMembershipRequirement;
 use App\Models\VersionObligation;
@@ -237,4 +238,34 @@ test('a school with a registered candidate is excluded when the teacher is no lo
 
     Livewire::test(EstimateForm::class, ['version' => $version])
         ->assertSee('no candidates registered for this Version yet');
+});
+
+test('the Estimate Form tells teachers when the event accepts online payment only', function () {
+    $teacher = makeEstimateFormTeacher();
+    $version = Version::factory()->create();
+    $school = School::factory()->create();
+    actingAs($teacher->user);
+    inviteEstimateFormTeacher($teacher, $version);
+    registerEstimateFormCandidate($teacher, $version, $school);
+    $notice = 'This event accepts online payment only';
+
+    Livewire::test(EstimateForm::class, ['version' => $version])->assertDontSee($notice);
+
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_teacher' => true, 'epayment_student' => false, 'online_payment_required' => true]);
+
+    Livewire::test(EstimateForm::class, ['version' => $version->fresh()])->assertSee($notice);
+});
+
+test('the online-only notice never shows when teachers cannot pay online', function () {
+    $teacher = makeEstimateFormTeacher();
+    $version = Version::factory()->create();
+    $school = School::factory()->create();
+    actingAs($teacher->user);
+    inviteEstimateFormTeacher($teacher, $version);
+    registerEstimateFormCandidate($teacher, $version, $school);
+    // A stale flag with teacher e-payment off must not mislead teachers.
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_teacher' => false, 'epayment_student' => true, 'online_payment_required' => true]);
+
+    Livewire::test(EstimateForm::class, ['version' => $version])
+        ->assertDontSee('This event accepts online payment only');
 });

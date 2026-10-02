@@ -18,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * App\Livewire\Registrations\CandidateDetail and VersionEdit read from these
  * two instead (§4 steps 5/9).
  */
-#[Fillable(['version_id', 'epayment_student', 'epayment_teacher'])]
+#[Fillable(['version_id', 'epayment_student', 'epayment_teacher', 'online_payment_required'])]
 class VersionEpaymentConfig extends Model
 {
     /** @use HasFactory<VersionEpaymentConfigFactory> */
@@ -32,6 +32,7 @@ class VersionEpaymentConfig extends Model
         return [
             'epayment_student' => 'boolean',
             'epayment_teacher' => 'boolean',
+            'online_payment_required' => 'boolean',
         ];
     }
 

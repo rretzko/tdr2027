@@ -159,6 +159,8 @@ class VersionEdit extends Component
     // Requirements tab
     public bool $membership_card = false;
 
+    public bool $mail_required = false;
+
     public string $membership_valid_thru = '';
 
     /** @var list<int> */
@@ -215,6 +217,8 @@ class VersionEdit extends Component
     public bool $payment_has_webhook_signature_key = false;
 
     public bool $epayment_student = false;
+
+    public bool $online_payment_required = false;
 
     public bool $epayment_teacher = false;
 
@@ -275,6 +279,7 @@ class VersionEdit extends Component
         $this->home_address = (bool) $version->home_address;
         $this->shirt_size = (bool) $version->shirt_size;
         $this->teacher_cell = (bool) $version->teacher_cell;
+        $this->mail_required = (bool) $version->mail_required;
 
         foreach ($version->dates as $vd) {
             $key = $vd->getRawOriginal('date_type');
@@ -339,6 +344,7 @@ class VersionEdit extends Component
         // throughout the e-payment feature, e.g. PaymentGatewayFactory).
         $versionEpaymentConfig = $version->versionEpaymentConfig;
         $this->epayment_student = $versionEpaymentConfig !== null && $versionEpaymentConfig->epayment_student;
+        $this->online_payment_required = $versionEpaymentConfig !== null && $versionEpaymentConfig->online_payment_required;
         $this->epayment_teacher = $versionEpaymentConfig !== null && $versionEpaymentConfig->epayment_teacher;
 
         $this->loadPaymentCredential((string) config('services.payments.environment', PaymentEnvironment::Sandbox->value));
@@ -418,6 +424,7 @@ class VersionEdit extends Component
     {
         $validated = $this->validate([
             'epayment_student' => ['boolean'],
+            'online_payment_required' => ['boolean'],
             'epayment_teacher' => ['boolean'],
         ]);
 
@@ -425,6 +432,8 @@ class VersionEdit extends Component
             ['version_id' => $this->version->id],
             [
                 'epayment_student' => $validated['epayment_student'],
+                // "Online only" means nothing unless teachers can pay online.
+                'online_payment_required' => $validated['epayment_teacher'] && $validated['online_payment_required'],
                 'epayment_teacher' => $validated['epayment_teacher'],
             ],
         );
@@ -604,6 +613,7 @@ class VersionEdit extends Component
         $validated = $this->validate([
             'membership_card' => ['boolean'],
             'membership_valid_thru' => ['nullable', 'date'],
+            'mail_required' => ['boolean'],
             'selected_county_ids' => ['array'],
             'selected_county_ids.*' => ['integer', 'exists:counties,id'],
             'birthday' => ['boolean'],
@@ -633,6 +643,7 @@ class VersionEdit extends Component
             'home_address' => $validated['home_address'],
             'shirt_size' => $validated['shirt_size'],
             'teacher_cell' => $validated['teacher_cell'],
+            'mail_required' => $validated['mail_required'],
         ]);
 
         $this->version->counties()->delete();

@@ -34,7 +34,7 @@ use Illuminate\Support\Collection;
     'height', 'home_address', 'judge_count',
     'max_registrants', 'max_upper_voice_registrants', 'audition_cap_per_school',
     'pitch_file_visibility',
-    'score_order', 'cutoff_strategy', 'results_released_at', 'share_results', 'shirt_size', 'teacher_cell', 'upload_type',
+    'score_order', 'cutoff_strategy', 'results_released_at', 'share_results', 'mail_required', 'shirt_size', 'teacher_cell', 'upload_type',
 ])]
 #[ObservedBy(VersionObserver::class)]
 class Version extends Model
@@ -63,6 +63,7 @@ class Version extends Model
             'height' => 'boolean',
             'home_address' => 'boolean',
             'share_results' => 'boolean',
+            'mail_required' => 'boolean',
             'shirt_size' => 'boolean',
             'teacher_cell' => 'boolean',
         ];
@@ -159,6 +160,19 @@ class Version extends Model
         return $this->getRawOriginal('status') === EventStatus::Sandbox->value
             && config('services.payments.environment') === PaymentEnvironment::Production->value
             && $this->eventEpaymentConfig()?->epaymentAccepted() === true;
+    }
+
+    /**
+     * Teachers must settle their balance online, not by check — shown to
+     * teachers wherever they see their balance. Informational only: managers
+     * can still record a manual payment as an exception. Never applies to
+     * student payments, and means nothing unless teachers can pay online.
+     */
+    public function onlinePaymentRequired(): bool
+    {
+        $config = $this->versionEpaymentConfig;
+
+        return $config !== null && $config->epayment_teacher && $config->online_payment_required;
     }
 
     public function epaymentStudentEnabled(): bool

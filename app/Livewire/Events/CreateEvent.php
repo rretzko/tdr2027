@@ -142,6 +142,8 @@ class CreateEvent extends Component
                 'shirt_size' => false,
                 'teacher_cell' => true,
                 'upload_type' => UploadType::None->value,
+                // PDF applications are usually mailed — same rule as the mail_required backfill.
+                'mail_required' => true,
             ]);
 
             $service->bootstrapEventManager(Auth::user(), $version);
@@ -155,7 +157,9 @@ class CreateEvent extends Component
 
         Flux::toast("{$event->name} has been created.");
 
-        $this->redirectRoute('events.show', ['event' => $event->id], navigate: true);
+        // First Version of a brand-new Event → the setup questions
+        // (docs/plans/version-readiness-setup-questions.md), which end on the checklist.
+        $this->redirectRoute('events.versions.setup-questions', ['version' => $version->id], navigate: true);
     }
 
     public function render(): View

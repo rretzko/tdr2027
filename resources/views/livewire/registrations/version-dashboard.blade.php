@@ -223,6 +223,12 @@
                  find it. Placed outside the search/filter empty-state check
                  below so an unrelated search/filter can't hide it. --}}
             <div id="group-payment" class="mb-4 space-y-4">
+                @if ($version->onlinePaymentRequired())
+                    <flux:callout icon="credit-card">
+                        <flux:callout.text>This event accepts online payment only — please pay your balance online, not by check.</flux:callout.text>
+                    </flux:callout>
+                @endif
+
                 @if ($unreconciledPayments->isNotEmpty())
                     <div class="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40 p-4">
                         <flux:heading size="xs" class="text-amber-800 dark:text-amber-300 mb-1">Your Unreconciled Payments</flux:heading>

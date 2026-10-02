@@ -9,6 +9,7 @@ use App\Models\School;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionEpaymentConfig;
 use App\Models\VersionFee;
 use App\Models\VersionMailToAddress;
 use App\Models\VersionMembershipRequirement;
@@ -128,6 +129,17 @@ test('renders the Mail-To page via the county-based Co-Registration Manager fall
 
 test('renders the Mail-To placeholder when no manager address is configured', function () {
     ['teacher' => $teacher, 'version' => $version, 'school' => $school] = makeEstimateFormPdfScenario();
+
+    actingAs($teacher->user);
+
+    get(route('registrations.estimate-form-pdf', [$version, $school]))
+        ->assertOk()
+        ->assertHeader('content-type', 'application/pdf');
+});
+
+test('renders when the event accepts online payment only', function () {
+    ['teacher' => $teacher, 'version' => $version, 'school' => $school] = makeEstimateFormPdfScenario();
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_teacher' => true, 'epayment_student' => false, 'online_payment_required' => true]);
 
     actingAs($teacher->user);
 

@@ -93,10 +93,30 @@ test('turning on online payments makes the vendor credential item required', fun
     expect(readinessStatus($version, 'event.epayment.credentials'))->toBe(ReadinessStatus::NotStarted);
 });
 
-test('postmark deadline only applies to PDF applications', function () {
-    $version = readinessVersion(['application_type' => ApplicationType::Pdf]);
+test('the postmark deadline and mail-to address apply when teachers mail materials, whatever the application type', function () {
+    $online = readinessVersion(['application_type' => ApplicationType::EApplication, 'mail_required' => true]);
 
-    expect(readinessStatus($version, 'version.dates.postmark_deadline'))->toBe(ReadinessStatus::NotStarted);
+    expect(readinessStatus($online, 'version.dates.postmark_deadline'))->toBe(ReadinessStatus::NotStarted)
+        ->and(readinessStatus($online, 'version.roles.mail_to'))->toBe(ReadinessStatus::NotStarted);
+});
+
+test('a PDF application with nothing mailed needs no postmark deadline or mail-to address', function () {
+    $paperInPerson = readinessVersion(['application_type' => ApplicationType::Pdf, 'mail_required' => false]);
+
+    expect(readinessStatus($paperInPerson, 'version.dates.postmark_deadline'))->toBe(ReadinessStatus::NotApplicable)
+        ->and(readinessStatus($paperInPerson, 'version.roles.mail_to'))->toBe(ReadinessStatus::NotApplicable);
+});
+
+test('cloning carries mail_required forward', function () {
+    $source = readinessVersion(['application_type' => ApplicationType::EApplication, 'mail_required' => true]);
+
+    $clone = app(VersionCloningService::class)->cloneFrom(
+        $source,
+        ['name' => 'Next year', 'short_name' => null, 'senior_class_of' => 2028],
+        User::factory()->create(),
+    );
+
+    expect($clone->fresh()->mail_required)->toBeTrue();
 });
 
 test('a date with a required end is in progress until the end is set', function () {

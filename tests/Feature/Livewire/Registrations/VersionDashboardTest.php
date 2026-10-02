@@ -1390,3 +1390,24 @@ test('a pending single-candidate payment does not surface as a pending group pay
         ->assertDontSee('Pending Payments')
         ->assertDontSee('Your Unreconciled Payments');
 });
+
+test('the dashboard tells teachers when the event accepts online payment only', function () {
+    $teacher = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+    inviteRegistrationTeacher($teacher, $version);
+    // The notice sits with Group Payment, which appears once the teacher has candidates.
+    actingAs($teacher->user);
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id, 'school_id' => $school->id]);
+    $notice = 'This event accepts online payment only';
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertDontSee($notice);
+
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_teacher' => true, 'epayment_student' => false, 'online_payment_required' => true]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version->fresh()])
+        ->assertSee($notice);
+});

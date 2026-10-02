@@ -187,6 +187,8 @@ class Index extends Component
                     'shirt_size' => false,
                     'teacher_cell' => true,
                     'upload_type' => UploadType::None->value,
+                    // PDF applications are usually mailed — same rule as the mail_required backfill.
+                    'mail_required' => true,
                 ]);
 
                 foreach (User::query()->whereKey($this->event_manager_ids)->get() as $manager) {

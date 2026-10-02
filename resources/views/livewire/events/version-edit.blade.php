@@ -351,6 +351,15 @@
                     </flux:field>
                 </div>
 
+                <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 space-y-2">
+                    <flux:heading size="sm">Mail</flux:heading>
+                    <flux:checkbox wire:model="mail_required" label="Teachers must mail physical materials to complete registration" />
+                    <flux:text size="sm" class="text-zinc-500">
+                        Signed applications, checks, membership cards, forms — even if the application itself is online.
+                        When checked, the setup checklist asks for a postmark deadline and a mail-to address.
+                    </flux:text>
+                </div>
+
                 <div>
                     <flux:heading size="base" class="mb-3">Optional Fields Collected at Registration</flux:heading>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -777,14 +786,23 @@
 
                     <div class="space-y-4">
                         <flux:checkbox
-                            wire:model="epayment_teacher"
-                            label="Teachers may pay electronically"
-                            description="Enables Pay Now on Candidate Detail and the group Pay for Selected action on the Version dashboard."
+                            wire:model.live="epayment_teacher"
+                            label="Teachers may pay their balance electronically"
+                            description="Enables Pay Now on Candidate Detail and the group Pay for Selected action on the Version dashboard. Otherwise teachers settle by check."
                         />
+                        @if ($epayment_teacher)
+                            <div class="pl-7">
+                                <flux:checkbox
+                                    wire:model="online_payment_required"
+                                    label="Online payment only — no checks"
+                                    description="Teachers are told on their dashboard and Estimate Form that this event accepts online payment only. You can still record a check or purchase order for an exception."
+                                />
+                            </div>
+                        @endif
                         <flux:checkbox
                             wire:model="epayment_student"
-                            label="Students may pay electronically"
-                            description="No consumer yet — StudentFolder.info is a separate, not-yet-built project. Safe to turn on ahead of it."
+                            label="Teachers may let their students pay online"
+                            description="Each teacher chooses on their registration dashboard whether their students can pay through StudentFolder.info. Student payments are optional and are credited toward the teacher's balance."
                         />
 
                         <flux:button variant="primary" wire:click="saveEpaymentFlags">Save E-Payment Settings</flux:button>

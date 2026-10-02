@@ -285,7 +285,7 @@ existing ones.
    gate. Items that would be ack-able show `NeedsReview` with a link.
 2. **Phase B:** `version_readiness_acknowledgements` plus "Looks right", clone
    behavior, and the Sandbox → Active gate.
-3. **Phase C:** shape interview, 8–10 plain-language questions shown when a
+3. **Phase C** (draft question set: `docs/plans/version-readiness-setup-questions.md`)**:** shape interview, 8–10 plain-language questions shown when a
    brand-new Event's first Version is created. Writes real field values
    (audition_type, upload_type, application_type, ensemble count, e-pay on/off,
    paper packet yes/no) and acks those items. Applicability does the pruning
@@ -480,3 +480,25 @@ context in one fixed batch of queries (`evaluate()` delegates to it, so there's 
 path), and `VersionRoleAssignmentService::assignmentsForVersions()` replaces 12 role
 queries per Version with one. Events Show progress bars on a 5-Version event dropped from
 ~175 queries to 26. A test asserts the query count doesn't grow with the number of Versions.
+
+**`mail_required` (2026-10-02):** new `versions.mail_required` boolean ("teachers must mail
+physical materials") now solely decides whether the postmark-deadline and mail-to items
+apply — previously tied to `application_type = pdf` / membership card, which missed
+online-application events that collect checks by mail. Backfilled from the old rule (local:
+16/16 Versions unchanged), editable on Configure → Requirements, copied on clone, and set
+`true` for new first Versions (PDF default). See `version-readiness-setup-questions.md` §2a.
+
+---
+
+## 11. Unscheduled to-dos (as of 2026-10-02)
+
+Not planned; pick up only when asked.
+
+- **Phase D — starter templates.** Anonymized template Versions cloned via
+  `VersionCloningService`, landing as `NeedsReview`. Waiting until there are real events
+  suitable to anonymize.
+- **Spotlight tour for the setup questions page** (`events.versions.setup-questions`), in the
+  same per-page engine as the checklist. Low priority — the page is short.
+- **Founder's create-event modal on `Events\Index`** doesn't redirect to the setup questions
+  (by design: the Founder isn't the one setting the event up). Revisit if the Founder starts
+  creating events on managers' behalf and wants to hand them straight into the questions.
