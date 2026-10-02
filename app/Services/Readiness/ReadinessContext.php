@@ -26,7 +26,7 @@ final readonly class ReadinessContext
     /**
      * @param  Collection<int, Ensemble>  $ensembles  with grades + voiceParts loaded
      * @param  Collection<int, ScoreCategory>  $rubric  resolved categories, with score_factors_count
-     * @param  Collection<string, Collection<int, User>>  $roles  version-scoped role name => holders
+     * @param  Collection<string, covariant Collection<int, User>>  $roles  version-scoped role name => holders (read-only)
      * @param  int  $invitedTeacherCount  invitations excluding the Version's own role holders
      * @param  Collection<string, VersionReadinessReview>  $reviews  keyed by item_key
      */

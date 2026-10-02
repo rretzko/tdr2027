@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Livewire\Auth\StudentRegister;
 use App\Livewire\Auth\TeacherRegister;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -45,6 +46,11 @@ test('student registration is silently dropped when the honeypot field is filled
 });
 
 test('registration submitted faster than a human is silently dropped', function () {
+    // Freeze the clock: the guard compares mount time to submit time, and the
+    // eight round trips below can exceed its 2-second threshold under
+    // --parallel load, making the "bot" look human.
+    Carbon::setTestNow(now());
+
     Livewire::test(TeacherRegister::class)
         ->set('first_name', 'Jane')
         ->set('last_name', 'Smith')

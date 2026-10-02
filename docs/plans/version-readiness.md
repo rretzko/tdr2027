@@ -474,3 +474,9 @@ and the below-md: cards. Auto-starts until dismissed via new
 `users.dismissed_readiness_orientation_at`. Fixed the same day: the credentials item now
 checks the raw `secret` ciphertext instead of decrypting it (a credential encrypted under
 another environment's APP_KEY threw "The MAC is invalid" on Events Show).
+
+**Batch evaluation (2026-10-02):** `VersionReadiness::evaluateMany()` builds every Version's
+context in one fixed batch of queries (`evaluate()` delegates to it, so there's one code
+path), and `VersionRoleAssignmentService::assignmentsForVersions()` replaces 12 role
+queries per Version with one. Events Show progress bars on a 5-Version event dropped from
+~175 queries to 26. A test asserts the query count doesn't grow with the number of Versions.

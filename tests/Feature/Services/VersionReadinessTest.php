@@ -22,6 +22,7 @@ use App\Models\VersionRoom;
 use App\Services\Readiness\ReadinessCatalog;
 use App\Services\Readiness\VersionReadiness;
 use App\Services\VersionCloningService;
+use App\Services\VersionRoleAssignmentService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -250,4 +251,63 @@ test('the credential check never decrypts the secret, so a credential encrypted 
     DB::table('event_epayment_configs')->where('id', $config->id)->update(['secret' => 'not-decryptable-here']);
 
     expect(readinessStatus($version, 'event.epayment.credentials'))->toBe(ReadinessStatus::Done);
+});
+
+test('batched role lookup matches the per-Version lookup, including role holders on other Versions', function () {
+    $versionA = readinessVersion();
+    $versionB = Version::factory()->create(['event_id' => $versionA->event_id, 'senior_class_of' => 2027]);
+    $both = User::factory()->create();
+    $onlyB = User::factory()->create();
+    grantVersionRole($both, $versionA, 'Event Manager');
+    grantVersionRole($both, $versionB, 'Registration Manager');
+    grantVersionRole($onlyB, $versionB, 'Tab Room Manager');
+
+    $roles = app(VersionRoleAssignmentService::class);
+    $batch = $roles->assignmentsForVersions([$versionA, $versionB]);
+
+    foreach ([$versionA, $versionB] as $version) {
+        $single = $roles->assignmentsForVersion($version);
+
+        expect($batch[$version->id]->keys()->all())->toBe($single->keys()->all());
+        foreach ($single as $role => $users) {
+            expect($batch[$version->id][$role]->pluck('id')->sort()->values()->all())
+                ->toBe($users->pluck('id')->sort()->values()->all(), "v{$version->id} {$role}");
+        }
+    }
+});
+
+test('evaluateMany gives each Version the same results as evaluating it alone', function () {
+    $configured = readinessConfiguredVersion();
+    $bare = Version::factory()->create(['event_id' => $configured->event_id, 'senior_class_of' => 2026]);
+    $readiness = app(VersionReadiness::class);
+
+    $batch = $readiness->evaluateMany([$configured->fresh(), $bare->fresh()]);
+
+    foreach ([$configured, $bare] as $version) {
+        $alone = $readiness->evaluate($version->fresh());
+        expect($batch[$version->id]->map(fn ($r) => [$r->status, $r->detail])->all())
+            ->toBe($alone->map(fn ($r) => [$r->status, $r->detail])->all());
+    }
+});
+
+test('evaluateMany uses a fixed number of queries however many Versions it evaluates', function () {
+    $first = readinessConfiguredVersion();
+    $readiness = app(VersionReadiness::class);
+
+    $countQueries = function (array $ids) use ($readiness): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $readiness->evaluateMany(Version::whereIn('id', $ids)->get());
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $count;
+    };
+
+    $one = $countQueries([$first->id]);
+
+    $more = Version::factory()->count(4)->create(['event_id' => $first->event_id, 'senior_class_of' => 2027]);
+    $five = $countQueries([$first->id, ...$more->modelKeys()]);
+
+    expect($five)->toBe($one);
 });

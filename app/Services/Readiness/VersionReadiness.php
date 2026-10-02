@@ -9,15 +9,18 @@ use App\Enums\ReadinessPhase;
 use App\Enums\ReadinessReviewState;
 use App\Enums\ReadinessStatus;
 use App\Enums\VersionDateType;
+use App\Models\Event;
 use App\Models\ScoreCategory;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionInvitation;
 use App\Models\VersionMailToAddress;
 use App\Models\VersionReadinessReview;
 use App\Services\VersionRoleAssignmentService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 
 /**
@@ -55,10 +58,25 @@ class VersionReadiness
      */
     public function evaluate(Version $version): Collection
     {
-        $context = $this->context($version);
+        return $this->evaluateMany([$version])->get($version->id) ?? collect();
+    }
 
-        return collect($this->items())
-            ->mapWithKeys(fn (ReadinessItem $item): array => [$item->key => $this->resolve($item, $context)]);
+    /**
+     * evaluate() for several Versions at once, with a fixed number of
+     * queries however many Versions there are (Events Show renders one
+     * progress bar per Version). evaluate() delegates here, so there is a
+     * single code path.
+     *
+     * @param  iterable<Version>  $versions
+     * @return Collection<int, Collection<string, ReadinessResult>> keyed by version id
+     */
+    public function evaluateMany(iterable $versions): Collection
+    {
+        $items = $this->items();
+
+        return $this->contexts(new EloquentCollection(collect($versions)->all()))
+            ->map(fn (ReadinessContext $context): Collection => collect($items)
+                ->mapWithKeys(fn (ReadinessItem $item): array => [$item->key => $this->resolve($item, $context)]));
     }
 
     /**
@@ -224,9 +242,17 @@ class VersionReadiness
         );
     }
 
-    private function context(Version $version): ReadinessContext
+    /**
+     * @param  EloquentCollection<int, Version>  $versions
+     * @return Collection<int, ReadinessContext> keyed by version id
+     */
+    private function contexts(EloquentCollection $versions): Collection
     {
-        $version->loadMissing([
+        if ($versions->isEmpty()) {
+            return collect();
+        }
+
+        $versions->loadMissing([
             'event.ensembles.grades',
             'event.ensembles.voiceParts',
             'dates', 'fees', 'membershipRequirement', 'counties', 'classOfs',
@@ -234,48 +260,86 @@ class VersionReadiness
             'versionEpaymentConfig', 'rooms.roomJudges', 'readinessReviews',
         ]);
 
-        $roles = $this->roles->assignmentsForVersion($version);
+        $versionIds = $versions->modelKeys();
+        $roles = $this->roles->assignmentsForVersions($versions);
 
-        $roleHolderTeacherIds = Teacher::query()
-            ->whereIn('user_id', $roles->flatten()->pluck('id')->unique())
-            ->pluck('id');
+        // user id => teacher id, for every role holder on any of these Versions.
+        $teacherIdsByUser = Teacher::query()
+            ->whereIn('user_id', $roles->flatten(2)->pluck('id')->unique())
+            ->pluck('id', 'user_id');
 
-        $registrationManagerIds = $roles->get('Registration Manager', collect())->pluck('id');
+        // Invitations, minus each Version's own role holders (the Event
+        // Manager is auto-invited, which shouldn't count as "teachers invited").
+        $invitationTotals = VersionInvitation::query()
+            ->whereIn('version_id', $versionIds)
+            ->selectRaw('version_id, count(*) as aggregate')
+            ->groupBy('version_id')
+            ->pluck('aggregate', 'version_id');
+        $roleHolderInvitations = VersionInvitation::query()
+            ->whereIn('version_id', $versionIds)
+            ->whereIn('teacher_id', $teacherIdsByUser->values())
+            ->get(['version_id', 'teacher_id']);
 
-        return new ReadinessContext(
-            version: $version,
-            ensembles: $version->event->ensembles,
-            rubric: $this->rubric($version),
-            roles: $roles,
-            epaymentConfig: $version->eventEpaymentConfig(),
-            invitedTeacherCount: $version->invitations()->whereNotIn('teacher_id', $roleHolderTeacherIds)->count(),
-            registrationManagerHasMailTo: $registrationManagerIds->isNotEmpty()
-                && VersionMailToAddress::query()
-                    ->where('version_id', $version->id)
-                    ->whereIn('user_id', $registrationManagerIds)
-                    ->exists(),
-            reviews: $version->readinessReviews->keyBy('item_key'),
-        );
+        $mailTo = VersionMailToAddress::query()
+            ->whereIn('version_id', $versionIds)
+            ->get(['version_id', 'user_id']);
+
+        $rubrics = $this->rubrics($versions);
+
+        $epaymentConfigs = $versions->pluck('event')->unique('id')
+            ->mapWithKeys(fn (Event $event): array => [$event->id => $event->activeEpaymentConfig()]);
+
+        return $versions->mapWithKeys(function (Version $version) use ($roles, $teacherIdsByUser, $invitationTotals, $roleHolderInvitations, $mailTo, $rubrics, $epaymentConfigs): array {
+            $versionRoles = $roles->get($version->id, collect());
+            $holderTeacherIds = $versionRoles->flatten()->pluck('id')
+                ->map(fn (int $userId): ?int => $teacherIdsByUser->get($userId))
+                ->filter()
+                ->all();
+            $registrationManagerIds = $versionRoles->get('Registration Manager', collect())->pluck('id')->all();
+
+            $ownInvitations = $roleHolderInvitations
+                ->filter(fn (VersionInvitation $i): bool => (int) $i->version_id === $version->id && in_array((int) $i->teacher_id, $holderTeacherIds, true))
+                ->count();
+
+            return [$version->id => new ReadinessContext(
+                version: $version,
+                ensembles: $version->event->ensembles,
+                rubric: $rubrics->get($version->id, collect()),
+                roles: $versionRoles,
+                epaymentConfig: $epaymentConfigs->get($version->event_id),
+                invitedTeacherCount: (int) $invitationTotals->get($version->id, 0) - $ownInvitations,
+                registrationManagerHasMailTo: $mailTo->contains(
+                    fn (VersionMailToAddress $m): bool => (int) $m->version_id === $version->id && in_array((int) $m->user_id, $registrationManagerIds, true),
+                ),
+                reviews: $version->readinessReviews->keyBy('item_key'),
+            )];
+        });
     }
 
     /**
-     * Same all-or-nothing resolution as Version::availableScoreCategories(),
-     * with factor counts attached.
+     * Same all-or-nothing resolution as Version::availableScoreCategories()
+     * (a Version's own categories if it has any, else its Event's defaults),
+     * with factor counts attached — two queries for any number of Versions.
      *
-     * @return Collection<int, ScoreCategory>
+     * @param  EloquentCollection<int, Version>  $versions
+     * @return Collection<int, covariant Collection<int, ScoreCategory>> keyed by version id
      */
-    private function rubric(Version $version): Collection
+    private function rubrics(EloquentCollection $versions): Collection
     {
-        $own = ScoreCategory::query()->where('version_id', $version->id)->withCount('scoreFactors')->get();
-
-        if ($own->isNotEmpty()) {
-            return $own;
-        }
-
-        return ScoreCategory::query()
-            ->where('event_id', $version->event_id)
-            ->whereNull('version_id')
+        $categories = ScoreCategory::query()
+            ->where(fn ($query) => $query
+                ->whereIn('version_id', $versions->modelKeys())
+                ->orWhere(fn ($q) => $q->whereIn('event_id', $versions->pluck('event_id')->unique())->whereNull('version_id')))
             ->withCount('scoreFactors')
+            ->orderBy('order_by')
             ->get();
+
+        return $versions->mapWithKeys(function (Version $version) use ($categories): array {
+            $own = $categories->filter(fn (ScoreCategory $c): bool => (int) $c->version_id === $version->id)->values();
+
+            return [$version->id => $own->isNotEmpty()
+                ? $own
+                : $categories->filter(fn (ScoreCategory $c): bool => $c->version_id === null && (int) $c->event_id === $version->event_id)->values()];
+        });
     }
 }

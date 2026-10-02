@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionDate;
 use App\Models\VersionInvitation;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Support\Config;
@@ -559,6 +560,42 @@ final class VersionRoleAssignmentService
             fn (): Collection => collect(self::VERSION_SCOPED_ROLES)
                 ->mapWithKeys(fn (string $role): array => [$role => User::role($role)->get()]),
         );
+    }
+
+    /**
+     * assignmentsForVersion() for many Versions in a single query — same
+     * shape per Version, same team scoping (model_has_roles.version_id is the
+     * Version; a role row is either global or that Version's own). Used by
+     * VersionReadiness so Events Show's per-Version progress bars don't cost
+     * 12 role queries each.
+     *
+     * @param  iterable<Version>  $versions
+     * @return Collection<int, Collection<string, EloquentCollection<int, User>>> keyed by version id
+     */
+    public function assignmentsForVersions(iterable $versions): Collection
+    {
+        $versionIds = collect($versions)->map(fn (Version $version): int => $version->id)->all();
+
+        $rows = User::query()
+            ->select('users.*', 'model_has_roles.version_id as assignment_version_id', 'roles.name as assignment_role')
+            ->join('model_has_roles', function ($join): void {
+                $join->on('model_has_roles.model_id', '=', 'users.id')
+                    ->where('model_has_roles.model_type', (new User)->getMorphClass());
+            })
+            ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
+            ->whereIn('model_has_roles.version_id', $versionIds)
+            ->whereIn('roles.name', self::VERSION_SCOPED_ROLES)
+            ->where(fn ($query) => $query->whereNull('roles.version_id')->orWhereColumn('roles.version_id', 'model_has_roles.version_id'))
+            ->get();
+
+        return collect($versionIds)->mapWithKeys(fn (int $versionId): array => [
+            $versionId => collect(self::VERSION_SCOPED_ROLES)->mapWithKeys(fn (string $role): array => [
+                $role => $rows
+                    ->filter(fn (User $user): bool => (int) $user->getAttribute('assignment_version_id') === $versionId
+                        && $user->getAttribute('assignment_role') === $role)
+                    ->values(),
+            ]),
+        ]);
     }
 
     /**

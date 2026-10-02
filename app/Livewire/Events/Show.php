@@ -276,10 +276,11 @@ class Show extends Component
             ),
             // Setup-progress bar per Version (version-readiness.md) — skipped
             // for Closed Versions, whose setup no longer matters.
-            'versionReadiness' => $versions
+            // evaluateMany(): one batch of queries for all Versions, not ~35 each.
+            'versionReadiness' => $readiness->evaluateMany($versions
                 ->filter(fn (Version $version): bool => $version->getRawOriginal('status') !== EventStatus::Closed->value
-                    && $service->canManageReadiness(Auth::user(), $version))
-                ->mapWithKeys(fn (Version $version): array => [$version->id => $readiness->summary($readiness->evaluate($version))]),
+                    && $service->canManageReadiness(Auth::user(), $version)))
+                ->map(fn ($results) => $readiness->summary($results)),
         ]);
     }
 
