@@ -448,8 +448,13 @@ Existing `VersionEditTest` cases that set Active incidentally were switched to
 Sandbox/Inactive.
 
 **Known gaps / follow-ups**
-- Registration Managers can view the checklist, but most deep links go to VersionEdit,
-  which is Event-Manager-only (403 for them).
+- ~~Registration Managers can view the checklist, but most deep links go to VersionEdit,
+  which is Event-Manager-only (403 for them).~~ **Resolved 2026-10-02:** each item has a
+  `ReadinessEditor` (EventManager / AuditionEnvironment / RegistrationManager) mirroring its
+  destination page's gate. For a viewer who can't edit it, Open (with a lock icon), the
+  question link, and Looks right stay visible but open an "Ask an Event Manager" modal listing
+  the event's Event Managers; `acknowledge()` enforces the same check server-side. A test
+  asserts every item's editor matches its route's gate.
 - Rooms / Rubric / Pitch Files / Invitations screens don't call `markSectionReviewed`;
   cloned year-sensitive items there need "Looks right".
 - Local DB: `2026_09_21_143207_add_audition_cap_per_school_to_versions_table` is unrecorded

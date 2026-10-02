@@ -46,10 +46,17 @@
             {{-- Cards below md: --}}
             <div class="md:hidden space-y-3">
                 @foreach ($group['results'] as $result)
-                    @php $isTourRow = $result->item->key === $tourFirstKey; @endphp
+                    @php
+                        $isTourRow = $result->item->key === $tourFirstKey;
+                        $canEdit = $editable[$result->item->editor->value];
+                    @endphp
                     <div wire:key="card-{{ $result->item->key }}" class="rounded-lg border p-4 border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">
                         <div class="flex items-start justify-between gap-3">
-                            <a @if ($isTourRow) id="tour-decision-mobile" @endif href="{{ $result->url }}" wire:navigate class="font-medium text-zinc-900 dark:text-zinc-100 hover:underline">{{ $result->item->question }}</a>
+                            @if ($canEdit)
+                                <a @if ($isTourRow) id="tour-decision-mobile" @endif href="{{ $result->url }}" wire:navigate class="font-medium text-zinc-900 dark:text-zinc-100 hover:underline">{{ $result->item->question }}</a>
+                            @else
+                                <button type="button" @if ($isTourRow) id="tour-decision-mobile" @endif wire:click="explainLocked('{{ $result->item->key }}')" class="text-left font-medium text-zinc-900 dark:text-zinc-100 hover:underline">{{ $result->item->question }}</button>
+                            @endif
                             <flux:badge :id="$isTourRow ? 'tour-status-mobile' : null" size="sm" color="{{ $result->status->color() }}" class="shrink-0">{{ $result->status->label() }}</flux:badge>
                         </div>
                         <flux:text size="sm" class="text-zinc-500 mt-1">{{ $result->item->why }}</flux:text>
@@ -57,7 +64,11 @@
                             <flux:text :id="$isTourRow ? 'tour-current-mobile' : null" size="sm" class="mt-1 text-zinc-700 dark:text-zinc-300">{{ $result->detail }}</flux:text>
                         @endif
                         <div class="flex flex-wrap gap-2 mt-3">
-                            <flux:button :id="$isTourRow ? 'tour-open-mobile' : null" size="xs" href="{{ $result->url }}" wire:navigate>Open</flux:button>
+                            @if ($canEdit)
+                                <flux:button :id="$isTourRow ? 'tour-open-mobile' : null" size="xs" href="{{ $result->url }}" wire:navigate>Open</flux:button>
+                            @else
+                                <flux:button :id="$isTourRow ? 'tour-open-mobile' : null" size="xs" icon="lock-closed" wire:click="explainLocked('{{ $result->item->key }}')">Open</flux:button>
+                            @endif
                             @if ($result->canAcknowledge)
                                 <flux:button :id="$result->item->key === $tourAckKey ? 'tour-ack-mobile' : null" size="xs" variant="primary" icon="check" wire:click="acknowledge('{{ $result->item->key }}')">Looks right</flux:button>
                             @endif
@@ -80,6 +91,7 @@
                     </flux:table.columns>
                     <flux:table.rows>
                         @foreach ($group['results'] as $result)
+                            @php $canEdit = $editable[$result->item->editor->value]; @endphp
                             <flux:table.row wire:key="row-{{ $result->item->key }}">
                                 <flux:table.cell class="align-top">
                                     <div class="flex flex-col items-start gap-1">
@@ -90,7 +102,11 @@
                                     </div>
                                 </flux:table.cell>
                                 <flux:table.cell class="align-top !whitespace-normal">
-                                    <a href="{{ $result->url }}" wire:navigate class="font-medium text-zinc-900 dark:text-zinc-100 hover:underline">{{ $result->item->question }}</a>
+                                    @if ($canEdit)
+                                        <a href="{{ $result->url }}" wire:navigate class="font-medium text-zinc-900 dark:text-zinc-100 hover:underline">{{ $result->item->question }}</a>
+                                    @else
+                                        <button type="button" wire:click="explainLocked('{{ $result->item->key }}')" class="text-left font-medium text-zinc-900 dark:text-zinc-100 hover:underline">{{ $result->item->question }}</button>
+                                    @endif
                                     <div class="text-sm text-zinc-500 mt-0.5">{{ $result->item->why }}</div>
                                 </flux:table.cell>
                                 <flux:table.cell class="align-top !whitespace-normal text-sm text-zinc-700 dark:text-zinc-300">
@@ -101,7 +117,11 @@
                                         @if ($result->canAcknowledge)
                                             <flux:button :id="$result->item->key === $tourAckKey ? 'tour-ack-desktop' : null" size="xs" variant="primary" icon="check" wire:click="acknowledge('{{ $result->item->key }}')">Looks right</flux:button>
                                         @endif
-                                        <flux:button :id="$result->item->key === $tourFirstKey ? 'tour-open-desktop' : null" size="xs" href="{{ $result->url }}" wire:navigate>Open</flux:button>
+                                        @if ($canEdit)
+                                            <flux:button :id="$result->item->key === $tourFirstKey ? 'tour-open-desktop' : null" size="xs" href="{{ $result->url }}" wire:navigate>Open</flux:button>
+                                        @else
+                                            <flux:button :id="$result->item->key === $tourFirstKey ? 'tour-open-desktop' : null" size="xs" icon="lock-closed" wire:click="explainLocked('{{ $result->item->key }}')">Open</flux:button>
+                                        @endif
                                     </div>
                                 </flux:table.cell>
                             </flux:table.row>
@@ -115,6 +135,44 @@
     @if ($hiddenCount > 0 || $showNotApplicable)
         <flux:switch wire:model.live="showNotApplicable" label="Show {{ $hiddenCount }} {{ \Illuminate\Support\Str::plural('item', $hiddenCount) }} that don't apply to this event" />
     @endif
+
+    {{-- "Who can change this" — shown instead of a 403 when the viewer's
+         role can't edit the setting behind an item (ReadinessEditor). --}}
+    <flux:modal name="readiness-locked" class="md:w-[28rem]">
+        @if ($lockedItem)
+            <div class="space-y-4">
+                <div>
+                    <flux:heading size="lg">Ask an Event Manager</flux:heading>
+                    <flux:text class="mt-1">
+                        <span class="font-medium text-zinc-800 dark:text-zinc-200">{{ $lockedItem->question }}</span>
+                    </flux:text>
+                    <flux:text size="sm" class="mt-2 text-zinc-500">
+                        This setting can only be changed or confirmed by {{ $lockedItem->editor->description() }}.
+                        You can follow its progress here; reach out to them to change it.
+                    </flux:text>
+                </div>
+
+                @if ($eventManagers->isNotEmpty())
+                    <ul class="space-y-2">
+                        @foreach ($eventManagers as $manager)
+                            <li class="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+                                <span class="font-medium text-zinc-800 dark:text-zinc-200">{{ $manager->name }}</span>
+                                <a href="mailto:{{ $manager->email }}" class="text-sky-700 dark:text-sky-400 hover:underline break-all">{{ $manager->email }}</a>
+                            </li>
+                        @endforeach
+                    </ul>
+                @else
+                    <flux:text size="sm" class="text-zinc-500">No Event Manager is assigned to this event yet.</flux:text>
+                @endif
+
+                <div class="flex justify-end">
+                    <flux:modal.close>
+                        <flux:button variant="primary">Got it</flux:button>
+                    </flux:modal.close>
+                </div>
+            </div>
+        @endif
+    </flux:modal>
     {{-- Spotlight tour — same hand-rolled engine as Events Show
          (resources/views/livewire/events/show.blade.php), minus tab
          switching. Steps resolve to whichever of their ids is visible, so the
@@ -215,7 +273,7 @@
                 { ids: ['tour-ack-desktop', 'tour-ack-mobile', 'tour-col-status', 'tour-status-mobile'], title: 'Looks right',
                   body: 'Confirms a setting you\u2019ve checked and are happy with as it stands — a default you want to keep, or a value carried over from last year — and marks it Done. On an optional item with nothing set, it means \u201cwe don\u2019t use this.\u201d It only appears where confirming makes sense; required information still has to be entered. Saving a tab on the Configure page also counts as reviewing that tab\u2019s items.' },
                 { ids: ['tour-open-desktop', 'tour-open-mobile'], title: 'Open',
-                  body: 'Takes you to the exact page and tab where this decision is made. Make your change there and come back — the checklist updates itself.' }
+                  body: 'Takes you to the exact page and tab where this decision is made. Make your change there and come back — the checklist updates itself. If your role can’t change a setting, Open shows a lock and tells you who can.' }
             ];
 
             var activeSteps = [];

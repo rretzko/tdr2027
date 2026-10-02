@@ -29,6 +29,14 @@ class VersionReadinessChecklist extends Component
     #[Url(as: 'hidden')]
     public bool $showNotApplicable = false;
 
+    /**
+     * The item whose setting this viewer can't change, shown in the
+     * "who can change this" modal. Guarded-action pattern: Open / Looks
+     * right stay visible for every viewer and explain on click, rather than
+     * being hidden or leading to a 403.
+     */
+    public ?string $lockedKey = null;
+
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
     {
         abort_unless($roles->canManageReadiness(Auth::user(), $version), 403);
@@ -43,6 +51,12 @@ class VersionReadinessChecklist extends Component
         $result = $readiness->evaluate($this->version->fresh())->get($key);
         abort_if($result === null, 404);
 
+        if (! $readiness->editorAccess(Auth::user(), $this->version)[$result->item->editor->value]) {
+            $this->explainLocked($key);
+
+            return;
+        }
+
         if (! $result->canAcknowledge) {
             Flux::toast(text: 'That item needs to be set up before it can be confirmed.', variant: 'warning');
 
@@ -52,6 +66,12 @@ class VersionReadinessChecklist extends Component
         $readiness->acknowledge($this->version, $key, Auth::user());
 
         Flux::toast(text: 'Marked as reviewed: '.$result->item->question, variant: 'success');
+    }
+
+    public function explainLocked(string $key): void
+    {
+        $this->lockedKey = $key;
+        $this->modal('readiness-locked')->show();
     }
 
     /**
@@ -86,6 +106,9 @@ class VersionReadinessChecklist extends Component
             'dueDates' => $readiness->dueDates($this->version),
             'hiddenCount' => $hiddenCount,
             'canConfigure' => $roles->canManageEvent(Auth::user(), $this->version->event),
+            'editable' => $readiness->editorAccess(Auth::user(), $this->version),
+            'lockedItem' => $this->lockedKey !== null ? $readiness->item($this->lockedKey) : null,
+            'eventManagers' => $this->lockedKey !== null ? $roles->eventManagersForEvent($this->version->event) : collect(),
             // Tour anchors: the first visible row, and the first row offering
             // "Looks right" (null when nothing is reviewable — the tour then
             // explains the button against the Status column instead).

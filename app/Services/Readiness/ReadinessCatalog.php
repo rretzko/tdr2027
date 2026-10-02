@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Readiness;
 
 use App\Enums\AuditionType;
+use App\Enums\ReadinessEditor;
 use App\Enums\ReadinessPhase;
 use App\Enums\ReadinessStatus;
 use App\Enums\ScoreOrder;
@@ -142,6 +143,7 @@ final class ReadinessCatalog
                     : null,
                 acknowledgeable: true,
                 covers: ['score_categories.description', 'score_factors.description'],
+                editor: ReadinessEditor::AuditionEnvironment,
             ),
         ];
     }
@@ -445,6 +447,7 @@ final class ReadinessCatalog
                 acknowledgeable: true,
                 yearSensitive: true,
                 covers: ['co_registration_manager_counties.county_id'],
+                editor: ReadinessEditor::RegistrationManager,
             ),
         ];
     }
@@ -482,6 +485,7 @@ final class ReadinessCatalog
                 detail: fn (ReadinessContext $c): string => $c->version->rooms->count().' '.str('room')->plural($c->version->rooms->count()),
                 yearSensitive: true,
                 covers: ['version_rooms.name', 'version_rooms.tolerance'],
+                editor: ReadinessEditor::AuditionEnvironment,
             ),
             new ReadinessItem(
                 key: 'version.room_judges',
@@ -494,6 +498,7 @@ final class ReadinessCatalog
                 detail: fn (ReadinessContext $c): string => self::staffedRooms($c).' of '.$c->version->rooms->count().' rooms fully staffed',
                 yearSensitive: true,
                 covers: ['room_judges.user_id'],
+                editor: ReadinessEditor::AuditionEnvironment,
             ),
             new ReadinessItem(
                 key: 'version.roles.tab_room',

@@ -6,6 +6,7 @@ use App\Enums\ApplicationType;
 use App\Enums\AuditionType;
 use App\Enums\EventStatus;
 use App\Enums\PitchFileVisibility;
+use App\Enums\ReadinessEditor;
 use App\Enums\ReadinessStatus;
 use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
@@ -14,8 +15,10 @@ use App\Livewire\Events\VersionEdit;
 use App\Livewire\Events\VersionReadinessChecklist;
 use App\Models\User;
 use App\Models\Version;
+use App\Services\Readiness\ReadinessCatalog;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 
@@ -217,4 +220,69 @@ test('the tour auto-starts until dismissed, and dismissing records it', function
     Livewire::actingAs($user->fresh())
         ->test(VersionReadinessChecklist::class, ['version' => $version])
         ->assertSeeHtml('data-auto-start="0"');
+});
+
+test('every readiness item\'s editor matches the gate on the page its Open link leads to', function () {
+    $version = readinessVersion();
+    $expected = [
+        'events.show' => ReadinessEditor::EventManager,
+        'events.versions.edit' => ReadinessEditor::EventManager,
+        'events.versions.invitations' => ReadinessEditor::EventManager,
+        'events.versions.pitch-files' => ReadinessEditor::EventManager,
+        'events.versions.rooms' => ReadinessEditor::AuditionEnvironment,
+        'events.versions.scoring-rubric' => ReadinessEditor::AuditionEnvironment,
+        'events.versions.co-registration-managers' => ReadinessEditor::RegistrationManager,
+    ];
+
+    foreach (ReadinessCatalog::items() as $item) {
+        $route = app('router')->getRoutes()->match(Request::create($item->urlFor($version)))->getName();
+
+        expect(array_key_exists($route, $expected))->toBeTrue("{$item->key} links to unmapped route {$route}");
+        expect($item->editor)->toBe($expected[$route], "{$item->key} ({$route})");
+    }
+});
+
+test('a Registration Manager gets a lock and an explanation, not a 403, for Event-Manager-only settings', function () {
+    $version = readinessVersion();
+    $eventManager = User::factory()->create(['first_name' => 'Pat', 'last_name' => 'Conductor']);
+    grantVersionRole($eventManager, $version, 'Event Manager');
+    $registrationManager = User::factory()->create();
+    grantVersionRole($registrationManager, $version, 'Registration Manager');
+
+    Livewire::actingAs($registrationManager)
+        ->test(VersionReadinessChecklist::class, ['version' => $version])
+        // Rooms are editable by a Registration Manager — still a real link.
+        ->assertSeeHtml('href="'.route('events.versions.rooms', $version).'"')
+        // Configure is not — no link to it at all.
+        ->assertDontSeeHtml('href="'.route('events.versions.edit', ['version' => $version, 'tab' => 'fees']).'"')
+        ->call('explainLocked', 'version.fees')
+        ->assertSet('lockedKey', 'version.fees')
+        ->assertSee('Ask an Event Manager')
+        ->assertSee($eventManager->email);
+});
+
+test('an Event Manager sees real links for every item', function () {
+    $version = readinessVersion();
+    $user = User::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionReadinessChecklist::class, ['version' => $version])
+        ->assertSeeHtml('href="'.route('events.versions.edit', ['version' => $version, 'tab' => 'fees']).'"')
+        ->assertDontSeeHtml('explainLocked(');
+});
+
+test('a Registration Manager cannot confirm an Event-Manager-only item, but can confirm one they own', function () {
+    $version = readinessVersion();
+    $user = User::factory()->create();
+    grantVersionRole($user, $version, 'Registration Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionReadinessChecklist::class, ['version' => $version])
+        ->call('acknowledge', 'version.caps')
+        ->assertSet('lockedKey', 'version.caps')
+        ->call('acknowledge', 'version.roles.co_registration');
+
+    expect(readinessStatus($version, 'version.caps'))->toBe(ReadinessStatus::NeedsReview)
+        ->and(readinessStatus($version, 'version.roles.co_registration'))->toBe(ReadinessStatus::Done);
 });

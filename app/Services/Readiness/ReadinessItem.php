@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Readiness;
 
+use App\Enums\ReadinessEditor;
 use App\Enums\ReadinessPhase;
 use App\Enums\ReadinessStatus;
 use App\Models\Version;
@@ -27,6 +28,7 @@ final readonly class ReadinessItem
      * @param  bool  $yearSensitive  starts as review-required on a cloned Version (§9a Q4)
      * @param  ?string  $section  VersionEdit tab whose save counts as reviewing this item
      * @param  list<string>  $covers  "table.column" fields this item accounts for (coverage test)
+     * @param  ReadinessEditor  $editor  who may change the setting — must match the gate on $url's page
      */
     public function __construct(
         public string $key,
@@ -42,6 +44,7 @@ final readonly class ReadinessItem
         public bool $yearSensitive = false,
         public ?string $section = null,
         public array $covers = [],
+        public ReadinessEditor $editor = ReadinessEditor::EventManager,
     ) {}
 
     public function isApplicable(ReadinessContext $context): bool

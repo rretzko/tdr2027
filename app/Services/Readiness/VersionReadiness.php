@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Readiness;
 
+use App\Enums\ReadinessEditor;
 use App\Enums\ReadinessPhase;
 use App\Enums\ReadinessReviewState;
 use App\Enums\ReadinessStatus;
@@ -130,6 +131,21 @@ class VersionReadiness
             ReadinessPhase::BeforeRegistration->value => $teacher,
             ReadinessPhase::BeforeAuditions->value => $start(VersionDateType::Adjudication),
             ReadinessPhase::BeforeResults->value => null,
+        ];
+    }
+
+    /**
+     * Which kinds of readiness item $user may change on $version, keyed by
+     * ReadinessEditor value — evaluated once per page, not per item.
+     *
+     * @return array<string, bool>
+     */
+    public function editorAccess(User $user, Version $version): array
+    {
+        return [
+            ReadinessEditor::EventManager->value => $this->roles->canManageEvent($user, $version->event),
+            ReadinessEditor::AuditionEnvironment->value => $this->roles->canManageAuditionEnvironment($user, $version),
+            ReadinessEditor::RegistrationManager->value => $this->roles->canManageCoRegistrationManagers($user, $version),
         ];
     }
 
