@@ -87,6 +87,16 @@ function makeFounder(): User
         ?? User::factory()->create(['email' => 'rick@mfrholdings.com']);
 }
 
+/**
+ * Alias of makeFounder(), kept for the Founder test files that use this
+ * name. Formerly declared inside ImpersonateTest.php, which left it
+ * undefined in --parallel workers that never loaded that file.
+ */
+function makeFounderUser(): User
+{
+    return makeFounder();
+}
+
 /*
 | Version readiness fixtures (docs/plans/version-readiness.md) — shared by
 | the service and Livewire readiness tests. Tests using these should freeze

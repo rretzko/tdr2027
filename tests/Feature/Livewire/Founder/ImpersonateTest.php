@@ -13,14 +13,6 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-function makeFounderUser(): User
-{
-    // rick@mfrholdings.com may already exist from seeded data — reuse it rather
-    // than colliding with the unique email constraint.
-    return User::where('email', 'rick@mfrholdings.com')->first()
-        ?? User::factory()->create(['email' => 'rick@mfrholdings.com']);
-}
-
 test('a non-founder cannot view the impersonate page', function () {
     $user = User::factory()->create();
 
