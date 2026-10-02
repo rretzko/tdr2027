@@ -9,6 +9,7 @@ use App\Enums\ReadinessEditor;
 use App\Enums\ReadinessPhase;
 use App\Enums\ReadinessStatus;
 use App\Enums\ScoreOrder;
+use App\Enums\TeacherPayments;
 use App\Enums\UploadType;
 use App\Enums\VersionDateType;
 use App\Models\Ensemble;
@@ -205,9 +206,9 @@ final class ReadinessCatalog
             self::dateItem(
                 VersionDateType::PostmarkDeadline,
                 $phase,
-                'When must paper applications be postmarked?',
-                'The deadline is printed on every PDF application.',
-                applicable: fn (ReadinessContext $c): bool => $c->isPdfApplication(),
+                'When must mailed materials be postmarked?',
+                'Teachers mail paperwork to complete registration; this is their deadline (also printed on PDF applications).',
+                applicable: fn (ReadinessContext $c): bool => $c->mailRequired(),
             ),
             new ReadinessItem(
                 key: 'version.dates.other',
@@ -387,15 +388,15 @@ final class ReadinessCatalog
             new ReadinessItem(
                 key: 'version.epayment.decision',
                 phase: $phase,
-                question: 'Will teachers or students pay online?',
-                why: 'Online payment is optional; turning it on requires a connected Square or PayPal account.',
+                question: 'How do teachers and students pay?',
+                why: 'Teachers settle their balance online and/or by check; each teacher may also let their students pay online. Online payment needs a connected Square or PayPal account.',
                 resolve: fn (ReadinessContext $c): ReadinessStatus => ReadinessStatus::NeedsReview,
                 url: self::editTab('payments'),
-                detail: fn (ReadinessContext $c): string => $c->epaymentEnabled() ? 'Online payments on' : 'Online payments off',
+                detail: fn (ReadinessContext $c): string => self::paymentSummary($c),
                 blocking: false,
                 acknowledgeable: true,
                 section: 'payments',
-                covers: ['version_epayment_configs.epayment_student', 'version_epayment_configs.epayment_teacher'],
+                covers: ['version_epayment_configs.epayment_student', 'version_epayment_configs.epayment_teacher', 'version_epayment_configs.online_payment_required'],
             ),
             new ReadinessItem(
                 key: 'event.epayment.credentials',
@@ -434,10 +435,10 @@ final class ReadinessCatalog
                 why: 'The mailing address is printed on every estimate form.',
                 resolve: fn (ReadinessContext $c): ReadinessStatus => $c->registrationManagerHasMailTo ? ReadinessStatus::Done : ReadinessStatus::NotStarted,
                 url: self::editTab('roles'),
-                applicable: fn (ReadinessContext $c): bool => $c->isPdfApplication() || $c->membershipCardRequired(),
+                applicable: fn (ReadinessContext $c): bool => $c->mailRequired(),
                 yearSensitive: true,
                 section: 'roles',
-                covers: ['version_mail_to_addresses.address_line1'],
+                covers: ['version_mail_to_addresses.address_line1', 'versions.mail_required'],
             ),
             new ReadinessItem(
                 key: 'version.roles.co_registration',
@@ -591,6 +592,20 @@ final class ReadinessCatalog
             section: 'dates',
             covers: ['version_dates.'.$type->value],
         );
+    }
+
+    private static function paymentSummary(ReadinessContext $c): string
+    {
+        $config = $c->version->versionEpaymentConfig;
+        $teachers = TeacherPayments::fromFlags((bool) $config?->epayment_teacher, (bool) $config?->online_payment_required);
+
+        $teacherText = match ($teachers) {
+            TeacherPayments::CheckOnly => 'Teachers pay by check',
+            TeacherPayments::OnlineOrCheck => 'Teachers pay online or by check',
+            TeacherPayments::OnlineOnly => 'Teachers pay online only',
+        };
+
+        return $teacherText.'; '.($config?->epayment_student ? 'students may pay online (teacher\'s choice)' : 'students don\'t pay online');
     }
 
     private static function staffedRooms(ReadinessContext $c): int

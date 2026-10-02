@@ -59,6 +59,12 @@
                 </div>
             </div>
 
+            @if ($version->onlinePaymentRequired())
+                <flux:callout icon="credit-card" class="mb-4">
+                    <flux:callout.text>This event accepts online payment only — please pay your balance online, not by check.</flux:callout.text>
+                </flux:callout>
+            @endif
+
             @if ($singleSchoolData->truncated)
                 <flux:callout variant="warning" icon="exclamation-triangle" class="mb-4">
                     <flux:callout.text>Only the first {{ $version->max_registrants }} registered candidates (this Version's maximum) appear on the Estimate Form — contact your Event Manager if this doesn't look right.</flux:callout.text>
@@ -71,6 +77,12 @@
         </flux:card>
     @else
         <flux:text size="sm" class="text-zinc-500 mb-4">You have registered candidates at more than one school for this Version — download a separate Estimate Form for each.</flux:text>
+
+        @if ($version->onlinePaymentRequired())
+            <flux:callout icon="credit-card" class="mb-4 max-w-xl">
+                <flux:callout.text>This event accepts online payment only — please pay your balance online, not by check.</flux:callout.text>
+            </flux:callout>
+        @endif
 
         <div class="space-y-3 max-w-xl">
             @foreach ($schools as $school)

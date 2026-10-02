@@ -389,3 +389,22 @@ test('every reviewable item outside VersionEdit belongs to a page section', func
 
     expect($sectionless)->toBe([]);
 });
+
+test('Configure → Requirements saves whether teachers mail materials, and the checklist follows it', function () {
+    $version = readinessVersion(['application_type' => ApplicationType::EApplication, 'mail_required' => false]);
+    $user = User::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    expect(readinessStatus($version, 'version.roles.mail_to'))->toBe(ReadinessStatus::NotApplicable);
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertSet('mail_required', false)
+        ->set('mail_required', true)
+        ->call('saveRequirements')
+        ->assertHasNoErrors();
+
+    expect($version->fresh()->mail_required)->toBeTrue()
+        ->and(readinessStatus($version, 'version.roles.mail_to'))->toBe(ReadinessStatus::NotStarted)
+        ->and(readinessStatus($version, 'version.dates.postmark_deadline'))->toBe(ReadinessStatus::NotStarted);
+});

@@ -20,7 +20,12 @@
                 use <span class="font-medium">Looks right</span> to confirm a setting you've checked and are happy to keep.
             </flux:text>
         </div>
-        <flux:button id="tour-start" data-auto-start="{{ auth()->user()->dismissed_readiness_orientation_at === null ? '1' : '0' }}" size="sm" variant="ghost" icon="sparkles" type="button" class="shrink-0">Take a tour</flux:button>
+        <div class="flex flex-wrap gap-2 shrink-0">
+            @if ($canConfigure)
+                <flux:button size="sm" variant="ghost" icon="question-mark-circle" href="{{ route('events.versions.setup-questions', $version) }}" wire:navigate>Setup questions</flux:button>
+            @endif
+        <flux:button id="tour-start" data-auto-start="{{ auth()->user()->dismissed_readiness_orientation_at === null ? '1' : '0' }}" size="sm" variant="ghost" icon="sparkles" type="button">Take a tour</flux:button>
+        </div>
     </div>
 
     <x-readiness-card :version="$version" :summary="$summary" :on-checklist="true" class="mb-8" />

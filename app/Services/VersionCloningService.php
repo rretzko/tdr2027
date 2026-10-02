@@ -69,7 +69,7 @@ class VersionCloningService
                     'height', 'home_address', 'judge_count',
                     'max_registrants', 'max_upper_voice_registrants', 'audition_cap_per_school',
                     'pitch_file_visibility',
-                    'score_order', 'shirt_size', 'teacher_cell', 'upload_type',
+                    'score_order', 'shirt_size', 'teacher_cell', 'upload_type', 'mail_required',
                 ]),
                 'event_id' => $source->event_id,
                 'name' => $overrides['name'],
@@ -254,6 +254,7 @@ class VersionCloningService
             'version_id' => $version->id,
             'epayment_student' => $config->epayment_student,
             'epayment_teacher' => $config->epayment_teacher,
+            'online_payment_required' => $config->online_payment_required,
         ]);
     }
 

@@ -116,10 +116,21 @@ class Show extends Component
                 'shirt_size' => false,
                 'teacher_cell' => true,
                 'upload_type' => UploadType::None->value,
+                // PDF applications are usually mailed — same rule as the mail_required backfill.
+                'mail_required' => true,
             ]);
         }
 
         Flux::toast("{$version->name} has been created.");
+
+        // An Event's first Version → the setup questions; a clone already
+        // carries last year's answers forward, so it stays on this page.
+        if ($latest === null) {
+            $this->redirectRoute('events.versions.setup-questions', ['version' => $version->id], navigate: true);
+
+            return;
+        }
+
         // Flux's <flux:modal> Alpine component listens for a document-level
         // "modal-close" event carrying {name}, not "close-modal" — see
         // handleClose() in vendor/livewire/flux-pro/dist/flux.js.

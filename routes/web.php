@@ -68,6 +68,7 @@ use App\Livewire\Events\VersionPitchFiles;
 use App\Livewire\Events\VersionReadinessChecklist;
 use App\Livewire\Events\VersionRooms;
 use App\Livewire\Events\VersionScoringRubric;
+use App\Livewire\Events\VersionSetupQuestions;
 use App\Livewire\Events\WebRegistration;
 use App\Livewire\Feedback\Index as FeedbackIndex;
 use App\Livewire\Founder\AddTeacher as FounderAddTeacher;
@@ -279,6 +280,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/rooms/roster.pdf', VersionRoomRosterPdfController::class)->name('events.versions.rooms.roster-pdf');
         Route::get('/events/versions/{version}/scoring-rubric', VersionScoringRubric::class)->name('events.versions.scoring-rubric');
         Route::get('/events/versions/{version}/readiness', VersionReadinessChecklist::class)->name('events.versions.readiness');
+        Route::get('/events/versions/{version}/setup-questions', VersionSetupQuestions::class)->name('events.versions.setup-questions');
         Route::get('/events/versions/{version}/adjudicate', Adjudicate::class)->name('events.versions.adjudicate');
 
         // Tab Room Module (Tab Room Module.docx). Phase 1: Add/Edit Scores +

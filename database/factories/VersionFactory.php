@@ -47,6 +47,7 @@ class VersionFactory extends Factory
             'shirt_size' => false,
             'teacher_cell' => true,
             'upload_type' => UploadType::None,
+            'mail_required' => false,
         ];
     }
 

@@ -17,6 +17,7 @@
         .candidate-table th:nth-child(3), .candidate-table td:nth-child(3) { text-align: left; }
 
         .truncated-note { font-size: 10px; color: #666; font-style: italic; margin-top: -12px; margin-bottom: 16px; }
+        .payment-note { font-size: 11px; font-weight: bold; margin-top: -8px; margin-bottom: 16px; }
 
         .totals-table th, .totals-table td { text-align: center; }
 
@@ -96,6 +97,10 @@
                 </tr>
             </tbody>
         </table>
+
+        @if ($version->onlinePaymentRequired())
+            <p class="payment-note">This event accepts online payment only — please pay your balance online, not by check.</p>
+        @endif
     @endif
 
     {{-- Membership Card page --}}

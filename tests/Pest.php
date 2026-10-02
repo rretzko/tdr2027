@@ -127,11 +127,12 @@ function readinessSetDate(Version $version, VersionDateType $type, bool $withEnd
 
 /**
  * A Version with every blocking item up to and including
- * BeforeRegistration complete (PDF application, remote, no uploads, no e-pay).
+ * BeforeRegistration complete (PDF application, materials mailed, remote,
+ * no uploads, no e-pay).
  */
 function readinessConfiguredVersion(): Version
 {
-    $version = readinessVersion();
+    $version = readinessVersion(['mail_required' => true]);
 
     $ensemble = Ensemble::factory()->create(['event_id' => $version->event_id]);
     EnsembleGrade::create(['ensemble_id' => $ensemble->id, 'grade' => 11]);

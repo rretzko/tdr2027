@@ -218,6 +218,8 @@ test('createVersion falls back to defaults when the Event has no existing Versio
 
     expect($version)->not->toBeNull();
     expect($version->audition_timeslot)->toBe(0);
+    // Default PDF application → mailed, same rule as the mail_required backfill.
+    expect($version->mail_required)->toBeTrue();
 });
 
 test('createVersion aborts with 403 for a Registration-Manager-only holder', function () {

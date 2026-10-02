@@ -92,9 +92,13 @@ final readonly class ReadinessContext
         return $this->raw('application_type') === ApplicationType::Pdf->value;
     }
 
-    public function membershipCardRequired(): bool
+    /**
+     * Teachers mail physical materials (applications, checks, cards) —
+     * independent of application_type; see versions.mail_required.
+     */
+    public function mailRequired(): bool
     {
-        return (bool) $this->version->membershipRequirement?->membership_card;
+        return (bool) $this->raw('mail_required');
     }
 
     public function epaymentEnabled(): bool
