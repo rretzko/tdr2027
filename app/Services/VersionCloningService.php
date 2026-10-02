@@ -23,11 +23,14 @@ use App\Models\VersionObligation;
 use App\Models\VersionPitchFile;
 use App\Models\VersionRoom;
 use App\Models\VersionUploadFile;
+use App\Services\Readiness\VersionReadiness;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class VersionCloningService
 {
+    public function __construct(private readonly VersionReadiness $readiness) {}
+
     /**
      * Clones $source into a brand-new Version plus its configuration
      * (dates, fees, counties, ensemble order, upload/pitch files,
@@ -88,6 +91,8 @@ class VersionCloningService
             $this->cloneVersionEpaymentConfig($source, $version);
             $this->cloneRooms($source, $version);
             $this->cloneInvitations($source, $version, $invitedBy);
+
+            $this->readiness->seedForClone($version);
 
             return $version;
         });

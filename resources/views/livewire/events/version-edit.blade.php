@@ -13,6 +13,8 @@
     <flux:heading size="xl" class="mb-1">{{ $version->name }}</flux:heading>
     <flux:text size="sm" class="text-zinc-500 mb-6">Version configuration</flux:text>
 
+    <x-readiness-card :version="$version" :summary="$readinessSummary" class="mb-6" />
+
     <flux:tab.group>
         <flux:tabs wire:model="activeTab">
             <flux:tab name="general">General</flux:tab>
@@ -69,6 +71,16 @@
                             @endforeach
                         </flux:select>
                         <flux:error name="status" />
+                        @if ($activation_blockers !== [])
+                            <ul class="mt-2 space-y-1 text-sm">
+                                @foreach ($activation_blockers as $blocker)
+                                    <li>
+                                        <a href="{{ $blocker['url'] }}" wire:navigate class="text-red-600 dark:text-red-400 underline underline-offset-2 hover:text-red-800 dark:hover:text-red-300">{{ $blocker['question'] }}</a>
+                                    </li>
+                                @endforeach
+                            </ul>
+                            <flux:link href="{{ route('events.versions.readiness', $version) }}" wire:navigate class="text-sm mt-2 inline-block">Open the setup checklist</flux:link>
+                        @endif
                     </flux:field>
 
                     <flux:field>

@@ -15,12 +15,14 @@ use App\Models\EnsembleGrade;
 use App\Models\Event;
 use App\Models\Version;
 use App\Models\VoicePart;
+use App\Services\Readiness\VersionReadiness;
 use App\Services\VersionCloningService;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 #[Layout('components.layouts.app')]
@@ -28,6 +30,7 @@ class Show extends Component
 {
     public Event $event;
 
+    #[Url(as: 'tab')]
     public string $activeTab = 'versions';
 
     // Version creation
@@ -230,7 +233,7 @@ class Show extends Component
         Flux::toast('Voice parts saved.');
     }
 
-    public function render(VersionRoleAssignmentService $service): View
+    public function render(VersionRoleAssignmentService $service, VersionReadiness $readiness): View
     {
         $ensembles = $this->event->ensembles()->with(['grades', 'voiceParts'])->get();
         $versions = $this->event->versions()->orderByDesc('senior_class_of')->get();
@@ -271,6 +274,12 @@ class Show extends Component
             'versionWebRegistrationAccess' => $versions->mapWithKeys(
                 fn (Version $version): array => [$version->id => $service->canManageWebRegistration(Auth::user(), $version)],
             ),
+            // Setup-progress bar per Version (version-readiness.md) — skipped
+            // for Closed Versions, whose setup no longer matters.
+            'versionReadiness' => $versions
+                ->filter(fn (Version $version): bool => $version->getRawOriginal('status') !== EventStatus::Closed->value
+                    && $service->canManageReadiness(Auth::user(), $version))
+                ->mapWithKeys(fn (Version $version): array => [$version->id => $readiness->summary($readiness->evaluate($version))]),
         ]);
     }
 

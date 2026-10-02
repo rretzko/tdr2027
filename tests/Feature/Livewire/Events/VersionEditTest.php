@@ -71,7 +71,7 @@ test('saveGeneral updates the Version record', function () {
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
         ->set('name', 'New Name')
-        ->set('status', EventStatus::Active->value)
+        ->set('status', EventStatus::Inactive->value)
         ->set('application_type', ApplicationType::Pdf->value)
         ->set('audition_type', AuditionType::Remote->value)
         ->set('upload_type', UploadType::None->value)
@@ -81,7 +81,7 @@ test('saveGeneral updates the Version record', function () {
         ->assertHasNoErrors();
 
     expect($version->fresh()->name)->toBe('New Name');
-    expect($version->fresh()->status)->toBe(EventStatus::Active);
+    expect($version->fresh()->status)->toBe(EventStatus::Inactive);
 });
 
 test('mount translates existing version_class_ofs rows into eligible_grades using senior_class_of', function () {
@@ -106,7 +106,7 @@ test('saveGeneral translates eligible_grades into version_class_ofs using senior
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
-        ->set('status', EventStatus::Active->value)
+        ->set('status', EventStatus::Sandbox->value)
         ->set('application_type', ApplicationType::Pdf->value)
         ->set('audition_type', AuditionType::Remote->value)
         ->set('upload_type', UploadType::None->value)
@@ -128,7 +128,7 @@ test('saveGeneral clears version_class_ofs when eligible_grades is emptied', fun
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
-        ->set('status', EventStatus::Active->value)
+        ->set('status', EventStatus::Sandbox->value)
         ->set('application_type', ApplicationType::Pdf->value)
         ->set('audition_type', AuditionType::Remote->value)
         ->set('upload_type', UploadType::None->value)
@@ -149,7 +149,7 @@ test('saveGeneral persists share_results', function () {
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
         ->assertSet('share_results', false)
-        ->set('status', EventStatus::Active->value)
+        ->set('status', EventStatus::Sandbox->value)
         ->set('application_type', ApplicationType::Pdf->value)
         ->set('audition_type', AuditionType::Remote->value)
         ->set('upload_type', UploadType::None->value)
@@ -169,7 +169,7 @@ test('saveGeneral persists cutoff_strategy, and treats a blank selection as null
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
-        ->set('status', EventStatus::Active->value)
+        ->set('status', EventStatus::Sandbox->value)
         ->set('application_type', ApplicationType::Pdf->value)
         ->set('audition_type', AuditionType::Remote->value)
         ->set('upload_type', UploadType::None->value)
@@ -183,7 +183,7 @@ test('saveGeneral persists cutoff_strategy, and treats a blank selection as null
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
-        ->set('status', EventStatus::Active->value)
+        ->set('status', EventStatus::Sandbox->value)
         ->set('application_type', ApplicationType::Pdf->value)
         ->set('audition_type', AuditionType::Remote->value)
         ->set('upload_type', UploadType::None->value)
@@ -267,7 +267,7 @@ test('saveGeneral requires at least 5 minutes for in_person but allows 0 for rem
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
-        ->set('status', EventStatus::Active->value)
+        ->set('status', EventStatus::Sandbox->value)
         ->set('application_type', ApplicationType::Pdf->value)
         ->set('upload_type', UploadType::None->value)
         ->set('score_order', ScoreOrder::Asc->value)
@@ -281,7 +281,7 @@ test('saveGeneral requires at least 5 minutes for in_person but allows 0 for rem
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
-        ->set('status', EventStatus::Active->value)
+        ->set('status', EventStatus::Sandbox->value)
         ->set('application_type', ApplicationType::Pdf->value)
         ->set('upload_type', UploadType::None->value)
         ->set('score_order', ScoreOrder::Asc->value)
@@ -300,7 +300,7 @@ test('saveGeneral succeeds for a remote Version whose audition_timeslot is null 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
         ->assertSet('audition_timeslot', '')
-        ->set('status', EventStatus::Active->value)
+        ->set('status', EventStatus::Sandbox->value)
         ->set('application_type', ApplicationType::Pdf->value)
         ->set('upload_type', UploadType::None->value)
         ->set('score_order', ScoreOrder::Asc->value)
@@ -318,7 +318,7 @@ test('saveGeneral accepts 0 for max_upper_voice_registrants', function () {
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
-        ->set('status', EventStatus::Active->value)
+        ->set('status', EventStatus::Sandbox->value)
         ->set('application_type', ApplicationType::Pdf->value)
         ->set('upload_type', UploadType::None->value)
         ->set('score_order', ScoreOrder::Asc->value)
@@ -338,7 +338,7 @@ test('saveGeneral treats 0 for max_registrants as no limit (saved as null)', fun
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
-        ->set('status', EventStatus::Active->value)
+        ->set('status', EventStatus::Sandbox->value)
         ->set('application_type', ApplicationType::Pdf->value)
         ->set('upload_type', UploadType::None->value)
         ->set('score_order', ScoreOrder::Asc->value)
@@ -358,7 +358,7 @@ test('saveGeneral saves a positive max_registrants value as-is', function () {
 
     Livewire::actingAs($user)
         ->test(VersionEdit::class, ['version' => $version])
-        ->set('status', EventStatus::Active->value)
+        ->set('status', EventStatus::Sandbox->value)
         ->set('application_type', ApplicationType::Pdf->value)
         ->set('upload_type', UploadType::None->value)
         ->set('score_order', ScoreOrder::Asc->value)

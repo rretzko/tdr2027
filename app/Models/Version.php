@@ -341,6 +341,14 @@ class Version extends Model
     }
 
     /**
+     * @return HasMany<VersionReadinessReview, $this>
+     */
+    public function readinessReviews(): HasMany
+    {
+        return $this->hasMany(VersionReadinessReview::class);
+    }
+
+    /**
      * @return HasOne<VersionObligation, $this>
      */
     public function obligation(): HasOne

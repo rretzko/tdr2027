@@ -58,6 +58,9 @@
                             <div class="min-w-0">
                                 <flux:heading size="base" class="truncate">{{ $version->name }}</flux:heading>
                                 <flux:text size="sm" class="text-zinc-500">Class of {{ $version->senior_class_of }}</flux:text>
+                                @isset ($versionReadiness[$version->id])
+                                    <x-readiness-card :version="$version" :summary="$versionReadiness[$version->id]" :compact="true" class="mt-2" />
+                                @endisset
                             </div>
 
                             <div id="{{ $loop->first ? 'tour-version-actions-mobile' : '' }}" class="flex flex-col items-end gap-2 shrink-0">
@@ -126,6 +129,7 @@
                     <flux:table.column>Type</flux:table.column>
                     <flux:table.column>Upload</flux:table.column>
                     <flux:table.column>Status</flux:table.column>
+                    <flux:table.column>Setup</flux:table.column>
                 </flux:table.columns>
 
                 <flux:table.rows>
@@ -147,9 +151,14 @@
                                     <flux:badge color="red" size="sm">Closed</flux:badge>
                                 @endif
                             </flux:table.cell>
+                            <flux:table.cell class="align-top">
+                                @isset ($versionReadiness[$version->id])
+                                    <x-readiness-card :version="$version" :summary="$versionReadiness[$version->id]" :compact="true" />
+                                @endisset
+                            </flux:table.cell>
                         </flux:table.row>
                         <flux:table.row>
-                            <flux:table.cell colspan="5" class="!border-t-0 pt-0 pb-4 whitespace-normal">
+                            <flux:table.cell colspan="6" class="!border-t-0 pt-0 pb-4 whitespace-normal">
                                 <div id="{{ $loop->first ? 'tour-version-actions-desktop' : '' }}" class="flex flex-wrap gap-2">
                                     @if ($canManageEvent)
                                         <flux:button size="sm" variant="filled" :href="route('events.versions.edit', $version)" wire:navigate>
@@ -195,7 +204,7 @@
                         </flux:table.row>
                     @empty
                         <flux:table.row>
-                            <flux:table.cell colspan="5" class="text-center text-zinc-500 py-6">
+                            <flux:table.cell colspan="6" class="text-center text-zinc-500 py-6">
                                 No versions yet. Add one above.
                             </flux:table.cell>
                         </flux:table.row>

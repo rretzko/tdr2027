@@ -10,6 +10,7 @@ use App\Enums\CutoffStrategy;
 use App\Enums\EventStatus;
 use App\Enums\PaymentEnvironment;
 use App\Enums\PitchFileVisibility;
+use App\Enums\ReadinessPhase;
 use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
 use App\Enums\Vendor;
@@ -33,6 +34,8 @@ use App\Models\VersionObligation;
 use App\Models\VersionUploadFile;
 use App\Services\EnsembleCutoffService;
 use App\Services\EnsembleHistoryService;
+use App\Services\Readiness\ReadinessResult;
+use App\Services\Readiness\VersionReadiness;
 use App\Services\VersionRoleAssignmentService;
 use App\Support\CandidateApplicationData;
 use App\Support\ClassOfCalculator;
@@ -99,6 +102,14 @@ class VersionEdit extends Component
     public string $pitch_file_visibility = '';
 
     public bool $share_results = false;
+
+    /**
+     * Set when a Sandbox → Active save was held back by incomplete
+     * readiness items (version-readiness.md §5); rendered under Status.
+     *
+     * @var list<array{question: string, url: string}>
+     */
+    public array $activation_blockers = [];
 
     public string $max_registrants = '';
 
@@ -403,7 +414,7 @@ class VersionEdit extends Component
         Flux::toast("Payment credential saved for {$validated['payment_environment']}.");
     }
 
-    public function saveEpaymentFlags(): void
+    public function saveEpaymentFlags(VersionReadiness $readiness): void
     {
         $validated = $this->validate([
             'epayment_student' => ['boolean'],
@@ -418,10 +429,12 @@ class VersionEdit extends Component
             ],
         );
 
+        $readiness->markSectionReviewed($this->version, 'payments', Auth::user());
+
         Flux::toast('E-payment settings saved.');
     }
 
-    public function saveGeneral(EnsembleHistoryService $history, EnsembleCutoffService $cutoffs): void
+    public function saveGeneral(EnsembleHistoryService $history, EnsembleCutoffService $cutoffs, VersionReadiness $readiness): void
     {
         $validated = $this->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -446,11 +459,19 @@ class VersionEdit extends Component
             'audition_cap_per_school' => ['nullable', 'integer', 'min:0'],
         ]);
 
+        // Sandbox → Active is gated on readiness (version-readiness.md §5):
+        // hold the status back, save everything else, then re-check once the
+        // other General fields (audition type etc.) are in place.
+        $originalStatus = $this->version->getRawOriginal('status');
+        $activating = $originalStatus === EventStatus::Sandbox->value
+            && $validated['status'] === EventStatus::Active->value;
+        $this->activation_blockers = [];
+
         $this->version->update([
             'name' => $validated['name'],
             'short_name' => ($validated['short_name'] ?? '') ?: null,
             'senior_class_of' => (int) $validated['senior_class_of'],
-            'status' => $validated['status'],
+            'status' => $activating ? $originalStatus : $validated['status'],
             'audition_type' => $validated['audition_type'],
             'audition_timeslot' => ($validated['audition_timeslot'] ?? '') !== '' ? (int) $validated['audition_timeslot'] : 0,
             'application_type' => $validated['application_type'],
@@ -484,10 +505,33 @@ class VersionEdit extends Component
             $history->recordCurrentSeason($this->version, $cutoffs);
         }
 
+        $readiness->markSectionReviewed($this->version, 'general', Auth::user());
+
+        if ($activating) {
+            $blockers = Auth::user()->isFounder()
+                ? collect()
+                : $readiness->blockers($this->version->fresh(), ReadinessPhase::BeforeRegistration);
+
+            if ($blockers->isNotEmpty()) {
+                $this->status = $originalStatus;
+                $this->activation_blockers = $blockers
+                    ->map(fn (ReadinessResult $r): array => ['question' => $r->item->question, 'url' => $r->url])
+                    ->values()
+                    ->all();
+                $this->addError('status', "Still in Sandbox — finish {$blockers->count()} setup ".Str::plural('item', $blockers->count()).' before activating.');
+
+                Flux::toast(text: "{$this->version->name} general settings saved, but it stays in Sandbox until setup is finished.", variant: 'warning');
+
+                return;
+            }
+
+            $this->version->update(['status' => EventStatus::Active->value]);
+        }
+
         Flux::toast("{$this->version->name} general settings saved.");
     }
 
-    public function saveDates(): void
+    public function saveDates(VersionReadiness $readiness): void
     {
         $rules = [];
 
@@ -524,10 +568,12 @@ class VersionEdit extends Component
             );
         }
 
+        $readiness->markSectionReviewed($this->version, 'dates', Auth::user());
+
         Flux::toast('Version dates saved.');
     }
 
-    public function saveFees(): void
+    public function saveFees(VersionReadiness $readiness): void
     {
         $this->validate([
             'fee_registration' => ['required', 'numeric', 'min:0'],
@@ -548,10 +594,12 @@ class VersionEdit extends Component
             ],
         );
 
+        $readiness->markSectionReviewed($this->version, 'fees', Auth::user());
+
         Flux::toast('Version fees saved.');
     }
 
-    public function saveRequirements(): void
+    public function saveRequirements(VersionReadiness $readiness): void
     {
         $validated = $this->validate([
             'membership_card' => ['boolean'],
@@ -593,10 +641,12 @@ class VersionEdit extends Component
             $this->version->counties()->create(['county_id' => $countyId]);
         }
 
+        $readiness->markSectionReviewed($this->version, 'requirements', Auth::user());
+
         Flux::toast('Version requirements saved.');
     }
 
-    public function saveApplication(): void
+    public function saveApplication(VersionReadiness $readiness): void
     {
         $validated = $this->validateApplication();
 
@@ -604,6 +654,8 @@ class VersionEdit extends Component
             ['version_id' => $this->version->id],
             $validated,
         )->refresh();
+
+        $readiness->markSectionReviewed($this->version, 'application', Auth::user());
 
         Flux::toast('Candidate Application saved.');
     }
@@ -699,7 +751,7 @@ class VersionEdit extends Component
         ];
     }
 
-    public function saveObligation(): void
+    public function saveObligation(VersionReadiness $readiness): void
     {
         $validated = $this->validate([
             'obligation_title' => ['nullable', 'string', 'max:255'],
@@ -716,6 +768,8 @@ class VersionEdit extends Component
 
         $this->obligation_status = $obligation->getRawOriginal('status');
         $this->obligation_response_count = $obligation->responses()->count();
+
+        $readiness->markSectionReviewed($this->version, 'obligations', Auth::user());
 
         Flux::toast('Obligations saved.');
     }
@@ -830,7 +884,7 @@ class VersionEdit extends Component
         return self::UPLOAD_FILE_ORDER_COLORS[$index];
     }
 
-    public function assignRole(VersionRoleAssignmentService $service): void
+    public function assignRole(VersionRoleAssignmentService $service, VersionReadiness $readiness): void
     {
         $validated = $this->validate([
             'assign_user_id' => ['required', 'integer', 'exists:users,id'],
@@ -846,6 +900,7 @@ class VersionEdit extends Component
         }
 
         $service->assignRole(Auth::user(), $this->version, $targetUser, $validated['assign_role']);
+        $readiness->markSectionReviewed($this->version, 'roles', Auth::user());
 
         $this->assign_search = '';
         $this->assign_user_id = null;
@@ -932,7 +987,7 @@ class VersionEdit extends Component
         $this->resetErrorBag();
     }
 
-    public function saveMailToAddress(VersionRoleAssignmentService $service): void
+    public function saveMailToAddress(VersionRoleAssignmentService $service, VersionReadiness $readiness): void
     {
         abort_unless($service->canManageVersionRoles(Auth::user(), $this->version), 403);
         abort_if($this->mailto_user_id === null, 400);
@@ -963,14 +1018,19 @@ class VersionEdit extends Component
         $this->mailto_user_id = null;
         $this->modal('mailto-address-form')->close();
 
+        $readiness->markSectionReviewed($this->version, 'roles', Auth::user());
+
         Flux::toast('Mail-to address saved.', variant: 'success');
     }
 
-    public function render(VersionRoleAssignmentService $service): View
+    public function render(VersionRoleAssignmentService $service, VersionReadiness $readiness): View
     {
         $applicationPreviewData = CandidateApplicationData::placeholder($this->version);
 
         return view('livewire.events.version-edit', [
+            // fresh(): $this->version carries relations loaded at mount, which
+            // a save earlier in this request may have made stale.
+            'readinessSummary' => $readiness->summary($readiness->evaluate($this->version->fresh())),
             'statuses' => EventStatus::cases(),
             'auditionTypes' => AuditionType::cases(),
             'applicationTypes' => ApplicationType::cases(),

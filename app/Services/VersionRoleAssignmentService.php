@@ -211,6 +211,18 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Access to the Version readiness checklist (version-readiness.md §9a
+     * Q16): Event Manager or Registration Manager — the two roles that
+     * configure a Version. Resolves identically to
+     * canManageCoRegistrationManagers() today; kept separate so the two
+     * screens can diverge without a misleading method name.
+     */
+    public function canManageReadiness(User $user, Version $version): bool
+    {
+        return $this->canManageCoRegistrationManagers($user, $version);
+    }
+
+    /**
      * Access to the Registration Manager Reporting Module (§5.10 of
      * event-version-orientation.md): the exact same gate as
      * canManageAuditionEnvironment() above. Kept as its own named method —
