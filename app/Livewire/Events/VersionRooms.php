@@ -12,6 +12,7 @@ use App\Models\RoomJudge;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionRoom;
+use App\Services\Readiness\VersionReadiness;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
@@ -212,6 +213,8 @@ class VersionRooms extends Component
         $this->editingId = null;
         $this->modal('room-form')->close();
 
+        $this->markReadinessReviewed();
+
         Flux::toast(text: "\"{$room->name}\" saved.", variant: 'success');
     }
 
@@ -224,6 +227,8 @@ class VersionRooms extends Component
         $name = $room->name;
         $room->delete();
         unset($this->orderInputs[$id]);
+
+        $this->markReadinessReviewed();
 
         Flux::toast(text: "\"{$name}\" removed.", variant: 'success');
     }
@@ -260,6 +265,16 @@ class VersionRooms extends Component
             VersionRoom::where('id', $id)->where('version_id', $this->version->id)->update(['order_by' => $index + 1]);
             $this->orderInputs[$id] = $index + 1;
         }
+    }
+
+    /**
+     * Any change made on this page counts as reviewing its readiness items
+     * (docs/plans/version-readiness.md) — e.g. clears the "Needs review"
+     * a cloned Version starts with.
+     */
+    private function markReadinessReviewed(): void
+    {
+        app(VersionReadiness::class)->markSectionReviewed($this->version, 'rooms', Auth::user());
     }
 
     public function render(): View

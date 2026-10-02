@@ -455,8 +455,13 @@ Sandbox/Inactive.
   question link, and Looks right stay visible but open an "Ask an Event Manager" modal listing
   the event's Event Managers; `acknowledge()` enforces the same check server-side. A test
   asserts every item's editor matches its route's gate.
-- Rooms / Rubric / Pitch Files / Invitations screens don't call `markSectionReviewed`;
-  cloned year-sensitive items there need "Looks right".
+- ~~Rooms / Rubric / Pitch Files / Invitations screens don't call `markSectionReviewed`;
+  cloned year-sensitive items there need "Looks right".~~ **Resolved 2026-10-02:** those
+  pages plus Co-Registration Managers each own a section (`rooms` → rooms + room judges,
+  `rubric`, `pitch_files`, `invitations`, `co_registration`) and call
+  `markSectionReviewed` after every successful change (not on refusals, e.g. an
+  invitation that can't be removed). A test asserts every reviewable Version item has a
+  section.
 - Local DB: `2026_09_21_143207_add_audition_cap_per_school_to_versions_table` is unrecorded
   in `migrations` although the column exists (pre-existing; unrelated).
 

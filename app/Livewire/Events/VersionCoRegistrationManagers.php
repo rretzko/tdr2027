@@ -9,6 +9,7 @@ use App\Models\Geostate;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionMailToAddress;
+use App\Services\Readiness\VersionReadiness;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
@@ -212,6 +213,8 @@ class VersionCoRegistrationManagers extends Component
         $this->editingUserId = null;
         $this->modal('co-registration-manager-form')->close();
 
+        $this->markReadinessReviewed();
+
         Flux::toast(text: "{$targetUser->name} assigned as Co-Registration Manager.", variant: 'success');
     }
 
@@ -220,6 +223,8 @@ class VersionCoRegistrationManagers extends Component
         $targetUser = User::findOrFail($userId);
 
         $roles->revokeCoRegistrationManager(Auth::user(), $this->version, $targetUser);
+
+        $this->markReadinessReviewed();
 
         Flux::toast(text: "{$targetUser->name} removed as Co-Registration Manager.", variant: 'success');
     }
@@ -243,6 +248,16 @@ class VersionCoRegistrationManagers extends Component
             ->all();
 
         return array_values(array_diff($versionCountyIds, $takenByOthers));
+    }
+
+    /**
+     * Any change made on this page counts as reviewing its readiness items
+     * (docs/plans/version-readiness.md) — e.g. clears the "Needs review"
+     * a cloned Version starts with.
+     */
+    private function markReadinessReviewed(): void
+    {
+        app(VersionReadiness::class)->markSectionReviewed($this->version, 'co_registration', Auth::user());
     }
 
     public function render(): View

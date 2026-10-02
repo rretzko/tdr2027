@@ -7,6 +7,7 @@ namespace App\Livewire\Events;
 use App\Models\ScoreCategory;
 use App\Models\ScoreFactor;
 use App\Models\Version;
+use App\Services\Readiness\VersionReadiness;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
@@ -106,6 +107,8 @@ class VersionScoringRubric extends Component
         $this->editingCategoryId = null;
         $this->modal('category-form')->close();
 
+        $this->markReadinessReviewed();
+
         Flux::toast(text: "\"{$validated['categoryDescription']}\" saved.", variant: 'success');
     }
 
@@ -117,6 +120,8 @@ class VersionScoringRubric extends Component
         $description = $category->description;
         $category->delete();
         unset($this->categoryOrderInputs[$id]);
+
+        $this->markReadinessReviewed();
 
         Flux::toast(text: "\"{$description}\" removed.", variant: 'success');
     }
@@ -214,6 +219,8 @@ class VersionScoringRubric extends Component
         $this->editingFactorId = null;
         $this->modal('factor-form')->close();
 
+        $this->markReadinessReviewed();
+
         Flux::toast(text: "\"{$validated['factorDescription']}\" saved.", variant: 'success');
     }
 
@@ -225,6 +232,8 @@ class VersionScoringRubric extends Component
         $description = $factor->description;
         $factor->delete();
         unset($this->factorOrderInputs[$id]);
+
+        $this->markReadinessReviewed();
 
         Flux::toast(text: "\"{$description}\" removed.", variant: 'success');
     }
@@ -288,6 +297,8 @@ class VersionScoringRubric extends Component
             }
         });
 
+        $this->markReadinessReviewed();
+
         Flux::toast('Rubric customized for this Version.', variant: 'success');
     }
 
@@ -297,6 +308,8 @@ class VersionScoringRubric extends Component
         abort_unless($this->isCustomized(), 409);
 
         $this->version->scoreCategories()->delete();
+
+        $this->markReadinessReviewed();
 
         Flux::toast("Reverted to the Event's default rubric.", variant: 'success');
     }
@@ -313,6 +326,16 @@ class VersionScoringRubric extends Component
         $activeIds = $this->version->availableScoreFactors()->pluck('id')->all();
 
         return ScoreFactor::whereIn('id', $activeIds)->findOrFail($id);
+    }
+
+    /**
+     * Any change made on this page counts as reviewing its readiness items
+     * (docs/plans/version-readiness.md) — e.g. clears the "Needs review"
+     * a cloned Version starts with.
+     */
+    private function markReadinessReviewed(): void
+    {
+        app(VersionReadiness::class)->markSectionReviewed($this->version, 'rubric', Auth::user());
     }
 
     public function render(): View

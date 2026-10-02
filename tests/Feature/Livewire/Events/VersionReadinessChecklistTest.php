@@ -7,18 +7,31 @@ use App\Enums\AuditionType;
 use App\Enums\EventStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ReadinessEditor;
+use App\Enums\ReadinessReviewState;
 use App\Enums\ReadinessStatus;
 use App\Enums\ScoreOrder;
 use App\Enums\UploadType;
 use App\Livewire\Events\Show;
+use App\Livewire\Events\VersionCoRegistrationManagers;
 use App\Livewire\Events\VersionEdit;
+use App\Livewire\Events\VersionInvitations;
+use App\Livewire\Events\VersionPitchFiles;
 use App\Livewire\Events\VersionReadinessChecklist;
+use App\Livewire\Events\VersionRooms;
+use App\Livewire\Events\VersionScoringRubric;
+use App\Models\ScoreCategory;
+use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionPitchFile;
+use App\Models\VersionReadinessReview;
+use App\Models\VersionRoom;
+use App\Models\VoicePart;
 use App\Services\Readiness\ReadinessCatalog;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 
@@ -285,4 +298,94 @@ test('a Registration Manager cannot confirm an Event-Manager-only item, but can 
 
     expect(readinessStatus($version, 'version.caps'))->toBe(ReadinessStatus::NeedsReview)
         ->and(readinessStatus($version, 'version.roles.co_registration'))->toBe(ReadinessStatus::Done);
+});
+
+/**
+ * Flags $keys as ReviewRequired (as cloning would), runs $action, and
+ * returns each key's resulting review state, sorted by key.
+ *
+ * @param  list<string>  $keys
+ * @return array<string, ?string>
+ */
+function readinessReviewStatesAfter(Version $version, array $keys, Closure $action): array
+{
+    foreach ($keys as $key) {
+        VersionReadinessReview::create(['version_id' => $version->id, 'item_key' => $key, 'state' => ReadinessReviewState::ReviewRequired]);
+    }
+
+    $action();
+
+    return VersionReadinessReview::where('version_id', $version->id)
+        ->whereIn('item_key', $keys)
+        ->get()
+        ->mapWithKeys(fn (VersionReadinessReview $r): array => [$r->item_key => $r->getRawOriginal('state')])
+        ->sortKeys()
+        ->all();
+}
+
+test('changing rooms on the Rooms page counts as reviewing rooms and judges', function () {
+    $version = readinessVersion();
+    $room = VersionRoom::create(['version_id' => $version->id, 'name' => 'Room A', 'order_by' => 1]);
+
+    $states = readinessReviewStatesAfter($version, ['version.rooms', 'version.room_judges'], fn () => Livewire::actingAs(makeFounder())
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('remove', $room->id));
+
+    expect($states)->toBe(['version.room_judges' => 'acknowledged', 'version.rooms' => 'acknowledged']);
+});
+
+test('changing the scoring rubric counts as reviewing it', function () {
+    $version = readinessVersion();
+    $category = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => $version->id, 'description' => 'Tone', 'order_by' => 1]);
+
+    $states = readinessReviewStatesAfter($version, ['version.rubric'], fn () => Livewire::actingAs(makeFounder())
+        ->test(VersionScoringRubric::class, ['version' => $version])
+        ->call('removeCategory', $category->id));
+
+    expect($states)->toBe(['version.rubric' => 'acknowledged']);
+});
+
+test('changing pitch files counts as reviewing them', function () {
+    Storage::fake('s3');
+    $version = readinessVersion();
+    $file = VersionPitchFile::create(['version_id' => $version->id, 'voice_part_id' => VoicePart::factory()->create()->id, 'name' => 'Warm-up', 'url' => 'pitch/warmup.mp3', 'order_by' => 1]);
+
+    $states = readinessReviewStatesAfter($version, ['version.pitch_files'], fn () => Livewire::actingAs(makeFounder())
+        ->test(VersionPitchFiles::class, ['version' => $version])
+        ->call('remove', $file->id));
+
+    expect($states)->toBe(['version.pitch_files' => 'acknowledged']);
+});
+
+test('inviting a teacher counts as reviewing invitations', function () {
+    $version = readinessVersion();
+    $teacher = Teacher::factory()->create();
+
+    $states = readinessReviewStatesAfter($version, ['version.invitations'], fn () => Livewire::actingAs(makeFounder())
+        ->test(VersionInvitations::class, ['version' => $version])
+        ->call('toggle', $teacher->id));
+
+    expect($states)->toBe(['version.invitations' => 'acknowledged']);
+});
+
+test('changing Co-Registration Managers counts as reviewing them', function () {
+    $version = readinessVersion();
+    $coManager = User::factory()->create();
+    grantVersionRole($coManager, $version, 'Co-Registration Manager');
+
+    $states = readinessReviewStatesAfter($version, ['version.roles.co_registration'], fn () => Livewire::actingAs(makeFounder())
+        ->test(VersionCoRegistrationManagers::class, ['version' => $version])
+        ->call('remove', $coManager->id));
+
+    expect($states)->toBe(['version.roles.co_registration' => 'acknowledged']);
+});
+
+test('every reviewable item outside VersionEdit belongs to a page section', function () {
+    $sectionless = collect(ReadinessCatalog::items())
+        ->filter(fn ($item) => $item->section === null && ($item->yearSensitive || $item->acknowledgeable))
+        ->reject(fn ($item) => str_starts_with($item->key, 'event.'))
+        ->pluck('key')
+        ->all();
+
+    expect($sectionless)->toBe([]);
 });

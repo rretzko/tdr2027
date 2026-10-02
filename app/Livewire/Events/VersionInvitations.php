@@ -7,6 +7,7 @@ namespace App\Livewire\Events;
 use App\Enums\VersionInvitationStatus;
 use App\Models\Version;
 use App\Models\VersionInvitation;
+use App\Services\Readiness\VersionReadiness;
 use App\Services\VersionInvitationEligibilityService;
 use App\Services\VersionRoleAssignmentService;
 use App\Support\VersionInvitationRosterRow;
@@ -69,6 +70,8 @@ class VersionInvitations extends Component
 
         if ($existing === null) {
             $this->createInvitation($teacherId);
+            $this->markReadinessReviewed();
+
             Flux::toast(text: 'Teacher invited.', variant: 'success');
 
             return;
@@ -79,6 +82,8 @@ class VersionInvitations extends Component
 
             return;
         }
+
+        $this->markReadinessReviewed();
 
         Flux::toast('Invitation removed.');
     }
@@ -95,6 +100,8 @@ class VersionInvitations extends Component
                 $invited++;
             }
         }
+
+        $this->markReadinessReviewed();
 
         Flux::toast(text: $invited > 0 ? "{$invited} teacher(s) invited." : 'Everyone eligible is already invited.', variant: 'success');
     }
@@ -126,7 +133,19 @@ class VersionInvitations extends Component
             $message .= " {$blocked} teacher(s) skipped — already agreed to Version obligations.";
         }
 
+        $this->markReadinessReviewed();
+
         Flux::toast(text: $message, variant: $blocked > 0 ? 'warning' : 'success');
+    }
+
+    /**
+     * Any change made on this page counts as reviewing its readiness items
+     * (docs/plans/version-readiness.md) — e.g. clears the "Needs review"
+     * a cloned Version starts with.
+     */
+    private function markReadinessReviewed(): void
+    {
+        app(VersionReadiness::class)->markSectionReviewed($this->version, 'invitations', Auth::user());
     }
 
     public function render(VersionInvitationEligibilityService $eligibility): View

@@ -142,6 +142,7 @@ final class ReadinessCatalog
                     ? $c->rubric->count().' '.str('category')->plural($c->rubric->count()).', '.$c->rubric->sum('score_factors_count').' factors'
                     : null,
                 acknowledgeable: true,
+                section: 'rubric',
                 covers: ['score_categories.description', 'score_factors.description'],
                 editor: ReadinessEditor::AuditionEnvironment,
             ),
@@ -299,6 +300,7 @@ final class ReadinessCatalog
                 url: fn (Version $v): string => route('events.versions.invitations', $v),
                 detail: fn (ReadinessContext $c): string => $c->invitedTeacherCount.' '.str('teacher')->plural($c->invitedTeacherCount).' invited',
                 yearSensitive: true,
+                section: 'invitations',
                 covers: ['version_invitations.teacher_id'],
             ),
         ];
@@ -367,6 +369,7 @@ final class ReadinessCatalog
                 blocking: false,
                 acknowledgeable: true,
                 yearSensitive: true,
+                section: 'pitch_files',
                 covers: ['version_pitch_files.url', 'versions.pitch_file_visibility'],
             ),
             new ReadinessItem(
@@ -446,6 +449,7 @@ final class ReadinessCatalog
                 blocking: false,
                 acknowledgeable: true,
                 yearSensitive: true,
+                section: 'co_registration',
                 covers: ['co_registration_manager_counties.county_id'],
                 editor: ReadinessEditor::RegistrationManager,
             ),
@@ -484,6 +488,7 @@ final class ReadinessCatalog
                 url: fn (Version $v): string => route('events.versions.rooms', $v),
                 detail: fn (ReadinessContext $c): string => $c->version->rooms->count().' '.str('room')->plural($c->version->rooms->count()),
                 yearSensitive: true,
+                section: 'rooms',
                 covers: ['version_rooms.name', 'version_rooms.tolerance'],
                 editor: ReadinessEditor::AuditionEnvironment,
             ),
@@ -497,6 +502,7 @@ final class ReadinessCatalog
                 applicable: fn (ReadinessContext $c): bool => $c->version->rooms->isNotEmpty(),
                 detail: fn (ReadinessContext $c): string => self::staffedRooms($c).' of '.$c->version->rooms->count().' rooms fully staffed',
                 yearSensitive: true,
+                section: 'rooms',
                 covers: ['room_judges.user_id'],
                 editor: ReadinessEditor::AuditionEnvironment,
             ),

@@ -6,6 +6,7 @@ namespace App\Livewire\Events;
 
 use App\Models\Version;
 use App\Models\VersionPitchFile;
+use App\Services\Readiness\VersionReadiness;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
 use Illuminate\Support\Collection;
@@ -130,6 +131,8 @@ class VersionPitchFiles extends Component
         $this->newFile = null;
         $this->modal('pitch-file-form')->close();
 
+        $this->markReadinessReviewed();
+
         Flux::toast(text: "\"{$pitchFile->name}\" saved.", variant: 'success');
     }
 
@@ -144,6 +147,8 @@ class VersionPitchFiles extends Component
         $name = $pitchFile->name;
         $pitchFile->delete();
         unset($this->orderInputs[$id]);
+
+        $this->markReadinessReviewed();
 
         Flux::toast(text: "\"{$name}\" removed.", variant: 'success');
     }
@@ -181,6 +186,16 @@ class VersionPitchFiles extends Component
             VersionPitchFile::where('id', $id)->where('version_id', $this->version->id)->update(['order_by' => $index + 1]);
             $this->orderInputs[$id] = $index + 1;
         }
+    }
+
+    /**
+     * Any change made on this page counts as reviewing its readiness items
+     * (docs/plans/version-readiness.md) — e.g. clears the "Needs review"
+     * a cloned Version starts with.
+     */
+    private function markReadinessReviewed(): void
+    {
+        app(VersionReadiness::class)->markSectionReviewed($this->version, 'pitch_files', Auth::user());
     }
 
     public function render(): View
