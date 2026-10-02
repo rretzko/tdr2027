@@ -244,8 +244,10 @@ test('the credential check never decrypts the secret, so a credential encrypted 
         'environment' => config('services.payments.environment', PaymentEnvironment::Sandbox->value),
     ]);
 
-    // Simulate a row written with a different environment's APP_KEY.
-    DB::table('event_epayment_configs')->where('id', $config->id)->update(['secret' => 'eyJpdiI6ImZvcmVpZ24ta2V5In0=']);
+    // Simulate a row this environment can't decrypt (e.g. written under
+    // another environment's APP_KEY). Deliberately low-entropy plain text so
+    // secret scanners don't flag a fake ciphertext.
+    DB::table('event_epayment_configs')->where('id', $config->id)->update(['secret' => 'not-decryptable-here']);
 
     expect(readinessStatus($version, 'event.epayment.credentials'))->toBe(ReadinessStatus::Done);
 });
