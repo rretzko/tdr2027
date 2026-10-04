@@ -27,7 +27,7 @@
     stayed hardcoded light (lightblue/lightgray), which made that text
     unreadable in dark mode (found 2026-08-18).
 --}}
-<div class="mt-4" style="font-family: sans-serif; background-color: #ffffff; color: #000000; padding: 1rem; border-radius: 0.375rem;">
+<div class="mt-4" style="font-family: sans-serif; background-color: #ffffff; color: #000000; padding: 0.5rem; border-radius: 0.375rem;">
     <style>
         .ca-sectionHeader {
             background-color: lightblue;
@@ -71,6 +71,13 @@
 
         .ca-conditions li p {
             display: inline;
+        }
+
+        /* Keep each signature block intact so a page break never strands a signature line apart from its text's page. */
+        .ca-signatureTbl {
+            width: 100%;
+            margin-top: 0.5rem;
+            page-break-inside: avoid;
         }
 
         .ca-signature {
@@ -137,7 +144,7 @@
 
     {{-- SCHEDULE (optional) --}}
     @if ($scheduleBody !== null && trim(strip_tags($scheduleBody)) !== '')
-        <section style="margin-bottom: 1rem;">
+        <section style="margin-bottom: 0.5rem;">
             <header class="ca-sectionHeader">Schedule</header>
             <div class="ca-conditions">{!! $scheduleBody !!}</div>
         </section>
@@ -145,17 +152,17 @@
 
     {{-- POLICIES (optional) --}}
     @if ($policiesBody !== null && trim(strip_tags($policiesBody)) !== '')
-        <section style="margin-bottom: 1rem;">
+        <section style="margin-bottom: 0.5rem;">
             <header class="ca-sectionHeader">Policies</header>
             <div class="ca-conditions">{!! $policiesBody !!}</div>
         </section>
     @endif
 
     {{-- STUDENT ENDORSEMENT --}}
-    <section style="margin-bottom: 1rem;">
+    <section style="margin-bottom: 0.5rem;">
         <header class="ca-sectionHeader">Student Endorsement — Signature Required</header>
         <div class="ca-conditions">{!! $studentBody !!}</div>
-        <table style="width: 100%; margin-top: 0.5rem;">
+        <table class="ca-signatureTbl">
             <tr>
                 <td style="text-align: left;">
                     {{ $data->candidateFullName }} Signature:
@@ -176,10 +183,10 @@
     </section>
 
     {{-- PARENT/GUARDIAN ENDORSEMENT --}}
-    <section style="margin-bottom: 1rem;">
+    <section style="margin-bottom: 0.5rem;">
         <header class="ca-sectionHeader">Parent/Guardian Endorsement — Signature Required</header>
         <div class="ca-conditions">{!! $parentBody !!}</div>
-        <table style="width: 100%; margin-top: 0.5rem;">
+        <table class="ca-signatureTbl">
             <tr>
                 <td style="text-align: left;">
                     Signature of {{ $data->emergencyContactName }}:
@@ -201,16 +208,16 @@
 
     {{-- TEACHER/PRINCIPAL ENDORSEMENT (Pdf mode only) --}}
     @if ($showTeacherSection)
-        <section style="margin-bottom: 1rem;">
+        <section style="margin-bottom: 0.5rem;">
             <header class="ca-sectionHeader">Teacher/Principal Endorsement — Signatures Required</header>
             <div class="ca-conditions">{!! $teacherBody !!}</div>
-            <table style="width: 100%; margin-top: 0.5rem;">
+            <table class="ca-signatureTbl">
                 <tr>
-                    <td style="text-align: left;">{{ $data->teacherFullName }} Signature: ________________________________________________</td>
+                    <td style="text-align: left;">{{ $data->teacherFullName }} Signature: ________________________</td>
                     <td style="text-align: right;">Date: _________</td>
                 </tr>
                 <tr>
-                    <td style="text-align: left;">Principal Signature: ________________________________________________</td>
+                    <td style="text-align: left;">Principal Signature: ________________________</td>
                     <td style="text-align: right;">Date: _________</td>
                 </tr>
             </table>
