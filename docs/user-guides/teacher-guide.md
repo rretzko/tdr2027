@@ -73,7 +73,7 @@ If nothing shows up at all, it means no Event Manager has opened a Version you'r
 
 **Page: Request Invitation** (reached via "Invitation Available" on the Registrations page)
 
-Being *eligible* for a Version (based on your school's county, or your organization membership) doesn't automatically mean you're *invited* — the Event Manager controls the invitation list. If you're eligible but not yet invited, this page lets you ask. Click **Request Invitation**; the button becomes "Request Sent" and disables itself while the request is pending. The Event Manager gets an email with your name, school, county, and membership info, and can approve or deny it with a single click from that email — no login required on their end.
+Being *eligible* for a Version (based on your school's county) doesn't automatically mean you're *invited* — the Event Manager controls the invitation list. If you're eligible but not yet invited, this page lets you ask. Click **Request Invitation**; the button becomes "Request Sent" and disables itself while the request is pending. The Event Manager gets an email with your name, school, county, and membership info, and can approve or deny it with a single click from that email — no login required on their end.
 
 If a request is denied, you're not locked out — the page shows a note that you're welcome to request again, and the button re-enables.
 

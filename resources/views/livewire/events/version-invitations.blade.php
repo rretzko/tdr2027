@@ -70,7 +70,7 @@
     @if (! $hasEligibleTeachers)
         <flux:callout variant="info" icon="information-circle">
             <flux:callout.text>
-                No teachers are currently eligible for this Version. Eligibility is based on an active, verified school in one of this Version's configured counties, or organization membership.
+                No teachers are currently eligible for this Version. Eligibility is based on an active, verified school in one of this Version's configured counties.
             </flux:callout.text>
         </flux:callout>
     @elseif ($roster->isEmpty())
