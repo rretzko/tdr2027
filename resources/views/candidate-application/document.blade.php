@@ -73,11 +73,45 @@
             display: inline;
         }
 
-        /* Keep each signature block intact so a page break never strands a signature line apart from its text's page. */
+        /*
+            Signature rows: label | line | "Date:" | date line. The lines are
+            bottom borders that fill whatever width the (nowrap) labels leave,
+            so a long name shortens the line instead of wrapping the row onto
+            a second line (fixed-length underscores did — found 2026-10-04).
+            page-break-inside keeps each block intact so a page break never
+            strands a signature line apart from its text.
+        */
         .ca-signatureTbl {
             width: 100%;
+            border-collapse: collapse;
             margin-top: 0.5rem;
             page-break-inside: avoid;
+        }
+
+        .ca-signatureTbl td {
+            padding: 0.2rem 0.25rem 0 0.25rem;
+            vertical-align: bottom;
+        }
+
+        .ca-sigLabel {
+            width: 1%;
+            white-space: nowrap;
+        }
+
+        .ca-sigLine {
+            border-bottom: 1px solid #000000;
+        }
+
+        .ca-sigDateLabel {
+            width: 1%;
+            white-space: nowrap;
+            padding-left: 1.5rem !important;
+        }
+
+        .ca-sigDateLine {
+            width: 1.1in;
+            white-space: nowrap;
+            border-bottom: 1px solid #000000;
         }
 
         .ca-signature {
@@ -164,17 +198,14 @@
         <div class="ca-conditions">{!! $studentBody !!}</div>
         <table class="ca-signatureTbl">
             <tr>
-                <td style="text-align: left;">
-                    {{ $data->candidateFullName }} Signature:
+                <td class="ca-sigLabel">{{ $data->candidateFullName }} Signature:</td>
+                <td class="ca-sigLine">
                     @if (($candidateSignedAt ?? null) !== null)
                         <span class="ca-signature">{{ $data->candidateFullName }}</span>
-                    @else
-                        ________________________
                     @endif
                 </td>
-                <td style="text-align: right;">
-                    Date: {{ ($candidateSignedAt ?? null) !== null ? $candidateSignedAt->format('M j, Y') : '_________' }}
-                </td>
+                <td class="ca-sigDateLabel">Date:</td>
+                <td class="ca-sigDateLine">{{ ($candidateSignedAt ?? null) !== null ? $candidateSignedAt->format('M j, Y') : '' }}</td>
             </tr>
         </table>
         @if (($candidateSignedAt ?? null) !== null)
@@ -188,17 +219,14 @@
         <div class="ca-conditions">{!! $parentBody !!}</div>
         <table class="ca-signatureTbl">
             <tr>
-                <td style="text-align: left;">
-                    Signature of {{ $data->emergencyContactName }}:
+                <td class="ca-sigLabel">Signature of {{ $data->emergencyContactName }}:</td>
+                <td class="ca-sigLine">
                     @if (($parentSignedAt ?? null) !== null)
                         <span class="ca-signature">{{ $data->emergencyContactName }}</span>
-                    @else
-                        ________________________
                     @endif
                 </td>
-                <td style="text-align: right;">
-                    Date: {{ ($parentSignedAt ?? null) !== null ? $parentSignedAt->format('M j, Y') : '_________' }}
-                </td>
+                <td class="ca-sigDateLabel">Date:</td>
+                <td class="ca-sigDateLine">{{ ($parentSignedAt ?? null) !== null ? $parentSignedAt->format('M j, Y') : '' }}</td>
             </tr>
         </table>
         @if (($parentSignedAt ?? null) !== null)
@@ -213,12 +241,16 @@
             <div class="ca-conditions">{!! $teacherBody !!}</div>
             <table class="ca-signatureTbl">
                 <tr>
-                    <td style="text-align: left;">{{ $data->teacherFullName }} Signature: ________________________</td>
-                    <td style="text-align: right;">Date: _________</td>
+                    <td class="ca-sigLabel">{{ $data->teacherFullName }} Signature:</td>
+                    <td class="ca-sigLine"></td>
+                    <td class="ca-sigDateLabel">Date:</td>
+                    <td class="ca-sigDateLine"></td>
                 </tr>
                 <tr>
-                    <td style="text-align: left;">Principal Signature: ________________________</td>
-                    <td style="text-align: right;">Date: _________</td>
+                    <td class="ca-sigLabel">Principal Signature:</td>
+                    <td class="ca-sigLine"></td>
+                    <td class="ca-sigDateLabel">Date:</td>
+                    <td class="ca-sigDateLine"></td>
                 </tr>
             </table>
         </section>

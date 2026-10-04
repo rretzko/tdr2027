@@ -736,7 +736,8 @@ test('the document shows a simulated signature and the actual signed date once a
     $component = Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate]);
 
     // Unsigned: blank signature line, no signed-name rendering.
-    $component->assertSeeHtml('________________________');
+    $component->assertSeeHtml('class="ca-sigLine"');
+    $component->assertDontSeeHtml('class="ca-signature"');
     $component->assertDontSee('Electronically signed');
 
     $component->call('toggleApplicationCandidateSigned')->call('toggleApplicationParentSigned');
