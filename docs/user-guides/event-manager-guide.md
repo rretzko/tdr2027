@@ -158,9 +158,9 @@ Assign or remove the five generic version-scoped roles here: **Event Manager, Re
 
 **Page: Invitations** (`/events/versions/{version}/invitations`)
 
-Controls exactly which teachers may enroll Candidates in this Version. A teacher is *eligible* (computed automatically, nothing to configure directly beyond Requirements' Eligible Counties) if they have an active, verified school **and** either their school's county is on this Version's county list (or the Version has no county restriction at all) **or** they hold any membership — expired or not — in the Event's organization.
+Controls exactly which teachers may enroll Candidates in this Version. A teacher is *eligible* (computed automatically, nothing to configure directly beyond Requirements' Eligible Counties) if they have an active, verified school **and** that school's county is on this Version's county list. If the Version has no county restriction at all, every teacher with an active, verified school is eligible. Organization membership does not make a teacher eligible on its own.
 
-The roster table lists every eligible teacher with their school/county, membership expiration, and current status (Eligible, Invited, Obligated, or Participating). Actions:
+The roster table lists every eligible teacher with their school/county, membership expiration (shown for reference only), and current status (Eligible, Invited, Obligated, or Participating). Actions:
 
 - **Invite** a single teacher, or **Invite All** to invite everyone currently eligible and not yet invited.
 - Uncheck/**Remove** to un-invite, or **Remove All** to bulk-remove everyone still just at "Invited."

@@ -73,7 +73,7 @@ test('eligibleTeachers excludes a teacher whose county does not match and who ha
     expect($result->pluck('id'))->not->toContain($teacher->id);
 });
 
-test('eligibleTeachers includes a teacher via organization membership even when the county does not match', function () {
+test('eligibleTeachers excludes a teacher outside the configured counties even if they hold a root-organization membership', function () {
     $organization = Organization::factory()->create();
     $configuredCounty = County::factory()->create();
     $version = makeInvitationVersion($organization, [$configuredCounty]);
@@ -85,30 +85,10 @@ test('eligibleTeachers includes a teacher via organization membership even when 
 
     Membership::factory()->create(['teacher_id' => $teacher->id, 'organization_id' => $organization->id]);
 
-    $result = app(VersionInvitationEligibilityService::class)->eligibleTeachers($version);
+    $service = app(VersionInvitationEligibilityService::class);
 
-    expect($result->pluck('id'))->toContain($teacher->id);
-});
-
-test('eligibleTeachers treats an expired membership as still qualifying', function () {
-    $organization = Organization::factory()->create();
-    $configuredCounty = County::factory()->create();
-    $version = makeInvitationVersion($organization, [$configuredCounty]);
-
-    $teacher = Teacher::factory()->create();
-    $otherCounty = County::factory()->create();
-    $school = School::factory()->create(['county_id' => $otherCounty->id]);
-    attachTeacherToVersionSchool($teacher, $school);
-
-    Membership::factory()->create([
-        'teacher_id' => $teacher->id,
-        'organization_id' => $organization->id,
-        'membership_expires_at' => now()->subYear()->format('Y-m-d'),
-    ]);
-
-    $result = app(VersionInvitationEligibilityService::class)->eligibleTeachers($version);
-
-    expect($result->pluck('id'))->toContain($teacher->id);
+    expect($service->eligibleTeachers($version)->pluck('id'))->not->toContain($teacher->id);
+    expect($service->isEligible($version, $teacher))->toBeFalse();
 });
 
 test('eligibleTeachers is unrestricted by county when the Version has no configured counties', function () {
@@ -138,24 +118,6 @@ test('eligibleTeachers excludes a teacher with no active, verified school even i
     $result = app(VersionInvitationEligibilityService::class)->eligibleTeachers($version);
 
     expect($result->pluck('id'))->not->toContain($teacher->id);
-});
-
-test('eligibleTeachers resolves membership against the root organization for a child org\'s Event', function () {
-    $rootOrganization = Organization::factory()->create();
-    $childOrganization = Organization::factory()->create(['parent_id' => $rootOrganization->id]);
-    $configuredCounty = County::factory()->create();
-    $version = makeInvitationVersion($childOrganization, [$configuredCounty]);
-
-    $teacher = Teacher::factory()->create();
-    $otherCounty = County::factory()->create();
-    $school = School::factory()->create(['county_id' => $otherCounty->id]);
-    attachTeacherToVersionSchool($teacher, $school);
-
-    Membership::factory()->create(['teacher_id' => $teacher->id, 'organization_id' => $rootOrganization->id]);
-
-    $result = app(VersionInvitationEligibilityService::class)->eligibleTeachers($version);
-
-    expect($result->pluck('id'))->toContain($teacher->id);
 });
 
 test('roster shows eligible status and a null invitation for a teacher with no version_invitations row', function () {
@@ -236,19 +198,15 @@ test('roster prefers a county-matching school over a non-matching one, regardles
     expect($row->school->id)->toBe($matchingSchool->id);
 });
 
-test('roster falls back to the first school alphabetically when the teacher qualifies only via membership', function () {
+test('roster shows the first school alphabetically when the Version has no configured counties', function () {
     $organization = Organization::factory()->create();
-    $configuredCounty = County::factory()->create();
-    $version = makeInvitationVersion($organization, [$configuredCounty]);
+    $version = makeInvitationVersion($organization);
 
     $teacher = Teacher::factory()->create();
-    $otherCounty = County::factory()->create();
-    $schoolA = School::factory()->create(['name' => 'Alpha School', 'county_id' => $otherCounty->id]);
-    $schoolB = School::factory()->create(['name' => 'Beta School', 'county_id' => $otherCounty->id]);
+    $schoolA = School::factory()->create(['name' => 'Alpha School']);
+    $schoolB = School::factory()->create(['name' => 'Beta School']);
     attachTeacherToVersionSchool($teacher, $schoolB);
     attachTeacherToVersionSchool($teacher, $schoolA);
-
-    Membership::factory()->create(['teacher_id' => $teacher->id, 'organization_id' => $organization->id]);
 
     $row = app(VersionInvitationEligibilityService::class)->roster($version)
         ->first(fn ($r) => $r->teacher->id === $teacher->id);

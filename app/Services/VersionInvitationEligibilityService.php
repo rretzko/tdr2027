@@ -27,10 +27,9 @@ class VersionInvitationEligibilityService
 {
     /**
      * Teachers eligible for this Version's invitation list: at least one
-     * active+verified school, and either (a) that school's county is among
-     * the Version's configured counties — or the Version has none configured,
-     * which is unrestricted — or (b) the teacher holds any Membership record
-     * (expired or not) in the Event's root organization.
+     * active+verified school whose county is among the Version's configured
+     * counties. A Version with no counties configured is unrestricted (any
+     * active+verified school qualifies).
      *
      * @return Collection<int, Teacher>
      */
@@ -183,27 +182,14 @@ class VersionInvitationEligibilityService
      */
     private function eligibleTeachersQuery(Version $version): Builder
     {
-        $rootOrgId = $this->rootOrganizationId($version);
         $countyIds = $version->counties()->pluck('county_id');
 
-        $query = Teacher::query()
-            ->whereHas('schools', function ($q): void {
-                $q->where('school_teacher.is_active', true)->whereNotNull('school_teacher.verified_at');
+        return Teacher::query()
+            ->whereHas('schools', function ($q) use ($countyIds): void {
+                $q->where('school_teacher.is_active', true)
+                    ->whereNotNull('school_teacher.verified_at')
+                    ->when($countyIds->isNotEmpty(), fn ($q) => $q->whereIn('schools.county_id', $countyIds));
             });
-
-        if ($countyIds->isNotEmpty()) {
-            $query->where(function ($q) use ($countyIds, $rootOrgId): void {
-                $q->whereHas('schools', function ($sq) use ($countyIds): void {
-                    $sq->where('school_teacher.is_active', true)
-                        ->whereNotNull('school_teacher.verified_at')
-                        ->whereIn('schools.county_id', $countyIds);
-                })->orWhereHas('memberships', function ($mq) use ($rootOrgId): void {
-                    $mq->where('organization_id', $rootOrgId);
-                });
-            });
-        }
-
-        return $query;
     }
 
     private function rootOrganizationId(Version $version): int
