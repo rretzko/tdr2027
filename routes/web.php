@@ -67,6 +67,7 @@ use App\Livewire\Events\VersionInvitations;
 use App\Livewire\Events\VersionPitchFiles;
 use App\Livewire\Events\VersionReadinessChecklist;
 use App\Livewire\Events\VersionRooms;
+use App\Livewire\Events\VersionScorecard;
 use App\Livewire\Events\VersionScoringRubric;
 use App\Livewire\Events\VersionSetupQuestions;
 use App\Livewire\Events\WebRegistration;
@@ -280,6 +281,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/rooms/roster.pdf', VersionRoomRosterPdfController::class)->name('events.versions.rooms.roster-pdf');
         Route::get('/events/versions/{version}/scoring-rubric', VersionScoringRubric::class)->name('events.versions.scoring-rubric');
         Route::get('/events/versions/{version}/readiness', VersionReadinessChecklist::class)->name('events.versions.readiness');
+        Route::get('/events/versions/{version}/scorecard', VersionScorecard::class)->name('events.versions.scorecard');
         Route::get('/events/versions/{version}/setup-questions', VersionSetupQuestions::class)->name('events.versions.setup-questions');
         Route::get('/events/versions/{version}/adjudicate', Adjudicate::class)->name('events.versions.adjudicate');
 

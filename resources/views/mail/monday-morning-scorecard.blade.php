@@ -35,6 +35,10 @@ This email is automatically sent to {{ $version->name }} Event Managers every Mo
 | Registration Fees Paid | ${{ number_format($metrics->registrationFeesPaidInDollars(), 2) }} |
 | Registration Fees Outstanding | ${{ number_format($metrics->registrationFeesOutstandingInDollars(), 2) }} |
 
+<x-mail::button :url="route('events.versions.scorecard', $version)">
+View weekly trends
+</x-mail::button>
+
 Thanks,<br>
 {{ config('app.name') }}
 

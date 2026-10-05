@@ -114,6 +114,11 @@
                                         Web Registration
                                     </flux:button>
                                 @endif
+                                @if ($canManageEvent)
+                                    <flux:button size="sm" variant="filled" class="!bg-indigo-50 hover:!bg-indigo-100 !text-indigo-700 dark:!bg-indigo-900/30 dark:hover:!bg-indigo-900/50 dark:!text-indigo-400" :href="route('events.versions.scorecard', $version)" wire:navigate>
+                                        Scorecard
+                                    </flux:button>
+                                @endif
                             </div>
                         </div>
                     </flux:card>
@@ -197,6 +202,11 @@
                                     @if ($versionWebRegistrationAccess[$version->id] ?? false)
                                         <flux:button size="sm" variant="filled" class="!bg-rose-50 hover:!bg-rose-100 !text-rose-700 dark:!bg-rose-900/30 dark:hover:!bg-rose-900/50 dark:!text-rose-400" :href="route('events.versions.web-registration', $version)" wire:navigate>
                                             Web Registration
+                                        </flux:button>
+                                    @endif
+                                    @if ($canManageEvent)
+                                        <flux:button size="sm" variant="filled" class="!bg-indigo-50 hover:!bg-indigo-100 !text-indigo-700 dark:!bg-indigo-900/30 dark:hover:!bg-indigo-900/50 dark:!text-indigo-400" :href="route('events.versions.scorecard', $version)" wire:navigate>
+                                            Scorecard
                                         </flux:button>
                                     @endif
                                 </div>
