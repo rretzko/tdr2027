@@ -92,7 +92,9 @@ class RequestInvitation extends Component
 
         $expiresAt = now()->addDays(7);
 
-        foreach ($roles->eventManagersForEvent($this->version->event) as $eventManager) {
+        // Only this Version's Event Managers — prior-year managers of the same
+        // Event shouldn't receive approve/deny links for a Version they don't run.
+        foreach ($roles->assignmentsForVersion($this->version)->get('Event Manager') ?? [] as $eventManager) {
             if ($eventManager->email === null) {
                 continue;
             }
