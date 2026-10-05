@@ -7,6 +7,7 @@ namespace App\Console\Commands;
 use App\Enums\EventStatus;
 use App\Mail\MondayMorningScorecardMail;
 use App\Models\Version;
+use App\Models\VersionScorecardSnapshot;
 use App\Services\VersionRoleAssignmentService;
 use App\Services\VersionScorecardService;
 use Illuminate\Console\Command;
@@ -20,6 +21,9 @@ use Illuminate\Support\Facades\Mail;
  * Event-wide via VersionRoleAssignmentService::eventManagersForEvent()) so a
  * manager assigned to one Version of an Event doesn't get scorecards for a
  * sibling Version they have no role on.
+ *
+ * Also records a VersionScorecardSnapshot for every Active Version, including
+ * ones with no Event Manager to email, so the weekly history has no gaps.
  */
 class SendMondayMorningScorecardEmails extends Command
 {
@@ -35,15 +39,14 @@ class SendMondayMorningScorecardEmails extends Command
             ->get();
 
         $emailsSent = 0;
+        $capturedOn = now(config('app.display_timezone'));
 
         foreach ($versions as $version) {
-            $eventManagers = $roles->assignmentsForVersion($version)->get('Event Manager') ?? collect();
-
-            if ($eventManagers->isEmpty()) {
-                continue;
-            }
-
             $metrics = $scorecard->metricsFor($version);
+
+            VersionScorecardSnapshot::record($version, $metrics, $capturedOn);
+
+            $eventManagers = $roles->assignmentsForVersion($version)->get('Event Manager') ?? collect();
 
             foreach ($eventManagers as $eventManager) {
                 if ($eventManager->email === null) {

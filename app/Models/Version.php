@@ -363,6 +363,14 @@ class Version extends Model
     }
 
     /**
+     * @return HasMany<VersionScorecardSnapshot, $this>
+     */
+    public function scorecardSnapshots(): HasMany
+    {
+        return $this->hasMany(VersionScorecardSnapshot::class);
+    }
+
+    /**
      * @return HasOne<VersionObligation, $this>
      */
     public function obligation(): HasOne

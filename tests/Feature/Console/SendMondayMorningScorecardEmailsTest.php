@@ -10,8 +10,10 @@ use App\Models\Event;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionScorecardSnapshot;
 use App\Services\VersionRoleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -82,5 +84,44 @@ class SendMondayMorningScorecardEmailsTest extends TestCase
         $this->artisan('versions:send-monday-morning-scorecard')->assertSuccessful();
 
         Mail::assertNothingSent();
+    }
+
+    public function test_records_a_snapshot_for_each_active_version(): void
+    {
+        Mail::fake();
+        Carbon::setTestNow(Carbon::parse('2026-10-05 07:30', 'America/New_York'));
+
+        $active = $this->makeVersion(EventStatus::Active);
+        $this->makeEventManager($active);
+        $sandbox = $this->makeVersion(EventStatus::Sandbox);
+
+        $this->artisan('versions:send-monday-morning-scorecard')->assertSuccessful();
+
+        $snapshot = VersionScorecardSnapshot::where('version_id', $active->id)->sole();
+        $this->assertSame('2026-10-05', Carbon::parse($snapshot->getRawOriginal('captured_on'))->toDateString());
+        $this->assertDatabaseMissing('version_scorecard_snapshots', ['version_id' => $sandbox->id]);
+    }
+
+    public function test_records_a_snapshot_even_when_an_active_version_has_no_event_manager(): void
+    {
+        Mail::fake();
+
+        $version = $this->makeVersion(EventStatus::Active);
+
+        $this->artisan('versions:send-monday-morning-scorecard')->assertSuccessful();
+
+        $this->assertDatabaseHas('version_scorecard_snapshots', ['version_id' => $version->id]);
+    }
+
+    public function test_rerunning_on_the_same_day_does_not_duplicate_the_snapshot(): void
+    {
+        Mail::fake();
+
+        $version = $this->makeVersion(EventStatus::Active);
+
+        $this->artisan('versions:send-monday-morning-scorecard')->assertSuccessful();
+        $this->artisan('versions:send-monday-morning-scorecard')->assertSuccessful();
+
+        $this->assertSame(1, VersionScorecardSnapshot::where('version_id', $version->id)->count());
     }
 }
