@@ -111,6 +111,25 @@ test('request creates a pending row and notifies each Event Manager', function (
     Mail::assertSent(VersionInvitationRequestSubmittedMail::class, fn ($mail) => $mail->hasTo($eventManager->email));
 });
 
+test('request notifies only the requested Version\'s Event Managers, not other Versions of the same Event', function () {
+    Mail::fake();
+
+    $teacher = makeRequestPageTeacher();
+    $version = makeRequestPageVersion();
+    $priorVersion = Version::factory()->create(['event_id' => $version->event_id]);
+    attachRequestPageSchool($teacher);
+    $currentManager = makeRequestPageEventManager($version);
+    $priorManager = makeRequestPageEventManager($priorVersion);
+
+    Livewire::actingAs($teacher->user)
+        ->test(RequestInvitation::class, ['version' => $version])
+        ->call('request');
+
+    Mail::assertSent(VersionInvitationRequestSubmittedMail::class, fn ($mail) => $mail->hasTo($currentManager->email));
+    Mail::assertNotSent(VersionInvitationRequestSubmittedMail::class, fn ($mail) => $mail->hasTo($priorManager->email));
+    Mail::assertSentCount(1);
+});
+
 test('request button is disabled while a request is pending', function () {
     $teacher = makeRequestPageTeacher();
     $version = makeRequestPageVersion();
