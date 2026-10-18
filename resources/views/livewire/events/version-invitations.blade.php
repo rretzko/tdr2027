@@ -14,7 +14,10 @@
             <flux:text size="sm" class="text-zinc-500">{{ $version->name }} — who may participate in this Version</flux:text>
         </div>
 
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
+            <flux:modal.trigger name="director-upload">
+                <flux:button size="sm" icon="arrow-up-tray">Upload Directors</flux:button>
+            </flux:modal.trigger>
             <flux:button size="sm" wire:click="inviteAll" wire:confirm="Invite every eligible teacher not yet invited?">
                 Invite All
             </flux:button>
@@ -176,4 +179,8 @@
             </flux:table>
         </div>
     @endif
+
+    <flux:modal name="director-upload" class="w-full md:w-[56rem]">
+        <livewire:events.director-upload :version="$version" />
+    </flux:modal>
 </div>
