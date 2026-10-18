@@ -16,6 +16,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -50,6 +51,13 @@ class VersionInvitations extends Component
             $this->sortDirection = 'asc';
         }
     }
+
+    /**
+     * DirectorUpload (the Upload Directors modal) just invited teachers —
+     * an empty action is enough to re-render the roster.
+     */
+    #[On('directors-uploaded')]
+    public function refreshRoster(): void {}
 
     /**
      * Clicking a status stat tile filters to that status; clicking the

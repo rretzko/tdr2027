@@ -1,0 +1,3 @@
+honorific,first_name,middle_name,last_name,suffix_name,pronoun,email,cell_phone,school_name,school_type,school_city,school_zip,school_county,school_state,school_email,role,subjects
+Mr.,John,,Smith,,he,jsmith@example.com,(609) 555-0101,Example High School,school,Trenton,8608,Mercer,NJ,jsmith@examplehs.k12.nj.us,primary,chorus
+Dr.,Maria,L.,Garcia,,she,mgarcia@example.com,,Garcia Music Studio,studio,Princeton,8540,Mercer,NJ,,primary,chorus

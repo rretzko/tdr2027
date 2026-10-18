@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\CandidateApplicationPdfController;
 use App\Http\Controllers\CandidateScoreReportPdfController;
+use App\Http\Controllers\DirectorUploadTemplateController;
 use App\Http\Controllers\EstimateFormPdfController;
 use App\Http\Controllers\PaymentRegisterCsvController;
 use App\Http\Controllers\PaymentRegisterPdfController;
@@ -275,6 +276,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/{event}', EventsShow::class)->name('events.show');
         Route::get('/events/versions/{version}/edit', VersionEdit::class)->name('events.versions.edit');
         Route::get('/events/versions/{version}/invitations', VersionInvitations::class)->name('events.versions.invitations');
+        Route::get('/events/versions/{version}/invitations/director-template.csv', DirectorUploadTemplateController::class)->name('events.versions.invitations.director-template');
         Route::get('/events/versions/{version}/co-registration-managers', VersionCoRegistrationManagers::class)->name('events.versions.co-registration-managers');
         Route::get('/events/versions/{version}/pitch-files', VersionPitchFiles::class)->name('events.versions.pitch-files');
         Route::get('/events/versions/{version}/rooms', VersionRooms::class)->name('events.versions.rooms');
