@@ -32,7 +32,7 @@
                             @if ($nextDate)
                                 <flux:text size="sm" class="text-zinc-400 mt-1">
                                     Next: {{ $nextDate->dateType?->label() ?? $nextDate->getRawOriginal('date_type') }}
-                                    — {{ \Carbon\Carbon::parse($nextDate->getRawOriginal('start_at'))->format('M j, Y') }}
+                                    — {{ \Carbon\Carbon::parse($nextDate->getRawOriginal('start_at'), 'UTC')->forDisplay()->format('M j, Y') }}
                                 </flux:text>
                             @endif
                         </div>
@@ -94,7 +94,7 @@
                             @if ($nextDate)
                                 <flux:text size="sm" class="text-zinc-400 mt-1">
                                     Next: {{ $nextDate->dateType?->label() ?? $nextDate->getRawOriginal('date_type') }}
-                                    — {{ \Carbon\Carbon::parse($nextDate->getRawOriginal('start_at'))->format('M j, Y') }}
+                                    — {{ \Carbon\Carbon::parse($nextDate->getRawOriginal('start_at'), 'UTC')->forDisplay()->format('M j, Y') }}
                                 </flux:text>
                             @endif
                         </div>
@@ -134,7 +134,7 @@
                             @if ($nextDate)
                                 <flux:text size="sm" class="text-zinc-400 mt-1">
                                     Next: {{ $nextDate->dateType?->label() ?? $nextDate->getRawOriginal('date_type') }}
-                                    — {{ \Carbon\Carbon::parse($nextDate->getRawOriginal('start_at'))->format('M j, Y') }}
+                                    — {{ \Carbon\Carbon::parse($nextDate->getRawOriginal('start_at'), 'UTC')->forDisplay()->format('M j, Y') }}
                                 </flux:text>
                             @endif
                         </div>

@@ -12,6 +12,14 @@
         <div>
             <flux:heading size="xl">{{ $candidate->version->name }}</flux:heading>
             <flux:text size="sm" class="text-zinc-500">{{ $candidate->version->event->name }}</flux:text>
+            @if ($registrationPeriod?->start_at)
+                <flux:text class="mt-1">
+                    <span class="font-medium">Student Registration Period:</span>
+                    {{-- A midnight (Eastern) start omits its time as noise. --}}
+                    @php $periodStart = $registrationPeriod->start_at->forDisplay(); @endphp
+                    {{ $periodStart->format($periodStart->format('H:i') === '00:00' ? 'l, F j' : 'l, F j \a\t g:i A') }}@if ($registrationPeriod->end_at) – {{ $registrationPeriod->end_at->forDisplay()->format('l, F j \a\t g:i A') }}@endif
+                </flux:text>
+            @endif
         </div>
 
         @php

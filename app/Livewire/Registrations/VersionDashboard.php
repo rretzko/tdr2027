@@ -498,8 +498,12 @@ class VersionDashboard extends Component
             ->sortBy(fn (CandidateStatus $status): string => $status->label())
             ->values();
 
+        // Filters on the same COALESCE(end_at, start_at) it sorts by, so a
+        // window that has already opened (e.g. the candidate window) stays
+        // listed until its end_at deadline passes rather than vanishing the
+        // moment it starts.
         $upcomingDates = $this->version->dates()
-            ->where('start_at', '>=', now())
+            ->whereRaw('COALESCE(end_at, start_at) >= ?', [now()])
             ->whereNotIn('date_type', [VersionDateType::TabRoom->value, VersionDateType::Rehearsal->value])
             ->orderByRaw('COALESCE(end_at, start_at)')
             ->limit(6)

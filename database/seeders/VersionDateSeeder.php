@@ -60,8 +60,8 @@ class VersionDateSeeder extends Seeder
                 'id' => (int) $row['id'],
                 'version_id' => (int) $row['version_id'],
                 'date_type' => trim($row['date_type']),
-                'start_at' => $this->parseDate($row['start_at']),
-                'end_at' => $this->parseDate($row['end_at']),
+                'start_at' => $this->parseWallClockDate($row['start_at']),
+                'end_at' => $this->parseWallClockDate($row['end_at']),
                 'created_at' => $createdAt ?? $now,
                 'updated_at' => $this->parseDate($row['updated_at']) ?? $now,
             ];
@@ -81,5 +81,14 @@ class VersionDateSeeder extends Seeder
         }
 
         return Carbon::createFromFormat('m/d/y H:i', $value);
+    }
+
+    /**
+     * The legacy start/end values are Eastern wall-clock; version_dates
+     * stores UTC like every other datetime.
+     */
+    private function parseWallClockDate(string $value): ?Carbon
+    {
+        return $this->parseDate($value)?->shiftTimezone(config('app.display_timezone'))->utc();
     }
 }

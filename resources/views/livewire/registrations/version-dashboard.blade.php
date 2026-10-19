@@ -47,9 +47,9 @@
                                         @endif
                                     </span>
                                     <span class="text-zinc-500 text-sm">
-                                        {{ \Carbon\Carbon::parse($date->getRawOriginal('start_at'))->format('M j, Y') }}
+                                        {{ \Carbon\Carbon::parse($date->getRawOriginal('start_at'), 'UTC')->forDisplay()->format('M j, Y') }}
                                         @if ($date->getRawOriginal('end_at'))
-                                            – {{ \Carbon\Carbon::parse($date->getRawOriginal('end_at'))->format('M j, Y') }}
+                                            – {{ \Carbon\Carbon::parse($date->getRawOriginal('end_at'), 'UTC')->forDisplay()->format('M j, Y') }}
                                         @endif
                                     </span>
                                 </div>

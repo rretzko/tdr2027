@@ -1327,3 +1327,41 @@ test('the Application and Recordings tour anchors render only when those cards a
         ->assertSeeHtml('id="tour-application-card"')
         ->assertSeeHtml('id="tour-recordings-card"');
 });
+
+test('shows the Student Registration Period from the candidate version_date', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Candidate,
+        // UTC for Oct 5 12:00 AM – Oct 19 5:00 PM Eastern (EDT)
+        'start_at' => Carbon::parse('2026-10-05 04:00:00'),
+        'end_at' => Carbon::parse('2026-10-19 21:00:00'),
+    ]);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertSee('Student Registration Period:')
+        ->assertSeeText('Monday, October 5 – Monday, October 19 at 5:00 PM');
+});
+
+test('hides the Student Registration Period when the Version has no candidate version_date', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertDontSee('Student Registration Period:');
+});

@@ -43,7 +43,7 @@
                 <flux:text size="sm" class="text-zinc-500 tabular-nums">{{ $phaseSummary['done'] }}/{{ $phaseSummary['total'] }} done</flux:text>
                 @if ($due !== null && $phaseSummary['blocking'] > 0)
                     <flux:badge size="sm" color="{{ $due->isPast() ? 'red' : ($due->diffInDays(now(), true) <= 14 ? 'amber' : 'zinc') }}">
-                        Due by {{ $due->format('M j, Y') }}
+                        Due by {{ $due->forDisplay()->format('M j, Y') }}
                     </flux:badge>
                 @endif
             </div>

@@ -205,7 +205,7 @@ final class CandidateApplicationData
         $deadline = $version->dates->firstWhere('date_type', VersionDateType::PostmarkDeadline);
 
         return $deadline !== null
-            ? Carbon::parse($deadline->start_at)->format('M j, Y')
+            ? Carbon::parse($deadline->start_at)->forDisplay()->format('M j, Y')
             : '—';
     }
 }

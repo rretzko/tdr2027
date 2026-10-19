@@ -13,6 +13,7 @@ use App\Enums\FeeType;
 use App\Enums\PaymentTransactionStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\UploadType;
+use App\Enums\VersionDateType;
 use App\Models\Candidate;
 use App\Models\CandidateUploadFile;
 use App\Models\PaymentAllocation;
@@ -470,6 +471,7 @@ class Show extends Component
             'candidateUploads' => $this->candidate->uploadFiles->keyBy('version_upload_file_id'),
             'pitchFilesVisible' => $pitchFilesVisible,
             'pitchFiles' => $pitchFilesVisible ? $this->matchingPitchFiles() : new Collection,
+            'registrationPeriod' => $this->version->dates->firstWhere('date_type', VersionDateType::Candidate),
             ...$this->applicationDocumentView(),
             ...$this->paymentView(),
         ]);

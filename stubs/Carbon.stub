@@ -1,0 +1,10 @@
+<?php
+
+namespace Carbon;
+
+/**
+ * Macros registered in AppServiceProvider::boot().
+ *
+ * @method static forDisplay() Copy converted to config('app.display_timezone') for showing to a user.
+ */
+interface CarbonInterface {}

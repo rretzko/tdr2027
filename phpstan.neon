@@ -10,3 +10,6 @@ parameters:
     level: 5
 
     tmpDir: storage/framework/phpstan
+
+    stubFiles:
+        - stubs/Carbon.stub

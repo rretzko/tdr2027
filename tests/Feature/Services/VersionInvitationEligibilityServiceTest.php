@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\VersionDateType;
 use App\Enums\VersionInvitationStatus;
 use App\Models\County;
 use App\Models\Event;
@@ -12,9 +13,13 @@ use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionCounty;
+use App\Models\VersionDate;
 use App\Models\VersionInvitation;
 use App\Services\VersionInvitationEligibilityService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+
+use function Pest\Laravel\travelTo;
 
 uses(RefreshDatabase::class);
 
@@ -242,4 +247,21 @@ test('roster shows the root organization\'s membership_expires_at and ignores a 
         ->first(fn ($r) => $r->teacher->id === $teacher->id);
 
     expect($row->membershipExpiresAt->format('Y-m-d'))->toBe(now()->addYear()->format('Y-m-d'));
+});
+
+test('openForTeacherVersionIds keeps a window open until its Eastern end time, not 4 hours early', function () {
+    $version = Version::factory()->create();
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Teacher->value,
+        'start_at' => '2026-10-05 04:00:00', // Oct 5 12:00 AM EDT
+        'end_at' => '2026-10-26 21:00:00', // Oct 26 5:00 PM EDT
+    ]);
+    $service = app(VersionInvitationEligibilityService::class);
+
+    travelTo(Carbon::parse('2026-10-26 16:30:00', 'America/New_York'));
+    expect($service->openForTeacherVersionIds())->toContain($version->id);
+
+    travelTo(Carbon::parse('2026-10-26 17:01:00', 'America/New_York'));
+    expect($service->openForTeacherVersionIds())->not->toContain($version->id);
 });

@@ -171,6 +171,24 @@ test('cloneFrom advances VersionDate rows by one year and preserves date_type', 
     expect(Carbon::parse($dates[VersionDateType::Adjudication->value]->getRawOriginal('end_at'))->toDateString())->toBe('2028-02-01');
 });
 
+test('cloneFrom keeps the Eastern wall-clock time when DST differs between the source date and its year-later clone', function () {
+    $source = Version::factory()->create();
+    // Nov 3, 2026 5:00 PM EST (DST ended Nov 1) ...
+    VersionDate::create([
+        'version_id' => $source->id,
+        'date_type' => VersionDateType::PostmarkDeadline->value,
+        'start_at' => '2026-11-03 22:00:00',
+        'end_at' => null,
+    ]);
+
+    $clone = app(VersionCloningService::class)->cloneFrom($source, [
+        'name' => 'Cloned Version', 'short_name' => null, 'senior_class_of' => 2028,
+    ], User::factory()->create());
+
+    // ... becomes Nov 3, 2027 5:00 PM EDT (DST ends Nov 7), not 6:00 PM.
+    expect($clone->dates()->first()->getRawOriginal('start_at'))->toBe('2027-11-03 21:00:00');
+});
+
 test('cloneFrom advances membershipRequirement valid_thru by one year', function () {
     $source = buildFullyConfiguredVersion();
 

@@ -47,9 +47,9 @@
                                                 @endif
                                             </span>
                                             <span class="{{ $isNext ? 'font-semibold' : '' }} whitespace-nowrap">
-                                                {{ $date->start_at->format('M j, Y g:i A') }}
+                                                {{ $date->start_at->forDisplay()->format('M j, Y g:i A') }}
                                                 @if ($date->end_at)
-                                                    &ndash; {{ $date->end_at->format('M j, Y g:i A') }}
+                                                    &ndash; {{ $date->end_at->forDisplay()->format('M j, Y g:i A') }}
                                                 @endif
                                             </span>
                                         </li>

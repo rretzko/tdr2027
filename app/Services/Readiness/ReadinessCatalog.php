@@ -587,7 +587,7 @@ final class ReadinessCatalog
             },
             url: self::editTab('dates'),
             applicable: $applicable,
-            detail: fn (ReadinessContext $c): ?string => $c->startDate($type)?->format('M j, Y'),
+            detail: fn (ReadinessContext $c): ?string => $c->startDate($type)?->forDisplay()->format('M j, Y'),
             yearSensitive: true,
             section: 'dates',
             covers: ['version_dates.'.$type->value],

@@ -405,6 +405,47 @@ test('saveDates creates rows for each populated VersionDateType', function () {
     expect($adjudication->getRawOriginal('end_at'))->not->toBeNull();
 });
 
+test('saveDates stores the Eastern wall-clock inputs as UTC, using each date\'s own DST offset', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('date_start.'.VersionDateType::Candidate->value, '2026-10-05T00:00')
+        ->set('date_end.'.VersionDateType::Candidate->value, '2026-10-26T17:00')
+        ->set('date_start.'.VersionDateType::Adjudication->value, '2027-01-15T09:00')
+        ->set('date_end.'.VersionDateType::Adjudication->value, '2027-01-16T17:00')
+        ->call('saveDates')
+        ->assertHasNoErrors();
+
+    $dates = VersionDate::where('version_id', $version->id)->get()->keyBy(fn (VersionDate $d) => $d->getRawOriginal('date_type'));
+
+    // EDT (UTC-4)
+    expect($dates['candidate']->getRawOriginal('start_at'))->toBe('2026-10-05 04:00:00');
+    expect($dates['candidate']->getRawOriginal('end_at'))->toBe('2026-10-26 21:00:00');
+    // EST (UTC-5)
+    expect($dates['adjudication']->getRawOriginal('start_at'))->toBe('2027-01-15 14:00:00');
+    expect($dates['adjudication']->getRawOriginal('end_at'))->toBe('2027-01-16 22:00:00');
+});
+
+test('mount fills the date inputs with stored UTC values converted back to Eastern wall-clock', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Candidate->value,
+        'start_at' => '2026-10-05 04:00:00',
+        'end_at' => '2026-10-26 21:00:00',
+    ]);
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertSet('date_start.'.VersionDateType::Candidate->value, '2026-10-05T00:00')
+        ->assertSet('date_end.'.VersionDateType::Candidate->value, '2026-10-26T17:00');
+});
+
 test('saveDates rejects an end_at before start_at for date types with a window', function () {
     $user = makeVersionEditUser();
     $version = Version::factory()->create();

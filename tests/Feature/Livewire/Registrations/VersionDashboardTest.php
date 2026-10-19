@@ -9,6 +9,7 @@ use App\Enums\ObligationDecision;
 use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
 use App\Enums\Vendor;
+use App\Enums\VersionDateType;
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\VersionDashboard;
 use App\Models\Candidate;
@@ -23,6 +24,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionDate;
 use App\Models\VersionEpaymentConfig;
 use App\Models\VersionFee;
 use App\Models\VersionInvitation;
@@ -1410,4 +1412,40 @@ test('the dashboard tells teachers when the event accepts online payment only', 
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version->fresh()])
         ->assertSee($notice);
+});
+
+test('Upcoming Deadlines keeps an in-progress window until its end_at passes, and drops windows that are fully past', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    inviteRegistrationTeacher($teacher, $version);
+
+    $inProgress = VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Candidate->value,
+        'start_at' => now()->subWeeks(2),
+        'end_at' => now()->addHours(2),
+    ]);
+    $future = VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::PostmarkDeadline->value,
+        'start_at' => now()->addWeeks(2),
+        'end_at' => null,
+    ]);
+    $closedWindow = VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Teacher->value,
+        'start_at' => now()->subWeeks(3),
+        'end_at' => now()->subHour(),
+    ]);
+    $pastPointInTime = VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Admin->value,
+        'start_at' => now()->subWeek(),
+        'end_at' => null,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertViewHas('upcomingDates', fn (Collection $dates): bool => $dates->pluck('id')->all() === [$inProgress->id, $future->id])
+        ->assertSee('StudentFolder.info dates');
 });

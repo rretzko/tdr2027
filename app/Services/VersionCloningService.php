@@ -100,14 +100,18 @@ class VersionCloningService
 
     private function cloneDates(Version $source, Version $version): void
     {
+        // Shifted a year in Eastern wall-clock, not UTC, so a 5:00 PM
+        // deadline stays 5:00 PM even when DST differs between the two dates.
+        $addYear = fn (string $raw): Carbon => Carbon::parse($raw, 'UTC')->forDisplay()->addYear()->utc();
+
         foreach ($source->dates as $date) {
             $rawEndAt = $date->getRawOriginal('end_at');
 
             VersionDate::create([
                 'version_id' => $version->id,
                 'date_type' => $date->getRawOriginal('date_type'),
-                'start_at' => Carbon::parse($date->getRawOriginal('start_at'))->addYear(),
-                'end_at' => $rawEndAt !== null ? Carbon::parse($rawEndAt)->addYear() : null,
+                'start_at' => $addYear((string) $date->getRawOriginal('start_at')),
+                'end_at' => $rawEndAt !== null ? $addYear((string) $rawEndAt) : null,
             ]);
         }
     }

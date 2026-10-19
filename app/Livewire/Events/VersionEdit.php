@@ -285,8 +285,9 @@ class VersionEdit extends Component
             $key = $vd->getRawOriginal('date_type');
             $rawStart = $vd->getRawOriginal('start_at');
             $rawEnd = $vd->getRawOriginal('end_at');
-            $this->date_start[$key] = $rawStart ? date('Y-m-d\TH:i', (int) strtotime((string) $rawStart)) : '';
-            $this->date_end[$key] = $rawEnd ? date('Y-m-d\TH:i', (int) strtotime((string) $rawEnd)) : '';
+            // Stored in UTC; the datetime-local inputs are Eastern wall-clock.
+            $this->date_start[$key] = $rawStart ? Carbon::parse((string) $rawStart, 'UTC')->forDisplay()->format('Y-m-d\TH:i') : '';
+            $this->date_end[$key] = $rawEnd ? Carbon::parse((string) $rawEnd, 'UTC')->forDisplay()->format('Y-m-d\TH:i') : '';
         }
 
         $fees = $version->fees;
@@ -568,11 +569,13 @@ class VersionEdit extends Component
 
             $endRaw = $type->hasEndAt() ? ($this->date_end[$key] ?? null) : null;
 
+            // The inputs are Eastern wall-clock (config('app.display_timezone'));
+            // every datetime is stored in UTC.
             VersionDate::updateOrCreate(
                 ['version_id' => $this->version->id, 'date_type' => $key],
                 [
-                    'start_at' => $startRaw,
-                    'end_at' => $endRaw ?: null,
+                    'start_at' => Carbon::parse($startRaw, config('app.display_timezone'))->utc(),
+                    'end_at' => $endRaw ? Carbon::parse($endRaw, config('app.display_timezone'))->utc() : null,
                 ],
             );
         }
