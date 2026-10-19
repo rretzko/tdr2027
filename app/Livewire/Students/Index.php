@@ -63,6 +63,11 @@ class Index extends Component
 
     public string $schoolFilter = '';
 
+    // all | current | alumni — grade 12 and below (or no school_student row to
+    // compute one from) counts as current, anything above 12 as alumni.
+    #[Url]
+    public string $gradeFilter = 'current';
+
     public ?int $editingRowId = null;
 
     public bool $isAdding = false;
@@ -108,7 +113,7 @@ class Index extends Component
 
     public string $attachingStudentSchoolName = '';
 
-    public ?int $attachingStudentGrade = null;
+    public string $attachingStudentGradePhrase = '';
 
     // Cross-org claim — a matched student already enrolled at a *different*
     // school/studio than the one being added to. Unlike attachingStudentId,
@@ -198,6 +203,38 @@ class Index extends Component
     public function updatedSchoolFilter(): void
     {
         $this->resetPage();
+    }
+
+    public function updatedGradeFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    /**
+     * Grade as shown in the roster — the class_of year once a student is past
+     * 12th grade, since the computed number (13, 14, ...) keeps climbing after
+     * graduation and the graduating year means more to a teacher.
+     */
+    public function gradeLabel(?int $grade, School $school): string
+    {
+        if ($grade === null) {
+            return '—';
+        }
+
+        return $grade > 12 ? $this->classOfLabel($grade, $school) : (string) $grade;
+    }
+
+    /**
+     * gradeLabel() for running text, e.g. "Currently at X · 9th grade".
+     */
+    public function gradePhrase(int $grade, School $school): string
+    {
+        return $grade > 12 ? $this->classOfLabel($grade, $school) : "{$grade}th grade";
+    }
+
+    private function classOfLabel(int $grade, School $school): string
+    {
+        return (string) ClassOfCalculator::classOfFromGrade($grade, $school->senior_year);
     }
 
     public function deactivate(int $rowId): void
@@ -410,6 +447,14 @@ class Index extends Component
         return $school !== null ? $school->name : 'no current school on file';
     }
 
+    public function studentMatchGradePhrase(Student $student): ?string
+    {
+        $grade = $this->studentMatchGrade($student);
+        $school = $student->schools()->wherePivot('is_active', true)->first();
+
+        return $grade !== null && $school !== null ? $this->gradePhrase($grade, $school) : null;
+    }
+
     public function studentMatchGrade(Student $student): ?int
     {
         $school = $student->schools()->wherePivot('is_active', true)->first();
@@ -447,7 +492,7 @@ class Index extends Component
         $this->attachingStudentId = $student->id;
         $this->attachingStudentName = $student->user->name;
         $this->attachingStudentSchoolName = $this->studentMatchCurrentSchoolName($student);
-        $this->attachingStudentGrade = $this->studentMatchGrade($student);
+        $this->attachingStudentGradePhrase = $this->studentMatchGradePhrase($student) ?? '';
     }
 
     public function cancelAttachExistingStudent(): void
@@ -707,7 +752,36 @@ class Index extends Component
             return [];
         }
 
-        return $this->gradeOptionsForSchool($row->school);
+        $options = $this->gradeOptionsForSchool($row->school);
+        $alumGrade = $this->alumGradeFor($row);
+
+        if ($alumGrade !== null) {
+            array_unshift($options, [
+                'grade' => $alumGrade,
+                'label' => 'Alum (Class of '.ClassOfCalculator::classOfFromGrade($alumGrade, $row->school->senior_year).')',
+            ]);
+        }
+
+        return $options;
+    }
+
+    /**
+     * The row's computed grade when it's past 12th — offered as an extra
+     * "Alum" grade option in Edit so an alum's profile can still be saved
+     * without forcing them back into a 4-12 grade. Saving it recomputes the
+     * same class_of, so the student stays an alum.
+     */
+    private function alumGradeFor(StudentTeacher $row): ?int
+    {
+        $schoolStudent = SchoolStudent::where('student_id', $row->student_id)->where('school_id', $row->school_id)->first();
+
+        if ($schoolStudent === null) {
+            return null;
+        }
+
+        $grade = ClassOfCalculator::gradeFromClassOf((int) $schoolStudent->class_of, $row->school->senior_year);
+
+        return $grade > 12 ? $grade : null;
     }
 
     public function edit(int $rowId): void
@@ -964,8 +1038,10 @@ class Index extends Component
             || $this->edit_home_geo_state !== ''
             || $this->edit_home_zip_code !== '';
 
+        $alumGrade = $this->alumGradeFor($row);
+
         $this->validate([
-            'edit_grade' => ['required', 'integer', 'min:4', 'max:12'],
+            'edit_grade' => ['required', 'integer', Rule::in($alumGrade !== null ? [...range(4, 12), $alumGrade] : range(4, 12))],
             ...$this->profileValidationRules($user->id, $homeAddressProvided),
         ], $this->profileValidationMessages());
 
@@ -1190,7 +1266,8 @@ class Index extends Component
 
     public function render(): View
     {
-        $rows = $this->rows();
+        $hasAlumni = $this->hasAlumni();
+        $rows = $this->rows($hasAlumni);
         $activeSchools = $this->teacher()->schools()->wherePivot('is_active', true)->orderBy('name')->get();
 
         return view('livewire.students.index', [
@@ -1204,6 +1281,7 @@ class Index extends Component
             'voiceParts' => VoicePart::ordered()->get(),
             'addSchoolOptions' => $activeSchools,
             'filterSchools' => $activeSchools,
+            'hasAlumni' => $hasAlumni,
             'geostates' => Geostate::orderBy('name')->get(),
             'homeSchoolCounties' => $this->edit_home_school_geostate_id !== ''
                 ? County::where('geostate_id', $this->edit_home_school_geostate_id)->orderBy('name')->get()
@@ -1253,7 +1331,7 @@ class Index extends Component
         $this->attachingStudentId = null;
         $this->attachingStudentName = '';
         $this->attachingStudentSchoolName = '';
-        $this->attachingStudentGrade = null;
+        $this->attachingStudentGradePhrase = '';
     }
 
     private function resetStudentClaim(): void
@@ -1544,11 +1622,13 @@ class Index extends Component
     }
 
     /**
-     * @return LengthAwarePaginator<int, StudentTeacher>
+     * The teacher's whole visible roster, before search, filters, or sorting.
+     *
+     * @return Builder<StudentTeacher>
      */
-    private function rows(): LengthAwarePaginator
+    private function rosterQuery(): Builder
     {
-        $query = StudentTeacher::query()
+        return StudentTeacher::query()
             ->select('student_teacher.*')
             ->where('student_teacher.teacher_id', $this->teacher()->id)
             ->join('students', 'students.id', '=', 'student_teacher.student_id')
@@ -1562,7 +1642,28 @@ class Index extends Component
                     ->on('school_teacher.teacher_id', '=', 'student_teacher.teacher_id');
             })
             ->where('school_teacher.is_active', true)
-            ->whereNotNull('school_teacher.verified_at')
+            ->whereNotNull('school_teacher.verified_at');
+    }
+
+    /**
+     * Whether any alumni are on the roster at all — gates the All/Current/Alumni
+     * filter, which is pointless (and hidden) when everyone is current. Ignores
+     * search and the school filter so the control doesn't flicker while typing.
+     */
+    private function hasAlumni(): bool
+    {
+        $query = $this->rosterQuery();
+        $this->applyGradeFilter($query, 'alumni');
+
+        return $query->exists();
+    }
+
+    /**
+     * @return LengthAwarePaginator<int, StudentTeacher>
+     */
+    private function rows(bool $hasAlumni): LengthAwarePaginator
+    {
+        $query = $this->rosterQuery()
             ->leftJoin('voice_parts', 'voice_parts.id', '=', 'students.voice_part_id')
             ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'student.voicePart', 'school']);
 
@@ -1573,6 +1674,12 @@ class Index extends Component
 
         if ($this->schoolFilter !== '') {
             $query->where('student_teacher.school_id', (int) $this->schoolFilter);
+        }
+
+        // With no alumni the filter is hidden, so don't let a stale ?gradeFilter=alumni
+        // in the URL silently empty the roster.
+        if ($hasAlumni) {
+            $this->applyGradeFilter($query, $this->gradeFilter);
         }
 
         if ($this->sortColumn === 'grade') {
@@ -1587,6 +1694,42 @@ class Index extends Component
         };
 
         return $query->paginate(15);
+    }
+
+    /**
+     * Grade isn't stored (see paginateSortedByGrade()), but grade <= 12 is the
+     * same as class_of >= the school's senior_year, so the Current/Alumni split
+     * can still be done in SQL by comparing class_of against each school's
+     * senior_year. Every visible row is at one of the teacher's active schools
+     * (rosterQuery() inner-joins school_teacher on is_active), so those are the only
+     * senior years needed. A row with no school_student record has no grade
+     * at all and is treated as current.
+     *
+     * @param  Builder<StudentTeacher>  $query
+     */
+    private function applyGradeFilter(Builder $query, string $gradeFilter): void
+    {
+        if (! in_array($gradeFilter, ['current', 'alumni'], true)) {
+            return;
+        }
+
+        $alumni = $gradeFilter === 'alumni';
+        $seniorYearBySchoolId = $this->teacher()->schools()->wherePivot('is_active', true)->get()
+            ->mapWithKeys(fn (School $school) => [$school->id => $school->senior_year]);
+
+        $query->leftJoin('school_student', function (JoinClause $join) {
+            $join->on('school_student.student_id', '=', 'student_teacher.student_id')
+                ->on('school_student.school_id', '=', 'student_teacher.school_id');
+        })->where(function (Builder $q) use ($alumni, $seniorYearBySchoolId) {
+            if (! $alumni) {
+                $q->whereNull('school_student.id');
+            }
+
+            foreach ($seniorYearBySchoolId as $schoolId => $seniorYear) {
+                $q->orWhere(fn (Builder $q) => $q->where('student_teacher.school_id', $schoolId)
+                    ->where('school_student.class_of', $alumni ? '<' : '>=', $seniorYear));
+            }
+        });
     }
 
     /**
