@@ -126,6 +126,37 @@ ORDER BY start_at;
 SELECT * FROM migrations WHERE migration = '2026_10_19_000001_convert_version_dates_to_utc';
 
 
+-- -----------------------------------------------------------------------------
+-- 6. Housekeeping, independent of @go: record three earlier migrations whose
+--    columns were added to production by hand but never logged, so a plain
+--    `php artisan migrate` doesn't fail with "Duplicate column". Each row is
+--    inserted only if its column really exists and it isn't already recorded.
+-- -----------------------------------------------------------------------------
+START TRANSACTION;
+
+INSERT INTO migrations (migration, batch)
+SELECT pending.migration, next_batch.batch
+FROM (
+    SELECT '2026_09_21_143207_add_audition_cap_per_school_to_versions_table' AS migration, 'versions' AS table_name, 'audition_cap_per_school' AS column_name
+    UNION ALL SELECT '2026_10_02_000003_add_mail_required_to_versions_table', 'versions', 'mail_required'
+    UNION ALL SELECT '2026_10_02_000004_add_online_payment_required_to_version_epayment_configs_table', 'version_epayment_configs', 'online_payment_required'
+) AS pending
+CROSS JOIN (SELECT COALESCE(MAX(batch), 0) + 1 AS batch FROM migrations) AS next_batch
+WHERE EXISTS (SELECT 1 FROM information_schema.COLUMNS c
+              WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = pending.table_name AND c.COLUMN_NAME = pending.column_name)
+  AND NOT EXISTS (SELECT 1 FROM migrations m WHERE m.migration = pending.migration);
+
+COMMIT;
+
+-- Expect all three listed. Then `php artisan migrate:status --pending` should show nothing.
+SELECT * FROM migrations
+WHERE migration IN (
+    '2026_09_21_143207_add_audition_cap_per_school_to_versions_table',
+    '2026_10_02_000003_add_mail_required_to_versions_table',
+    '2026_10_02_000004_add_online_payment_required_to_version_epayment_configs_table'
+);
+
+
 -- =============================================================================
 -- ROLLBACK (only if needed and the snapshot isn't used) — run manually:
 --
