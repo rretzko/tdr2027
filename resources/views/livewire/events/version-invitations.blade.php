@@ -92,6 +92,7 @@
                         </div>
                         <label class="flex items-center shrink-0">
                             <flux:checkbox
+                                wire:key="invite-card-checkbox-{{ $row->teacher->id }}-{{ $row->invitation !== null ? 'on' : 'off' }}"
                                 wire:click="toggle({{ $row->teacher->id }})"
                                 :checked="$row->invitation !== null"
                             />
@@ -142,6 +143,7 @@
                         <flux:table.row wire:key="invitation-row-{{ $row->teacher->id }}">
                             <flux:table.cell>
                                 <flux:checkbox
+                                    wire:key="invite-checkbox-{{ $row->teacher->id }}-{{ $row->invitation !== null ? 'on' : 'off' }}"
                                     wire:click="toggle({{ $row->teacher->id }})"
                                     :checked="$row->invitation !== null"
                                 />

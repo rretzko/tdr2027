@@ -85,7 +85,9 @@ class DirectorUpload extends Component
             $data = $rowPreview->toArray();
             $this->preview[] = $data;
 
-            if ($data['schoolChoices'] !== [] || $data['personChoices'] !== []) {
+            // Only "Needs review" rows get a resolution slot — an already-invited
+            // row can still carry choices, but it isn't shown or committed.
+            if ($data['outcome'] === DirectorRowOutcome::PossibleDuplicate->value) {
                 $this->resolutions[$data['line']] = array_filter([
                     'school' => $data['schoolChoices'] !== [] ? '' : null,
                     'person' => $data['personChoices'] !== [] ? '' : null,

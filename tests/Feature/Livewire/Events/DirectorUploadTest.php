@@ -23,6 +23,8 @@ use Illuminate\Http\UploadedFile;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 
+use function Pest\Laravel\actingAs;
+
 uses(RefreshDatabase::class);
 
 /**
@@ -235,6 +237,26 @@ test('a near-match school is flagged, blocks confirm until resolved, and the cho
         ->and(SchoolTeacher::where('school_id', $existing->id)->count())->toBe(1);
 });
 
+test('an already-invited row with a near-match school does not block confirm', function () {
+    [$version, $county, $eventManager] = duSetup();
+    $existing = duSchool($county);
+    $row = duRow(['school_name' => 'Zorblax Regional HS']);
+
+    duPreview($version, $eventManager, [$row])
+        ->set('resolutions.2.school', (string) $existing->id)
+        ->call('confirmUpload');
+
+    $component = duPreview($version, $eventManager, [$row])
+        ->assertSet('preview.0.outcome', 'already_invited')
+        ->assertSet('resolutions', []);
+
+    $component->assertViewHas('unresolvedCount', 0);
+
+    $component->call('confirmUpload')
+        ->assertHasNoErrors()
+        ->assertSet('result.alreadyInvited', 1);
+});
+
 test('choosing "create new" for a near-match school creates it', function () {
     [$version, $county, $eventManager] = duSetup();
     duSchool($county);
@@ -369,7 +391,7 @@ test('the component and template download are forbidden to a non-manager', funct
         ->test(DirectorUpload::class, ['version' => $version])
         ->assertStatus(403);
 
-    $this->actingAs($outsider)
+    actingAs($outsider)
         ->get(route('events.versions.invitations.director-template', $version))
         ->assertForbidden();
 });
@@ -377,7 +399,7 @@ test('the component and template download are forbidden to a non-manager', funct
 test('an Event Manager can download the template', function () {
     [$version, , $eventManager] = duSetup();
 
-    $response = $this->actingAs($eventManager)
+    $response = actingAs($eventManager)
         ->get(route('events.versions.invitations.director-template', $version));
 
     $response->assertOk()->assertDownload('director-upload-template.csv');

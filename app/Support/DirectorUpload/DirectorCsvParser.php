@@ -42,6 +42,12 @@ final class DirectorCsvParser
     {
         $contents = preg_replace('/^\xEF\xBB\xBF/', '', $contents) ?? $contents;
 
+        // Excel's plain "CSV" save is Windows-1252, not UTF-8 (e.g. "Noël").
+        // Unconverted, those bytes break Livewire's JSON state serialization.
+        if (! mb_check_encoding($contents, 'UTF-8')) {
+            $contents = mb_convert_encoding($contents, 'UTF-8', 'Windows-1252');
+        }
+
         $handle = fopen('php://temp', 'r+');
         fwrite($handle, $contents);
         rewind($handle);

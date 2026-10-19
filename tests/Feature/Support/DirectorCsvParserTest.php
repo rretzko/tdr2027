@@ -62,3 +62,19 @@ test('more than the maximum rows is rejected', function () {
 
     expect((new DirectorCsvParser)->parse($csv)->fileErrors[0])->toContain('more than');
 });
+
+test('a Windows-1252 file (Excel plain CSV) is transcoded to UTF-8', function () {
+    $csv = "first_name,last_name,email,school_name,school_city,school_zip,school_county\n"
+        ."No\xEBl,McCormick,n@test.org,S,T,08608,Mercer\n";
+
+    $row = (new DirectorCsvParser)->parse($csv)->rows[0];
+
+    expect($row->firstName)->toBe('Noël');
+});
+
+test('valid UTF-8 input is left untouched', function () {
+    $csv = "first_name,last_name,email,school_name,school_city,school_zip,school_county\n"
+        ."Noël,McCormick,n@test.org,S,T,08608,Mercer\n";
+
+    expect((new DirectorCsvParser)->parse($csv)->rows[0]->firstName)->toBe('Noël');
+});
