@@ -74,7 +74,11 @@
         </flux:callout>
     @else
         <flux:text size="sm" class="text-zinc-500 mb-4">
-            Since {{ $firstSnapshotOn->format('F j, Y') }}. Hover a chart to see each Monday's values.
+            Since {{ $firstSnapshotOn->format('F j, Y') }}.
+            @if ($deadline !== null)
+                Weeks count down to the Postmark Deadline ({{ $deadline->format('l, F j') }}); week 0 is the deadline's week.
+            @endif
+            Hover a chart to see each Monday's values.
         </flux:text>
 
         <div class="grid gap-4 lg:grid-cols-2">

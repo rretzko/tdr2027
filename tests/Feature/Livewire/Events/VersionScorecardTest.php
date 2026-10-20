@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature\Livewire\Events;
 
 use App\Enums\EventStatus;
+use App\Enums\VersionDateType;
 use App\Livewire\Events\VersionScorecard;
 use App\Mail\MondayMorningScorecardMail;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionDate;
 use App\Models\VersionScorecardSnapshot;
 use App\Services\VersionRoleService;
 use App\Services\VersionScorecardService;
@@ -111,6 +113,40 @@ class VersionScorecardTest extends TestCase
             ->assertDontSee('Trends need at least two Mondays')
             ->assertSee('Oct 12, 2026')
             ->assertSee('$525.00');
+    }
+
+    public function test_chart_x_axis_counts_weeks_down_to_the_postmark_deadline(): void
+    {
+        $version = $this->makeVersion();
+        // 11:59pm Eastern on Friday, Nov 20 — already Nov 21 in UTC.
+        VersionDate::create([
+            'version_id' => $version->id,
+            'date_type' => VersionDateType::PostmarkDeadline,
+            'start_at' => '2026-11-21 04:59:00',
+            'end_at' => '2026-11-21 04:59:00',
+        ]);
+        foreach (['2026-10-19', '2026-11-09', '2026-11-16', '2026-11-23'] as $capturedOn) {
+            $this->makeSnapshot($version, $capturedOn);
+        }
+
+        Livewire::actingAs($this->makeEventManager($version))
+            ->test(VersionScorecard::class, ['version' => $version])
+            ->assertSee('Weeks count down to the Postmark Deadline (Friday, November 20)')
+            ->assertViewHas('rows', fn (array $rows): bool => array_column($rows, 'x') === ["\u{2212}4", "\u{2212}1", '0', '+1']
+                && $rows[0]['heading'] === "Week \u{2212}4 · Oct 19, 2026");
+    }
+
+    public function test_chart_x_axis_falls_back_to_dates_without_a_postmark_deadline(): void
+    {
+        $version = $this->makeVersion();
+        $this->makeSnapshot($version, '2026-10-05');
+        $this->makeSnapshot($version, '2026-10-12');
+
+        Livewire::actingAs($this->makeEventManager($version))
+            ->test(VersionScorecard::class, ['version' => $version])
+            ->assertDontSee('Weeks count down')
+            ->assertViewHas('rows', fn (array $rows): bool => array_column($rows, 'x') === ['Oct 5', 'Oct 12']
+                && $rows[1]['heading'] === 'Oct 12, 2026');
     }
 
     public function test_only_shows_this_versions_snapshots(): void

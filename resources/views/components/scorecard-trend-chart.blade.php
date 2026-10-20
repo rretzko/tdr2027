@@ -28,7 +28,8 @@
                 <flux:chart.point :field="$s['field']" :class="$slots[$s['slot']]['line']" />
             @endforeach
 
-            <flux:chart.axis axis="x" field="date" :format="['month' => 'short', 'day' => 'numeric']">
+            {{-- x and heading are pre-formatted strings (weeks to the Postmark Deadline, or dates) — see VersionScorecard::chartLabels() --}}
+            <flux:chart.axis axis="x" field="x">
                 <flux:chart.axis.line />
                 <flux:chart.axis.tick />
             </flux:chart.axis>
@@ -42,7 +43,7 @@
         </flux:chart.svg>
 
         <flux:chart.tooltip>
-            <flux:chart.tooltip.heading field="date" :format="['month' => 'short', 'day' => 'numeric', 'year' => 'numeric']" />
+            <flux:chart.tooltip.heading field="heading" />
             @foreach ($series as $s)
                 <flux:chart.tooltip.value :field="$s['field']" :label="$s['label']" :format="$valueFormat">
                     <flux:chart.legend.indicator :class="$slots[$s['slot']]['dot']" />
