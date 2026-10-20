@@ -8,7 +8,7 @@
 --
 -- Release order:
 --   1. vapor down production
---   2. Snapshot the Aurora cluster
+--   2. Snapshot the RDS instance (prod is RDS MySQL 8.4, not Aurora)
 --   3. Run this script top to bottom; review every result set
 --   4. Deploy the version-dates-utc code
 --   5. vapor up production
