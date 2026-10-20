@@ -2,6 +2,7 @@
 
 use App\Console\Commands\ExpireAbandonedPaymentTransactions;
 use App\Console\Commands\NotifyExpiringTeacherAccessWindows;
+use App\Console\Commands\SendDirectorWeeklyUpdateEmails;
 use App\Console\Commands\SendMondayMorningScorecardEmails;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -21,4 +22,9 @@ Schedule::command(NotifyExpiringTeacherAccessWindows::class)->daily();
 // display_timezone convention.
 Schedule::command(SendMondayMorningScorecardEmails::class)
     ->weeklyOn(1, '7:30')
+    ->timezone('America/New_York');
+
+// Same America/New_York wall-clock convention as the Monday scorecard above.
+Schedule::command(SendDirectorWeeklyUpdateEmails::class)
+    ->weeklyOn(2, '7:30')
     ->timezone('America/New_York');
