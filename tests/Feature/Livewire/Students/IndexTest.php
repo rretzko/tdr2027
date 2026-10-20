@@ -411,6 +411,157 @@ test('students can be sorted by voice part', function () {
         ->assertSeeInOrder(['Alto', 'Tenor']);
 });
 
+test('the grade filter defaults to Current and hides alumni', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+
+    claimStudentForTeacher($user->teacher, $school, 'Still', 'Here', 12);
+    claimStudentForTeacher($user->teacher, $school, 'Long', 'Gone', 14);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSet('gradeFilter', 'current')
+        ->assertSee('Here, Still')
+        ->assertDontSee('Gone, Long');
+});
+
+test('the grade filter is hidden when the roster has no alumni', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+
+    claimStudentForTeacher($user->teacher, $school, 'Still', 'Here', 12);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertViewHas('hasAlumni', false)
+        ->assertDontSee('Alumni');
+});
+
+test('the grade filter is shown when the roster has alumni, even if search hides them', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+
+    claimStudentForTeacher($user->teacher, $school, 'Still', 'Here', 12);
+    claimStudentForTeacher($user->teacher, $school, 'Long', 'Gone', 14);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->set('search', 'Still')
+        ->assertViewHas('hasAlumni', true)
+        ->assertSee('Alumni');
+});
+
+test('a stale alumni filter is ignored when the roster has no alumni', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+
+    claimStudentForTeacher($user->teacher, $school, 'Still', 'Here', 12);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->set('gradeFilter', 'alumni')
+        ->assertSee('Here, Still');
+});
+
+test('the Alumni grade filter shows only students past 12th grade, labeled with their class', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+
+    claimStudentForTeacher($user->teacher, $school, 'Still', 'Here', 12);
+    claimStudentForTeacher($user->teacher, $school, 'Long', 'Gone', 13);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->set('gradeFilter', 'alumni')
+        ->assertSee('Gone, Long')
+        ->assertSee((string) ClassOfCalculator::classOfFromGrade(13, $school->senior_year))
+        ->assertDontSee('Here, Still');
+});
+
+test('the All grade filter shows current students and alumni', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+
+    claimStudentForTeacher($user->teacher, $school, 'Still', 'Here', 9);
+    claimStudentForTeacher($user->teacher, $school, 'Long', 'Gone', 15);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->set('gradeFilter', 'all')
+        ->assertSee('Here, Still')
+        ->assertSee('Gone, Long');
+});
+
+test('the Current grade filter includes a student with no school_student record', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+
+    $row = claimStudentForTeacher($user->teacher, $school, 'No', 'Grade', 9);
+    SchoolStudent::where('student_id', $row->student_id)->where('school_id', $school->id)->delete();
+    claimStudentForTeacher($user->teacher, $school, 'Long', 'Gone', 14);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('Grade, No')
+        ->set('gradeFilter', 'alumni')
+        ->assertDontSee('Grade, No');
+});
+
+test('gradeLabel shows the class year above 12th grade and a dash for an unknown grade', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $seniorYear = $school->senior_year;
+
+    $component = Livewire::actingAs($user)->test(Index::class)->instance();
+
+    expect($component->gradeLabel(12, $school))->toBe('12')
+        ->and($component->gradeLabel(13, $school))->toBe((string) ($seniorYear - 1))
+        ->and($component->gradeLabel(null, $school))->toBe('—')
+        ->and($component->gradePhrase(9, $school))->toBe('9th grade')
+        ->and($component->gradePhrase(14, $school))->toBe((string) ($seniorYear - 2));
+});
+
+test('editing an alum offers an Alum grade option and saves without changing class_of', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Long', 'Gone', 14);
+    $classOf = ClassOfCalculator::classOfFromGrade(14, $school->senior_year);
+
+    $component = Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $row->id)
+        ->assertSet('edit_grade', '14');
+
+    expect($component->instance()->editGradeOptions()[0])
+        ->toBe(['grade' => 14, 'label' => "Alum (Class of {$classOf})"]);
+
+    $component
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->call('saveEdit')
+        ->assertHasNoErrors();
+
+    expect((int) SchoolStudent::where('student_id', $row->student_id)->where('school_id', $school->id)->value('class_of'))
+        ->toBe($classOf);
+});
+
+test('editing a current student does not offer an Alum grade, and rejects a grade above 12', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Still', 'Here', 9);
+
+    $component = Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $row->id);
+
+    expect(collect($component->instance()->editGradeOptions())->pluck('grade')->max())->toBe(12);
+
+    $component
+        ->set('edit_emergency_contacts', [validEmergencyContact()])
+        ->set('edit_grade', '13')
+        ->call('saveEdit')
+        ->assertHasErrors(['edit_grade']);
+});
+
 test('the schools filter is hidden when the teacher has only one active school', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();

@@ -2,19 +2,29 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <flux:heading size="xl">Students</flux:heading>
 
-        <div class="flex items-center gap-3">
-            <flux:button id="tour-start" data-auto-start="{{ auth()->user()->dismissed_students_orientation_at === null ? '1' : '0' }}" size="sm" variant="ghost" icon="sparkles" type="button">Take a tour</flux:button>
+        <div class="flex flex-col items-end gap-3">
+            <div class="flex flex-wrap items-center justify-end gap-3">
+                <flux:button id="tour-start" data-auto-start="{{ auth()->user()->dismissed_students_orientation_at === null ? '1' : '0' }}" size="sm" variant="ghost" icon="sparkles" type="button">Take a tour</flux:button>
 
-            <flux:input id="tour-search" wire:model.live.debounce.300ms="search" placeholder="Search by name..." icon="magnifying-glass" class="sm:max-w-xs" />
+                <flux:input id="tour-search" wire:model.live.debounce.300ms="search" placeholder="Search by name..." icon="magnifying-glass" class="sm:max-w-xs" />
 
-            @if ($filterSchools->count() > 1)
-                <flux:select id="tour-school-filter" wire:model.live="schoolFilter" placeholder="All schools" class="sm:max-w-xs">
-                    <flux:select.option value="">All schools</flux:select.option>
-                    @foreach ($filterSchools as $filterSchool)
-                        <flux:select.option value="{{ $filterSchool->id }}">{{ $filterSchool->name }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-            @endif
+                @if ($hasAlumni)
+                    <flux:radio.group wire:model.live="gradeFilter" variant="segmented" size="sm">
+                        <flux:radio value="all" label="All" />
+                        <flux:radio value="current" label="Current" />
+                        <flux:radio value="alumni" label="Alumni" />
+                    </flux:radio.group>
+                @endif
+
+                @if ($filterSchools->count() > 1)
+                    <flux:select id="tour-school-filter" wire:model.live="schoolFilter" placeholder="All schools" class="sm:max-w-xs">
+                        <flux:select.option value="">All schools</flux:select.option>
+                        @foreach ($filterSchools as $filterSchool)
+                            <flux:select.option value="{{ $filterSchool->id }}">{{ $filterSchool->name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                @endif
+            </div>
 
             <flux:modal.trigger name="edit-student">
                 <flux:button id="tour-add-student" variant="primary" icon="plus" wire:click="add">
@@ -69,7 +79,7 @@
                     </div>
                     <div>
                         <dt class="text-zinc-400">Grade</dt>
-                        <dd>{{ $gradeByRowId[$row->id] ?? '—' }}</dd>
+                        <dd>{{ $this->gradeLabel($gradeByRowId[$row->id] ?? null, $row->school) }}</dd>
                     </div>
                     <div>
                         <dt class="text-zinc-400">Voice Part</dt>
@@ -175,7 +185,7 @@
                         </flux:table.cell>
                         <flux:table.cell>{{ $row->school->name }}</flux:table.cell>
                         <flux:table.cell>{{ $row->subject->label() }}</flux:table.cell>
-                        <flux:table.cell>{{ $gradeByRowId[$row->id] ?? '—' }}</flux:table.cell>
+                        <flux:table.cell>{{ $this->gradeLabel($gradeByRowId[$row->id] ?? null, $row->school) }}</flux:table.cell>
                         <flux:table.cell>{{ $row->student->voicePart?->name ?? '—' }}</flux:table.cell>
                         <flux:table.cell>
                             <div class="flex flex-col gap-1 text-xs">
@@ -272,8 +282,8 @@
             @if ($attachingStudentId !== null)
                 <flux:input value="{{ $attachingStudentName }}" label="Student" disabled />
                 <flux:input value="{{ $attachingStudentSchoolName }}" :label="$this->schoolOrStudioLabel()" disabled />
-                @if ($attachingStudentGrade !== null)
-                    <flux:input value="{{ $attachingStudentGrade }}th grade" label="Grade" disabled />
+                @if ($attachingStudentGradePhrase !== '')
+                    <flux:input value="{{ $attachingStudentGradePhrase }}" label="Grade" disabled />
                 @endif
 
                 <flux:separator text="Your role with this student" />
@@ -507,8 +517,8 @@
                                 <flux:text class="font-medium">{{ $match['student']->user->name }}</flux:text>
                                 <flux:text size="sm" class="text-zinc-500">
                                     Currently at {{ $this->studentMatchCurrentSchoolName($match['student']) }}
-                                    @if ($this->studentMatchGrade($match['student']) !== null)
-                                        &middot; {{ $this->studentMatchGrade($match['student']) }}th grade
+                                    @if ($this->studentMatchGradePhrase($match['student']) !== null)
+                                        &middot; {{ $this->studentMatchGradePhrase($match['student']) }}
                                     @endif
                                 </flux:text>
                             </div>
