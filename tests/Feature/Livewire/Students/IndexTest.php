@@ -512,6 +512,7 @@ test('gradeLabel shows the class year above 12th grade and a dash for an unknown
     $school = School::factory()->create();
     $seniorYear = $school->senior_year;
 
+    /** @var Index $component */
     $component = Livewire::actingAs($user)->test(Index::class)->instance();
 
     expect($component->gradeLabel(12, $school))->toBe('12')
@@ -532,7 +533,10 @@ test('editing an alum offers an Alum grade option and saves without changing cla
         ->call('edit', $row->id)
         ->assertSet('edit_grade', '14');
 
-    expect($component->instance()->editGradeOptions()[0])
+    /** @var Index $instance */
+    $instance = $component->instance();
+
+    expect($instance->editGradeOptions()[0])
         ->toBe(['grade' => 14, 'label' => "Alum (Class of {$classOf})"]);
 
     $component
@@ -553,7 +557,10 @@ test('editing a current student does not offer an Alum grade, and rejects a grad
         ->test(Index::class)
         ->call('edit', $row->id);
 
-    expect(collect($component->instance()->editGradeOptions())->pluck('grade')->max())->toBe(12);
+    /** @var Index $instance */
+    $instance = $component->instance();
+
+    expect(collect($instance->editGradeOptions())->pluck('grade')->max())->toBe(12);
 
     $component
         ->set('edit_emergency_contacts', [validEmergencyContact()])
