@@ -114,6 +114,70 @@ test('participation fee is only added to due once the Version is closed and the 
         ->assertSee('25.00'); // due: registration $20 + participation $5
 });
 
+test('Eligible and Pending candidates are not counted as registered and owe nothing, but their payments still count as paid', function () {
+    actingAs(makeFounder());
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000, 'participation' => 500]);
+    ['school' => $school, 'teacher' => $teacher, 'candidate' => $registered] = makeReconciliationCandidate($version);
+
+    $attributes = ['version_id' => $version->id, 'school_id' => $school->id, 'teacher_id' => $teacher->id];
+    $eligible = Candidate::factory()->create([...$attributes, 'status' => CandidateStatus::Eligible]);
+    Candidate::factory()->create([...$attributes, 'status' => CandidateStatus::Pending]);
+
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'school_id' => $school->id,
+        'amount' => 2000, 'status' => PaymentTransactionStatus::Completed,
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $transaction->id, 'candidate_id' => $eligible->id, 'amount' => 2000, 'allocated_at' => now()]);
+
+    $row = PaymentReconciliation::baseRows($version, null)->first();
+
+    expect($row['count'])->toBe(1)
+        ->and($row['dueCents'])->toBe(2000)
+        ->and($row['paidCents'])->toBe(2000)
+        ->and($row['balanceCents'])->toBe(0);
+});
+
+test('a school with only unregistered candidates is listed only once something has been paid for them', function () {
+    actingAs(makeFounder());
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    $unpaidSchool = School::factory()->create();
+    $paidSchool = School::factory()->create();
+    $teacher = Teacher::factory()->create();
+
+    Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $unpaidSchool->id, 'teacher_id' => $teacher->id, 'status' => CandidateStatus::Eligible]);
+    $prepaid = Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $paidSchool->id, 'teacher_id' => $teacher->id, 'status' => CandidateStatus::Pending]);
+
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'school_id' => $paidSchool->id,
+        'amount' => 2000, 'status' => PaymentTransactionStatus::Completed,
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $transaction->id, 'candidate_id' => $prepaid->id, 'amount' => 2000, 'allocated_at' => now()]);
+
+    $rows = PaymentReconciliation::baseRows($version, null);
+
+    expect($rows)->toHaveCount(1)
+        ->and($rows->first()['school']->id)->toBe($paidSchool->id)
+        ->and($rows->first()['count'])->toBe(0)
+        ->and($rows->first()['balanceCents'])->toBe(-2000)
+        ->and($rows->first()['teachers']->pluck('id')->all())->toBe([$teacher->id]);
+});
+
+test('each school row lists its teachers with email and mobile phone', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    ['teacher' => $teacher] = makeReconciliationCandidate($version);
+    $teacher->user->update(['cell_phone' => '6095550123']);
+
+    Livewire::actingAs($founder)
+        ->test(PaymentReconciliation::class, ['version' => $version])
+        ->assertSee($teacher->user->name)
+        ->assertSee($teacher->user->email)
+        ->assertSee('(609) 555-0123');
+});
+
 test('a fully allocated transaction is absent from Needs Reconciliation, an unallocated one is present', function () {
     $founder = makeFounder();
     actingAs($founder);
@@ -264,7 +328,7 @@ test('PDF export returns a PDF for an authorized user', function () {
     actingAs($founder);
     $version = Version::factory()->create();
 
-    get(route('events.versions.reports.payment-reconciliation.pdf', $version))
+    get(route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'pdf']))
         ->assertOk()
         ->assertHeader('Content-Type', 'application/pdf');
 });
@@ -275,7 +339,7 @@ test('PDF export aborts with 403 for a user with no relevant role', function () 
 
     actingAs($user);
 
-    get(route('events.versions.reports.payment-reconciliation.pdf', $version))
+    get(route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'pdf']))
         ->assertForbidden();
 });
 
@@ -328,4 +392,163 @@ test('openAllocate rejects an unsettled transaction', function () {
         ->test(PaymentReconciliation::class, ['version' => $version])
         ->call('openAllocate', $pending->id)
         ->assertStatus(422);
+});
+
+test('the Details button appears only on school rows with a non-zero Paid value', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    ['school' => $paidSchool, 'candidate' => $candidate] = makeReconciliationCandidate($version);
+    ['school' => $unpaidSchool] = makeReconciliationCandidate($version);
+
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'school_id' => $paidSchool->id,
+        'amount' => 2000, 'status' => PaymentTransactionStatus::Completed,
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $transaction->id, 'candidate_id' => $candidate->id, 'amount' => 2000, 'allocated_at' => now()]);
+
+    Livewire::actingAs($founder)
+        ->test(PaymentReconciliation::class, ['version' => $version])
+        ->assertSeeHtml("wire:click=\"showPaymentDetails({$paidSchool->id})\"")
+        ->assertDontSeeHtml("wire:click=\"showPaymentDetails({$unpaidSchool->id})\"");
+});
+
+test('payment details list each payer and only the portion of a group payment credited to that school', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    ['school' => $schoolA, 'teacher' => $teacherA, 'candidate' => $candidateA] = makeReconciliationCandidate($version);
+    ['candidate' => $candidateB] = makeReconciliationCandidate($version);
+
+    $group = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::TeacherEpayment, 'payer_teacher_id' => $teacherA->id,
+        'school_id' => $schoolA->id, 'amount' => 5000, 'status' => PaymentTransactionStatus::Completed, 'paid_at' => now(),
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $group->id, 'candidate_id' => $candidateA->id, 'amount' => 2000, 'allocated_at' => now()]);
+    PaymentAllocation::create(['payment_transaction_id' => $group->id, 'candidate_id' => $candidateB->id, 'amount' => 3000, 'allocated_at' => now()]);
+
+    $recorder = User::factory()->create();
+    $manual = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'payment_type' => 'check', 'school_id' => $schoolA->id,
+        'amount' => 500, 'status' => PaymentTransactionStatus::Completed, 'recorded_by_user_id' => $recorder->id,
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $manual->id, 'candidate_id' => $candidateA->id, 'amount' => 500, 'allocated_at' => now()]);
+
+    $details = PaymentReconciliation::paymentDetails($version, $schoolA->id);
+
+    expect($details)->toHaveCount(2)
+        ->and($details->firstWhere('transaction.id', $group->id)['amountCents'])->toBe(2000)
+        ->and($details->sum('amountCents'))->toBe(2500);
+
+    Livewire::actingAs($founder)
+        ->test(PaymentReconciliation::class, ['version' => $version])
+        ->call('showPaymentDetails', $schoolA->id)
+        ->assertSee($teacherA->user->name)
+        ->assertSee('of $50.00 payment')
+        ->assertSee("Recorded by {$recorder->name}")
+        ->assertSee($candidateA->student->user->last_name);
+});
+
+test('an Event Manager can open payment details', function () {
+    actingAs(makeFounder());
+    $version = Version::factory()->create();
+    ['school' => $school] = makeReconciliationCandidate($version);
+
+    $eventManager = User::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    Livewire::actingAs($eventManager)
+        ->test(PaymentReconciliation::class, ['version' => $version])
+        ->assertSet('canViewPaymentDetails', true)
+        ->call('showPaymentDetails', $school->id)
+        ->assertSet('paymentDetailsSchoolId', $school->id);
+});
+
+test('a Registration Manager sees no Details button and cannot open payment details', function () {
+    actingAs(makeFounder());
+    $version = Version::factory()->create();
+    ['school' => $school, 'candidate' => $candidate] = makeReconciliationCandidate($version);
+
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'school_id' => $school->id,
+        'amount' => 2000, 'status' => PaymentTransactionStatus::Completed,
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $transaction->id, 'candidate_id' => $candidate->id, 'amount' => 2000, 'allocated_at' => now()]);
+
+    $registrationManager = User::factory()->create();
+    grantVersionRole($registrationManager, $version, 'Registration Manager');
+
+    Livewire::actingAs($registrationManager)
+        ->test(PaymentReconciliation::class, ['version' => $version])
+        ->assertDontSeeHtml('showPaymentDetails(')
+        ->call('showPaymentDetails', $school->id)
+        ->assertStatus(403);
+});
+
+test('a candidate paying for themselves is not repeated as a breakdown line in payment details', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    ['school' => $school, 'candidate' => $candidate] = makeReconciliationCandidate($version);
+    $user = $candidate->student->user;
+
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::CandidateEpayment, 'payer_student_id' => $candidate->student_id,
+        'school_id' => $school->id, 'amount' => 2000, 'status' => PaymentTransactionStatus::Completed,
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $transaction->id, 'candidate_id' => $candidate->id, 'amount' => 2000, 'allocated_at' => now()]);
+
+    Livewire::actingAs($founder)
+        ->test(PaymentReconciliation::class, ['version' => $version])
+        ->call('showPaymentDetails', $school->id)
+        ->assertSee($user->name)
+        ->assertDontSee("for {$user->last_name}, {$user->first_name}")
+        ->assertDontSee("{$user->last_name}, {$user->first_name}");
+});
+
+test('CSV export lists each school with its teachers\' contact details and dollar amounts', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    ['school' => $school, 'teacher' => $teacher, 'candidate' => $candidate] = makeReconciliationCandidate($version);
+    $teacher->user->update(['cell_phone' => '6095550188']);
+
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id, 'source' => PaymentSource::Manual, 'school_id' => $school->id,
+        'amount' => 1500, 'status' => PaymentTransactionStatus::Completed,
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $transaction->id, 'candidate_id' => $candidate->id, 'amount' => 1500, 'allocated_at' => now()]);
+
+    $response = get(route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'csv']));
+
+    $response->assertOk()->assertHeader('Content-Type', 'text/csv; charset=utf-8');
+    $lines = array_values(array_filter(explode("\n", $response->streamedContent())));
+
+    expect(str_getcsv($lines[0]))->toBe(['School', 'Teacher', 'Email', 'Mobile', 'Registered', 'Due', 'Paid', 'Balance'])
+        ->and(str_getcsv($lines[1]))->toBe([$school->name, $teacher->user->name, $teacher->user->email, '(609) 555-0188', '1', '20.00', '15.00', '5.00']);
+});
+
+test('CSV export honors the search filter', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    ['school' => $wantedSchool] = makeReconciliationCandidate($version);
+    ['school' => $otherSchool] = makeReconciliationCandidate($version);
+
+    $content = get(route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'csv', 'search' => $wantedSchool->name]))
+        ->streamedContent();
+
+    expect($content)->toContain($wantedSchool->name);
+    expect($content)->not->toContain($otherSchool->name);
+});
+
+test('CSV export aborts with 403 for a user with no relevant role', function () {
+    $user = User::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($user);
+
+    get(route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'csv']))
+        ->assertForbidden();
 });

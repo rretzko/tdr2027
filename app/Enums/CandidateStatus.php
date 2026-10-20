@@ -82,4 +82,20 @@ enum CandidateStatus: string
             self::NoShow, self::Incomplete, self::Accepted, self::NotAccepted,
         ];
     }
+
+    /**
+     * Every state that actually owes the registration fee on a balance
+     * report — Registered, or already resolved by Ensemble Cut-offs. Narrower
+     * than registrationFeeEligibleStates(), which answers "may this fee be
+     * paid?" and deliberately admits Eligible/Pending so a teacher can pay
+     * ahead of checklist completion; an Eligible/Pending candidate hasn't
+     * registered yet, so nothing is due for them. Payments already allocated
+     * to such a candidate still count toward "Paid" on the reports.
+     *
+     * @return list<self>
+     */
+    public static function registrationFeeOwedStates(): array
+    {
+        return [self::Registered, self::NoShow, self::Incomplete, self::Accepted, self::NotAccepted];
+    }
 }

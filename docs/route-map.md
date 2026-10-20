@@ -150,7 +150,7 @@ Additional gate: `can.access.events` — an active school OR a version-scoped ro
 | GET | `reports/obligated-teachers` | Obligated teachers | PDF |
 | GET | `reports/participating-teachers` | Participating teachers | PDF |
 | GET | `reports/participating-schools` | Participating schools | PDF |
-| GET | `reports/payment-reconciliation` | Payment reconciliation | PDF |
+| GET | `reports/payment-reconciliation` | Payment reconciliation | PDF, CSV |
 | GET | `reports/participating-candidates` | Participating candidates | PDF |
 | GET | `reports/participation-by-county` | Participation by county | PDF, CSV |
 | GET | `reports/candidate-counts` | Candidate counts | PDF, CSV |

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\CandidateStatus;
 use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
 use App\Livewire\Events\Reports\ParticipatingSchools;
@@ -96,6 +97,44 @@ test('lists a school/teacher pair with the correct due, paid, and balance amount
         ->assertSee('40.00') // due: 2 candidates * $20.00
         ->assertSee('15.00') // paid
         ->assertSee('25.00 due'); // balance
+});
+
+test('Eligible and Pending candidates are not counted as registered and owe nothing, but their payments still count as paid', function () {
+    actingAs(makeFounder());
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    ['school' => $school, 'teacher' => $teacher] = makeParticipatingSchoolPair($version, registeredCount: 2);
+
+    $attributes = ['version_id' => $version->id, 'school_id' => $school->id, 'teacher_id' => $teacher->id];
+    $eligible = Candidate::factory()->create([...$attributes, 'status' => CandidateStatus::Eligible]);
+    Candidate::factory()->create([...$attributes, 'status' => CandidateStatus::Pending]);
+    payCandidate($eligible, 2000);
+
+    $row = ParticipatingSchools::baseRows($version, null)->get("{$school->id}:{$teacher->id}");
+
+    expect($row['count'])->toBe(2)
+        ->and($row['dueCents'])->toBe(4000)
+        ->and($row['paidCents'])->toBe(2000)
+        ->and($row['balanceCents'])->toBe(2000);
+});
+
+test('a school/teacher pair with only unregistered candidates is listed only once something has been paid for them', function () {
+    actingAs(makeFounder());
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    $unpaidSchool = School::factory()->create();
+    $paidSchool = School::factory()->create();
+    $teacher = Teacher::factory()->create();
+
+    Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $unpaidSchool->id, 'teacher_id' => $teacher->id, 'status' => CandidateStatus::Eligible]);
+    $prepaid = Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $paidSchool->id, 'teacher_id' => $teacher->id, 'status' => CandidateStatus::Pending]);
+    payCandidate($prepaid, 2000);
+
+    $rows = ParticipatingSchools::baseRows($version, null);
+
+    expect($rows->has("{$unpaidSchool->id}:{$teacher->id}"))->toBeFalse()
+        ->and($rows->get("{$paidSchool->id}:{$teacher->id}")['count'])->toBe(0)
+        ->and($rows->get("{$paidSchool->id}:{$teacher->id}")['balanceCents'])->toBe(-2000);
 });
 
 test('a lump-sum payment recorded via savePayment does not count toward the balance until it is allocated', function () {

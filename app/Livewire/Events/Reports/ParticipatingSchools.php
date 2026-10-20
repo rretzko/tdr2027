@@ -294,11 +294,21 @@ class ParticipatingSchools extends Component
             ->groupBy('candidate_id')
             ->map(fn (Collection $g): int => (int) $g->sum('amount'));
 
+        // Only registered (or cut-off-resolved) candidates owe anything — an
+        // Eligible/Pending one hasn't registered yet. Paid above still sums
+        // every non-withdrawn candidate, so money paid ahead isn't hidden.
+        $owedStatusValues = array_map(
+            fn (CandidateStatus $s): string => $s->value,
+            CandidateStatus::registrationFeeOwedStates(),
+        );
+        $owes = fn (Candidate $c): bool => in_array($c->getRawOriginal('status'), $owedStatusValues, true);
+
         return $candidates->groupBy(fn (Candidate $c): string => "{$c->school_id}:{$c->teacher_id}")
-            ->map(function (Collection $group, string $key) use ($dueForCandidate, $packets, $candidateIdsByPair, $paidByCandidateId): array {
+            ->map(function (Collection $group, string $key) use ($dueForCandidate, $packets, $candidateIdsByPair, $paidByCandidateId, $owes): array {
                 $first = $group->first();
-                $count = $group->count();
-                $dueCents = $group->sum($dueForCandidate);
+                $owing = $group->filter($owes);
+                $count = $owing->count();
+                $dueCents = $owing->sum($dueForCandidate);
 
                 $paidCents = 0;
                 foreach ($candidateIdsByPair->get($key, []) as $candidateId) {
@@ -315,7 +325,10 @@ class ParticipatingSchools extends Component
                     'paidCents' => $paidCents,
                     'balanceCents' => $dueCents - $paidCents,
                 ];
-            });
+            })
+            // A school/teacher with only not-yet-registered candidates is
+            // shown only if they've already paid something for them.
+            ->filter(fn (array $row): bool => $row['count'] > 0 || $row['paidCents'] > 0);
     }
 
     /**

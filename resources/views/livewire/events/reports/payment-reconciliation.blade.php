@@ -14,9 +14,14 @@
             <flux:text size="sm" class="text-zinc-500">{{ $version->name }} — balances and unreconciled payments</flux:text>
         </div>
 
-        <flux:button size="sm" variant="outline" icon="arrow-down-tray" :href="route('events.versions.reports.payment-reconciliation.pdf', $version)" target="_blank">
-            Export PDF
-        </flux:button>
+        <div class="flex gap-2">
+            <flux:button size="sm" variant="outline" icon="arrow-down-tray" :href="route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'pdf', 'search' => $search])" target="_blank">
+                Export PDF
+            </flux:button>
+            <flux:button size="sm" variant="outline" icon="arrow-down-tray" :href="route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'csv', 'search' => $search])">
+                Export CSV
+            </flux:button>
+        </div>
     </div>
 
     @php
@@ -113,9 +118,26 @@
                             <flux:heading size="base">{{ $row['school']->name ?? '—' }}</flux:heading>
                             <flux:badge color="{{ $badge['color'] }}" size="sm">{{ $badge['label'] }}</flux:badge>
                         </div>
+                        @foreach ($row['teachers'] as $teacher)
+                            @php $cell = \App\Support\Reports\TeacherDisplay::cellPhoneFormatted($teacher); @endphp
+                            <div class="mb-2">
+                                <flux:text size="sm" class="text-zinc-500">{{ $teacher->user->name }}</flux:text>
+                                @if ($teacher->user->email)
+                                    <div class="pl-3 text-xs text-zinc-500 dark:text-zinc-400">{{ $teacher->user->email }}</div>
+                                @endif
+                                @if ($cell)
+                                    <div class="pl-3 text-xs text-zinc-500 dark:text-zinc-400">{{ $cell }}</div>
+                                @endif
+                            </div>
+                        @endforeach
                         <div class="text-sm text-zinc-500">
                             {{ $row['count'] }} registered — due ${{ number_format($row['dueCents'] / 100, 2) }}, paid ${{ number_format($row['paidCents'] / 100, 2) }}
                         </div>
+                        @if ($canViewPaymentDetails && $row['paidCents'] !== 0 && $row['school'])
+                            <div class="mt-3">
+                                <flux:button size="sm" variant="outline" icon="eye" wire:click="showPaymentDetails({{ $row['school']->id }})">Details</flux:button>
+                            </div>
+                        @endif
                     </flux:card>
                 @endforeach
             </div>
@@ -123,28 +145,150 @@
             <flux:table class="hidden md:table">
                 <flux:table.columns>
                     <flux:table.column>School</flux:table.column>
+                    <flux:table.column>Teacher</flux:table.column>
                     <flux:table.column>Registered</flux:table.column>
                     <flux:table.column>Due</flux:table.column>
                     <flux:table.column>Paid</flux:table.column>
                     <flux:table.column>Balance</flux:table.column>
+                    @if ($canViewPaymentDetails)
+                        <flux:table.column></flux:table.column>
+                    @endif
                 </flux:table.columns>
                 <flux:table.rows>
                     @foreach ($schoolRows as $row)
                         @php $badge = $balanceBadge($row['balanceCents']); @endphp
                         <flux:table.row>
                             <flux:table.cell class="font-medium">{{ $row['school']->name ?? '—' }}</flux:table.cell>
+                            <flux:table.cell>
+                                @forelse ($row['teachers'] as $teacher)
+                                    @php $cell = \App\Support\Reports\TeacherDisplay::cellPhoneFormatted($teacher); @endphp
+                                    <div @class(['mt-2' => ! $loop->first])>
+                                        <div>{{ $teacher->user->name }}</div>
+                                        @if ($teacher->user->email)
+                                            <div class="mt-0.5 pl-3 text-xs text-zinc-500 dark:text-zinc-400">{{ $teacher->user->email }}</div>
+                                        @endif
+                                        @if ($cell)
+                                            <div class="mt-0.5 pl-3 text-xs text-zinc-500 dark:text-zinc-400">{{ $cell }}</div>
+                                        @endif
+                                    </div>
+                                @empty
+                                    —
+                                @endforelse
+                            </flux:table.cell>
                             <flux:table.cell>{{ $row['count'] }}</flux:table.cell>
                             <flux:table.cell>${{ number_format($row['dueCents'] / 100, 2) }}</flux:table.cell>
                             <flux:table.cell>${{ number_format($row['paidCents'] / 100, 2) }}</flux:table.cell>
                             <flux:table.cell>
                                 <flux:badge color="{{ $badge['color'] }}" size="sm">{{ $badge['label'] }}</flux:badge>
                             </flux:table.cell>
+                            @if ($canViewPaymentDetails)
+                                <flux:table.cell align="end">
+                                    @if ($row['paidCents'] !== 0 && $row['school'])
+                                        <flux:button size="sm" variant="outline" icon="eye" wire:click="showPaymentDetails({{ $row['school']->id }})">Details</flux:button>
+                                    @endif
+                                </flux:table.cell>
+                            @endif
                         </flux:table.row>
                     @endforeach
                 </flux:table.rows>
             </flux:table>
         @endif
     </div>
+
+    {{-- Payment Details modal (Event Manager / Founder only) --}}
+    @if ($canViewPaymentDetails)
+        <flux:modal name="payment-details" class="w-full max-w-2xl">
+            <div class="space-y-6">
+                <div>
+                    <flux:heading>Payment Details</flux:heading>
+                    @if ($paymentDetailsRow)
+                        <flux:text size="sm" class="text-zinc-500">{{ $paymentDetailsRow['school']->name ?? '—' }}</flux:text>
+                    @endif
+                </div>
+
+                @if ($paymentDetailsRow)
+                    @php
+                        $payerName = function (\App\Models\PaymentTransaction $t): string {
+                            return match ($t->source) {
+                                \App\Enums\PaymentSource::CandidateEpayment => $t->payerStudent?->user->name ?? '—',
+                                default => $t->payerTeacher?->user->name ?? '—',
+                            };
+                        };
+                        $methodLabel = function (\App\Models\PaymentTransaction $t): string {
+                            if ($t->source === \App\Enums\PaymentSource::Manual) {
+                                return 'Manual'.($t->payment_type ? ' — '.$t->payment_type->label() : '');
+                            }
+
+                            return $t->source->label().($t->vendor ? ' ('.$t->vendor->label().')' : '');
+                        };
+                    @endphp
+
+                    <div class="space-y-3 max-h-[28rem] overflow-y-auto">
+                        @forelse ($paymentDetails as $entry)
+                            @php $transaction = $entry['transaction']; @endphp
+                            <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div class="font-medium">{{ $payerName($transaction) }}</div>
+                                        <div class="text-sm text-zinc-500 dark:text-zinc-400">
+                                            {{ $methodLabel($transaction) }}
+                                            @if ($transaction->paid_at)
+                                                — {{ $transaction->paid_at->format('M j, Y') }}
+                                            @endif
+                                        </div>
+                                        @if ($transaction->recordedBy)
+                                            <div class="text-sm text-zinc-500 dark:text-zinc-400">Recorded by {{ $transaction->recordedBy->name }}</div>
+                                        @endif
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="font-medium">${{ number_format($entry['amountCents'] / 100, 2) }}</div>
+                                        @if ($transaction->amount !== $entry['amountCents'])
+                                            <div class="text-xs text-zinc-500 dark:text-zinc-400">of ${{ number_format($transaction->amountInDollars(), 2) }} payment</div>
+                                        @endif
+                                    </div>
+                                </div>
+
+                                @php
+                                    // A one-candidate payment needs no amount breakdown, and
+                                    // no name at all when that candidate is the payer.
+                                    $single = $entry['allocations']->count() === 1 ? $entry['allocations']->first() : null;
+                                    $selfPaid = $single && $transaction->payer_student_id !== null
+                                        && $single->candidate->student_id === $transaction->payer_student_id;
+                                @endphp
+                                @if ($single && ! $selfPaid)
+                                    <div class="mt-1 pl-3 text-xs text-zinc-500 dark:text-zinc-400">
+                                        for {{ $single->candidate->student->user->last_name }}, {{ $single->candidate->student->user->first_name }}
+                                    </div>
+                                @elseif (! $single)
+                                    <div class="mt-2 space-y-0.5">
+                                        @foreach ($entry['allocations'] as $allocation)
+                                            <div class="flex justify-between gap-3 pl-3 text-xs text-zinc-500 dark:text-zinc-400">
+                                                <span>{{ $allocation->candidate->student->user->last_name }}, {{ $allocation->candidate->student->user->first_name }}</span>
+                                                <span>${{ number_format($allocation->amount / 100, 2) }}</span>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </div>
+                        @empty
+                            <flux:text size="sm" class="text-zinc-500">No payments have been allocated to this school's candidates.</flux:text>
+                        @endforelse
+                    </div>
+
+                    <div class="flex justify-between border-t border-zinc-200 dark:border-zinc-700 pt-3 font-medium">
+                        <span>Total paid</span>
+                        <span>${{ number_format($paymentDetailsRow['paidCents'] / 100, 2) }}</span>
+                    </div>
+                @endif
+
+                <div class="flex justify-end">
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Close</flux:button>
+                    </flux:modal.close>
+                </div>
+            </div>
+        </flux:modal>
+    @endif
 
     {{-- Allocate Payment modal --}}
     <flux:modal name="allocate-payment" class="w-full max-w-lg">

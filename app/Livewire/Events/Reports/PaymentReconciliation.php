@@ -10,6 +10,8 @@ use App\Enums\PaymentTransactionStatus;
 use App\Models\Candidate;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
+use App\Models\School;
+use App\Models\Teacher;
 use App\Models\Version;
 use App\Services\PaymentAllocationService;
 use App\Services\VersionRoleAssignmentService;
@@ -18,6 +20,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -51,11 +54,31 @@ class PaymentReconciliation extends Component
      */
     public array $allocationAmounts = [];
 
+    #[Locked]
+    public ?int $paymentDetailsSchoolId = null;
+
+    #[Locked]
+    public bool $canViewPaymentDetails = false;
+
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
     {
         $this->authorizeReports($version, $roles);
 
         $this->version = $version;
+
+        // The per-school "who paid" drill-down is Event Manager (or Founder)
+        // only — Registration/Co-Registration Managers see the balances but
+        // not the payment-by-payment detail.
+        $this->canViewPaymentDetails = $roles->canManageEvent(Auth::user(), $version->event);
+    }
+
+    public function showPaymentDetails(int $schoolId, VersionRoleAssignmentService $roles): void
+    {
+        abort_unless($roles->canManageEvent(Auth::user(), $this->version->event), 403);
+        abort_unless($this->withinReportScope(School::findOrFail($schoolId)->county_id), 403);
+
+        $this->paymentDetailsSchoolId = $schoolId;
+        $this->modal('payment-details')->show();
     }
 
     /**
@@ -132,13 +155,71 @@ class PaymentReconciliation extends Component
         $allocatingTransaction = $needsReconciliation->firstWhere('id', $this->allocatingTransactionId);
         $allocationCandidates = $this->allocationCandidates($allocatingTransaction);
 
+        $paymentDetailsRow = $this->canViewPaymentDetails && $this->paymentDetailsSchoolId !== null
+            ? $allSchoolRows->first(fn (array $row): bool => $row['school']?->id === $this->paymentDetailsSchoolId)
+            : null;
+
         return view('livewire.events.reports.payment-reconciliation', [
             'schoolRows' => $schoolRows,
             'versionTotals' => $versionTotals,
             'needsReconciliation' => $needsReconciliation,
             'allocatingTransaction' => $allocatingTransaction,
             'allocationCandidates' => $allocationCandidates,
+            'paymentDetailsRow' => $paymentDetailsRow,
+            'paymentDetails' => $paymentDetailsRow !== null
+                ? self::paymentDetails($this->version, $this->paymentDetailsSchoolId)
+                : collect(),
         ]);
+    }
+
+    /**
+     * The payments behind one school's "Paid" figure — one entry per
+     * Completed transaction, carrying only the portion of it allocated to
+     * this school's non-withdrawn candidates (a group payment can span
+     * schools), plus the per-candidate breakdown. Uses exactly the same
+     * candidate set and Completed-only rule as baseRows(), so the entries
+     * always sum to that row's paidCents.
+     *
+     * @return Collection<int, array{transaction: PaymentTransaction, amountCents: int, allocations: Collection<int, PaymentAllocation>}>
+     */
+    public static function paymentDetails(Version $version, int $schoolId): Collection
+    {
+        $feeEligibleStatusValues = array_map(
+            fn (CandidateStatus $s): string => $s->value,
+            CandidateStatus::registrationFeeEligibleStates(),
+        );
+
+        $allocations = PaymentAllocation::query()
+            ->whereHas('candidate', fn ($q) => $q->where('version_id', $version->id)
+                ->where('school_id', $schoolId)
+                ->whereIn('status', $feeEligibleStatusValues))
+            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
+            ->with(['candidate.student.user', 'paymentTransaction.payerTeacher.user', 'paymentTransaction.payerStudent.user', 'paymentTransaction.recordedBy'])
+            ->get()
+            ->sortBy(fn (PaymentAllocation $a): string => mb_strtolower($a->candidate->student->user->last_name.' '.$a->candidate->student->user->first_name))
+            ->values();
+
+        /** @var array<int, array{transaction: PaymentTransaction, amountCents: int, allocations: list<PaymentAllocation>}> $entries */
+        $entries = [];
+
+        foreach ($allocations as $allocation) {
+            $transaction = $allocation->paymentTransaction;
+
+            if ($transaction === null) {
+                continue;
+            }
+
+            $entries[$transaction->id] ??= ['transaction' => $transaction, 'amountCents' => 0, 'allocations' => []];
+            $entries[$transaction->id]['amountCents'] += $allocation->amount;
+            $entries[$transaction->id]['allocations'][] = $allocation;
+        }
+
+        // Oldest payment first — raw 'Y-m-d H:i:s' strings sort correctly as
+        // strings; created_at stands in for a payment with no paid_at.
+        return collect(array_values($entries))
+            ->sortBy(fn (array $entry): string => (string) ($entry['transaction']->getRawOriginal('paid_at') ?? $entry['transaction']->getRawOriginal('created_at')))
+            ->values()
+            ->map(fn (array $entry): array => [...$entry, 'allocations' => collect($entry['allocations'])]);
     }
 
     /**
@@ -202,21 +283,41 @@ class PaymentReconciliation extends Component
             ->groupBy('candidate_id')
             ->map(fn (Collection $g): int => (int) $g->sum('amount'));
 
+        // Only registered (or cut-off-resolved) candidates owe anything — an
+        // Eligible/Pending one hasn't registered yet. Paid still sums every
+        // non-withdrawn candidate, so money paid ahead for one isn't hidden.
+        $owedStatusValues = array_map(
+            fn (CandidateStatus $s): string => $s->value,
+            CandidateStatus::registrationFeeOwedStates(),
+        );
+        $owes = fn (Candidate $c): bool => in_array($c->getRawOriginal('status'), $owedStatusValues, true);
+
         return $feeEligibleCandidates
             ->groupBy('school_id')
-            ->map(function (Collection $group) use ($dueForCandidate, $paidByCandidateId): array {
+            ->map(function (Collection $group) use ($dueForCandidate, $paidByCandidateId, $owes): array {
                 $first = $group->first();
-                $dueCents = $group->sum($dueForCandidate);
+                $owing = $group->filter($owes);
+                $dueCents = $owing->sum($dueForCandidate);
                 $paidCents = $group->sum(fn (Candidate $c): int => $paidByCandidateId->get($c->id, 0));
 
                 return [
                     'school' => $first->school,
-                    'count' => $group->count(),
+                    // A school can have more than one registering teacher
+                    // in a Version, so every distinct one is listed.
+                    'teachers' => $group->pluck('teacher')
+                        ->filter()
+                        ->unique('id')
+                        ->sortBy(fn (Teacher $t): string => mb_strtolower($t->user->name))
+                        ->values(),
+                    'count' => $owing->count(),
                     'dueCents' => $dueCents,
                     'paidCents' => $paidCents,
                     'balanceCents' => $dueCents - $paidCents,
                 ];
             })
+            // A school with only not-yet-registered candidates is shown only
+            // if it has already paid something for them.
+            ->filter(fn (array $row): bool => $row['count'] > 0 || $row['paidCents'] > 0)
             ->sortBy(fn (array $row): string => mb_strtolower($row['school']->name ?? ''))
             ->values();
     }

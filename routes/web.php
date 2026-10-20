@@ -14,7 +14,7 @@ use App\Http\Controllers\Reports\ParticipatingCandidatesPdfController;
 use App\Http\Controllers\Reports\ParticipatingSchoolsPdfController;
 use App\Http\Controllers\Reports\ParticipatingTeachersPdfController;
 use App\Http\Controllers\Reports\ParticipationByCountyExportController;
-use App\Http\Controllers\Reports\PaymentReconciliationPdfController;
+use App\Http\Controllers\Reports\PaymentReconciliationExportController;
 use App\Http\Controllers\Reports\RegistrationCardsPdfController;
 use App\Http\Controllers\Reports\TabRoom\AuditionScoresPdfController;
 use App\Http\Controllers\Reports\TabRoom\CombinedAuditionScoresExportController;
@@ -319,7 +319,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/reports/participating-schools', ParticipatingSchools::class)->name('events.versions.reports.participating-schools');
         Route::get('/events/versions/{version}/reports/participating-schools/export.pdf', ParticipatingSchoolsPdfController::class)->name('events.versions.reports.participating-schools.pdf');
         Route::get('/events/versions/{version}/reports/payment-reconciliation', PaymentReconciliation::class)->name('events.versions.reports.payment-reconciliation');
-        Route::get('/events/versions/{version}/reports/payment-reconciliation/export.pdf', PaymentReconciliationPdfController::class)->name('events.versions.reports.payment-reconciliation.pdf');
+        Route::get('/events/versions/{version}/reports/payment-reconciliation/export.{format}', PaymentReconciliationExportController::class)->whereIn('format', ['pdf', 'csv'])->name('events.versions.reports.payment-reconciliation.export');
         Route::get('/events/versions/{version}/reports/participating-candidates', ParticipatingCandidates::class)->name('events.versions.reports.participating-candidates');
         Route::get('/events/versions/{version}/reports/participating-candidates/export.pdf', ParticipatingCandidatesPdfController::class)->name('events.versions.reports.participating-candidates.pdf');
         Route::get('/events/versions/{version}/reports/participation-by-county', ParticipationByCounty::class)->name('events.versions.reports.participation-by-county');

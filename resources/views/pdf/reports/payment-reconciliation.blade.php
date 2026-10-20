@@ -28,6 +28,7 @@
             <thead>
                 <tr>
                     <th>School</th>
+                    <th>Teacher</th>
                     <th>Registered</th>
                     <th>Due</th>
                     <th>Paid</th>
@@ -38,6 +39,22 @@
                 @foreach ($schoolRows as $row)
                     <tr>
                         <td>{{ $row['school']->name ?? '—' }}</td>
+                        <td>
+                            @forelse ($row['teachers'] as $teacher)
+                                @php($cell = \App\Support\Reports\TeacherDisplay::cellPhoneFormatted($teacher))
+                                <div @if (! $loop->first) style="margin-top: 4px;" @endif>
+                                    {{ $teacher->user->name }}
+                                    @if ($teacher->user->email)
+                                        <div class="contact-detail">{{ $teacher->user->email }}</div>
+                                    @endif
+                                    @if ($cell)
+                                        <div class="contact-detail">{{ $cell }}</div>
+                                    @endif
+                                </div>
+                            @empty
+                                &mdash;
+                            @endforelse
+                        </td>
                         <td>{{ $row['count'] }}</td>
                         <td>${{ number_format($row['dueCents'] / 100, 2) }}</td>
                         <td>${{ number_format($row['paidCents'] / 100, 2) }}</td>
