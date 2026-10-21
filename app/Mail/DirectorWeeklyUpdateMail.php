@@ -8,6 +8,8 @@ use App\Support\DirectorWeeklyUpdate;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
+use Symfony\Component\Mailer\Bridge\Postmark\Transport\MessageStreamHeader;
+use Symfony\Component\Mime\Email;
 
 /**
  * Sent every Wednesday morning by SendDirectorWeeklyUpdateEmails to each
@@ -24,6 +26,11 @@ class DirectorWeeklyUpdateMail extends Mailable
     {
         return new Envelope(
             subject: "{$this->update->version->name}: Weekly Participation Update",
+            // Postmark only routes by this header class, not a plain text
+            // header of the same name. Other mailers ignore it.
+            using: [fn (Email $message) => $message->getHeaders()->add(
+                new MessageStreamHeader((string) config('services.postmark.streams.director_weekly_update')),
+            )],
         );
     }
 

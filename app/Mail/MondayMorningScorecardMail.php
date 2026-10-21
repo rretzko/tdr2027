@@ -9,6 +9,8 @@ use App\Support\VersionScorecardMetrics;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
+use Symfony\Component\Mailer\Bridge\Postmark\Transport\MessageStreamHeader;
+use Symfony\Component\Mime\Email;
 
 /**
  * Sent every Monday morning by SendMondayMorningScorecardEmails to a Version's
@@ -26,6 +28,10 @@ class MondayMorningScorecardMail extends Mailable
     {
         return new Envelope(
             subject: 'Monday Morning Scorecard',
+            // See DirectorWeeklyUpdateMail: Postmark only routes by this header class.
+            using: [fn (Email $message) => $message->getHeaders()->add(
+                new MessageStreamHeader((string) config('services.postmark.streams.monday_scorecard')),
+            )],
         );
     }
 

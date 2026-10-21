@@ -16,6 +16,13 @@ return [
 
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
+        // Scheduled digests go to a Broadcast stream; everything else stays on
+        // the server's default transactional stream. Separate keys so each
+        // digest can move to its own stream (independent unsubscribes) later.
+        'streams' => [
+            'director_weekly_update' => env('POSTMARK_DIRECTOR_UPDATE_STREAM', 'broadcast'),
+            'monday_scorecard' => env('POSTMARK_SCORECARD_STREAM', 'broadcast'),
+        ],
     ],
 
     'resend' => [
