@@ -18,6 +18,15 @@ It tracks sends only through logs:
 - One `Log::info` summary per run, with counts: `invitations`, `emails_sent`, `failures`.
 - One `Log::warning` per failed send, with `version_invitation_id` and `error`.
 
+**Finding (2026-10-21): these log lines don't reach CloudWatch in production.**
+The Monday scorecard run (~11:30 UTC on 2026-10-19) shows up in
+`/aws/lambda/vapor-tdr2027-production-cli` as a 13.8 s invocation, but only
+Lambda's START/END/REPORT lines were recorded. `.env.production` doesn't set
+`LOG_CHANNEL`, so it falls back to `stack` → `single` (a file on Lambda that
+gets thrown away). Setting `LOG_CHANNEL=stderr` in production should fix it.
+Until then, the only record of a run is SES's account-wide send counts, which
+are shared with every other Vapor app on this AWS account.
+
 Gaps:
 
 - No per-recipient record. The summary has counts only.
