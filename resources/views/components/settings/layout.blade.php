@@ -7,6 +7,9 @@
             <flux:navlist.item :href="route('settings.password')" :current="request()->routeIs('settings.password')">
                 Password
             </flux:navlist.item>
+            <flux:navlist.item :href="route('settings.email-preferences')" :current="request()->routeIs('settings.email-preferences')">
+                Email Preferences
+            </flux:navlist.item>
         </flux:navlist>
     </div>
 

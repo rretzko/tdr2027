@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Enums\EventStatus;
+use App\Enums\UnsubscribableEmail;
 use App\Mail\MondayMorningScorecardMail;
+use App\Models\EmailUnsubscribe;
 use App\Models\Version;
 use App\Models\VersionScorecardSnapshot;
 use App\Services\VersionRoleAssignmentService;
@@ -24,6 +26,9 @@ use Illuminate\Support\Facades\Mail;
  *
  * Also records a VersionScorecardSnapshot for every Active Version, including
  * ones with no Event Manager to email, so the weekly history has no gaps.
+ *
+ * Both stop once a Version's adjudication starts (registration is effectively
+ * frozen by then), and Event Managers who unsubscribed are skipped.
  */
 class SendMondayMorningScorecardEmails extends Command
 {
@@ -35,10 +40,14 @@ class SendMondayMorningScorecardEmails extends Command
     {
         $versions = Version::query()
             ->where('status', EventStatus::Active->value)
+            ->beforeAdjudication()
             ->with('event')
             ->get();
 
         $emailsSent = 0;
+        $unsubscribed = EmailUnsubscribe::where('email_type', UnsubscribableEmail::MondayScorecard->value)
+            ->pluck('user_id')
+            ->flip();
         $capturedOn = now(config('app.display_timezone'));
 
         foreach ($versions as $version) {
@@ -49,11 +58,11 @@ class SendMondayMorningScorecardEmails extends Command
             $eventManagers = $roles->assignmentsForVersion($version)->get('Event Manager') ?? collect();
 
             foreach ($eventManagers as $eventManager) {
-                if ($eventManager->email === null) {
+                if ($eventManager->email === null || $unsubscribed->has($eventManager->id)) {
                     continue;
                 }
 
-                Mail::to($eventManager->email)->send(new MondayMorningScorecardMail($version, $metrics));
+                Mail::to($eventManager->email)->send(new MondayMorningScorecardMail($version, $metrics, $eventManager));
 
                 $emailsSent++;
             }

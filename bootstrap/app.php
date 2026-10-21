@@ -36,7 +36,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // Vendor e-payment webhooks (epayment-integration.md §2.4) — a
         // vendor server has no CSRF token to send; each gateway verifies its
         // own signature instead (SquarePaymentGateway::verifyWebhookSignature()).
-        $middleware->validateCsrfTokens(except: ['webhooks/payments/*']);
+        // email/unsubscribe/*: mailbox providers' one-click List-Unsubscribe
+        // POST has no CSRF token; the route's URL signature authorizes it.
+        $middleware->validateCsrfTokens(except: ['webhooks/payments/*', 'email/unsubscribe/*']);
 
         // Sidebar group expand/collapse state is written client-side by the
         // app layout's script, so it can't be encrypted.

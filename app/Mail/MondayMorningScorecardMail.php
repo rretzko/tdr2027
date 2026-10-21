@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Mail;
 
+use App\Enums\UnsubscribableEmail;
+use App\Models\User;
 use App\Models\Version;
 use App\Support\VersionScorecardMetrics;
 use Illuminate\Mail\Mailable;
@@ -19,19 +21,28 @@ use Symfony\Component\Mime\Email;
  */
 class MondayMorningScorecardMail extends Mailable
 {
+    public string $unsubscribeUrl;
+
     public function __construct(
         public Version $version,
         public VersionScorecardMetrics $metrics,
-    ) {}
+        public User $recipient,
+    ) {
+        $this->unsubscribeUrl = $recipient->unsubscribeUrl(UnsubscribableEmail::MondayScorecard);
+    }
 
     public function envelope(): Envelope
     {
         return new Envelope(
             subject: 'Monday Morning Scorecard',
-            // See DirectorWeeklyUpdateMail: Postmark only routes by this header class.
-            using: [fn (Email $message) => $message->getHeaders()->add(
-                new MessageStreamHeader((string) config('services.postmark.streams.monday_scorecard')),
-            )],
+            // See DirectorWeeklyUpdateMail for both headers.
+            using: [function (Email $message): void {
+                $message->getHeaders()->add(
+                    new MessageStreamHeader((string) config('services.postmark.streams.monday_scorecard')),
+                );
+                $message->getHeaders()->addTextHeader('List-Unsubscribe', "<{$this->unsubscribeUrl}>");
+                $message->getHeaders()->addTextHeader('List-Unsubscribe-Post', 'List-Unsubscribe=One-Click');
+            }],
         );
     }
 

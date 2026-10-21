@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Enums\EventStatus;
+use App\Enums\UnsubscribableEmail;
 use App\Enums\VersionInvitationStatus;
 use App\Mail\DirectorWeeklyUpdateMail;
+use App\Models\EmailUnsubscribe;
+use App\Models\Version;
 use App\Models\VersionInvitation;
 use App\Services\DirectorWeeklyUpdateService;
 use Illuminate\Console\Command;
@@ -17,7 +20,8 @@ use Throwable;
 /**
  * Every Wednesday morning, emails each director with an Invited, Obligated, or
  * Participating version_invitations row on an Active Version a participation
- * update on their students' progress. Rejected invitations are skipped.
+ * update on their students' progress. Rejected invitations, Versions whose
+ * adjudication has started, and directors who unsubscribed are skipped.
  *
  * One failed send is logged and skipped rather than aborting the run, so a
  * single bad address can't stop every other director's update.
@@ -36,22 +40,29 @@ class SendDirectorWeeklyUpdateEmails extends Command
                 VersionInvitationStatus::Obligated->value,
                 VersionInvitationStatus::Participating->value,
             ])
-            ->whereHas('version', fn ($q) => $q->where('status', EventStatus::Active->value))
+            ->whereIn('version_id', Version::query()
+                ->where('status', EventStatus::Active->value)
+                ->beforeAdjudication()
+                ->select('id'))
             ->with(['version.event', 'version.fees', 'teacher.user'])
             ->get();
 
         $emailsSent = 0;
         $failures = 0;
+        $unsubscribed = EmailUnsubscribe::where('email_type', UnsubscribableEmail::DirectorWeeklyUpdate->value)
+            ->pluck('user_id')
+            ->flip();
 
         foreach ($invitations as $invitation) {
-            $email = $invitation->teacher->user?->email;
+            $user = $invitation->teacher->user;
+            $email = $user?->email;
 
-            if ($email === null || $email === '') {
+            if ($user === null || $email === null || $email === '' || $unsubscribed->has($user->id)) {
                 continue;
             }
 
             try {
-                Mail::to($email)->send(new DirectorWeeklyUpdateMail($updates->updateFor($invitation)));
+                Mail::to($email)->send(new DirectorWeeklyUpdateMail($updates->updateFor($invitation), $user));
                 $emailsSent++;
             } catch (Throwable $e) {
                 $failures++;

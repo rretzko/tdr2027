@@ -1,7 +1,7 @@
 <x-mail::message>
 # {{ $version->event->name }} — {{ $version->name }}
 
-This email is automatically sent to {{ $version->name }} Event Managers every Monday morning to highlight Event progress.
+This email is automatically sent to {{ $version->name }} Event Managers every Monday morning, until adjudication begins, to highlight Event progress.
 
 ## Invitations
 
@@ -45,4 +45,12 @@ Thanks,<br>
 ---
 
 Please let Rick know (rick@mfrholdings.com or use the Feedback feature in TheDirectorsRoom.com) if there are other metrics that you want to see added to this Scorecard or if there are any errors.
+
+<hr style="border: none; border-top: 1px solid #e4e4e7; margin: 24px 0;">
+
+Don't want the Monday Morning Scorecard? Unsubscribing stops it for every event; you can turn it back on under Settings → Email Preferences.
+
+<x-mail::button :url="$unsubscribeUrl">
+Unsubscribe
+</x-mail::button>
 </x-mail::message>

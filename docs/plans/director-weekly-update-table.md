@@ -1,7 +1,25 @@
 # Plan: Per-recipient tracking for the director weekly update email
 
-**Status: on hold (2026-10-21).** We're waiting to see how the Wednesday
-sends go with the current log-only tracking before building this.
+**Status: mostly superseded (2026-10-21). Don't build unless the trigger at the bottom fires.**
+
+Production mail is moving from SES to Postmark (branch `postmark-mailer`).
+The director weekly update and the Monday scorecard go on the `broadcast`
+stream. Postmark's Activity view keeps per-message history for 45 days,
+searchable by recipient, with delivered, bounced and opened statuses. That
+answers "did this director get last Wednesday's update?" without this table.
+
+Also since this plan was written:
+
+- `LOG_CHANNEL=stderr` is set in production, which should fix the CloudWatch
+  gap described below once deployed. That still needs checking.
+- Unsubscribes are now app-managed (branch `weekly-email-unsubscribe`,
+  `email_unsubscribes` table), and both digests stop when adjudication begins.
+  Unsubscribed directors are skipped silently. If this table is ever built,
+  record them as `skipped_unsubscribed`.
+
+This table would still add history older than Postmark's retention, and
+in-app visibility for Event Managers (section 3). The original plan follows,
+unchanged.
 
 ## Goal
 

@@ -18,6 +18,7 @@ use Carbon\Carbon;
 use Database\Factories\VersionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -233,11 +234,35 @@ class Version extends Model
             return false;
         }
 
+        return ! $this->adjudicationHasStarted();
+    }
+
+    /**
+     * True once the Adjudication date's start_at has passed. A Version with
+     * no Adjudication date configured is treated as not started — there's
+     * nothing to cut off against. Same rule as scopeBeforeAdjudication().
+     */
+    public function adjudicationHasStarted(): bool
+    {
         $adjudicationStart = VersionDate::where('version_id', $this->id)
             ->where('date_type', VersionDateType::Adjudication)
             ->value('start_at');
 
-        return $adjudicationStart === null || Carbon::parse($adjudicationStart)->isFuture();
+        return $adjudicationStart !== null && ! Carbon::parse($adjudicationStart)->isFuture();
+    }
+
+    /**
+     * Versions whose adjudication hasn't started yet (or has no Adjudication
+     * date); the query form of adjudicationHasStarted().
+     *
+     * @param  Builder<Version>  $query
+     * @return Builder<Version>
+     */
+    public function scopeBeforeAdjudication(Builder $query): Builder
+    {
+        return $query->whereDoesntHave('dates', fn (Builder $dates) => $dates
+            ->where('date_type', VersionDateType::Adjudication->value)
+            ->where('start_at', '<=', now()));
     }
 
     /**

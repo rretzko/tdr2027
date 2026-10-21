@@ -61,7 +61,7 @@ test('the director weekly update is sent on the broadcast stream', function () {
     ]);
 
     Mail::mailer('postmark')->to('director@example.com')->send(
-        new DirectorWeeklyUpdateMail(app(DirectorWeeklyUpdateService::class)->updateFor($invitation->fresh())),
+        new DirectorWeeklyUpdateMail(app(DirectorWeeklyUpdateService::class)->updateFor($invitation->fresh()), $invitation->teacher->user),
     );
 
     expect($payloads)->toHaveCount(1)
@@ -73,7 +73,7 @@ test('the monday morning scorecard is sent on the broadcast stream', function ()
     $version = Version::factory()->active()->create();
 
     Mail::mailer('postmark')->to('em@example.com')->send(
-        new MondayMorningScorecardMail($version, app(VersionScorecardService::class)->metricsFor($version)),
+        new MondayMorningScorecardMail($version, app(VersionScorecardService::class)->metricsFor($version), User::factory()->create()),
     );
 
     expect($payloads[0]['MessageStream'])->toBe('broadcast');
@@ -85,7 +85,7 @@ test('each digest stream can be overridden by config', function () {
     config(['services.postmark.streams.monday_scorecard' => 'em-scorecard']);
 
     Mail::mailer('postmark')->to('em@example.com')->send(
-        new MondayMorningScorecardMail($version, app(VersionScorecardService::class)->metricsFor($version)),
+        new MondayMorningScorecardMail($version, app(VersionScorecardService::class)->metricsFor($version), User::factory()->create()),
     );
 
     expect($payloads[0]['MessageStream'])->toBe('em-scorecard');

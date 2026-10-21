@@ -12,7 +12,7 @@
 <x-mail::message>
 # {{ $update->version->event->name }} — {{ $update->version->name }}
 
-This email is automatically sent every Wednesday morning to directors participating in {{ $update->version->name }} with an update on their students' progress.
+This email is automatically sent every Wednesday morning, until adjudication begins, to directors participating in {{ $update->version->name }} with an update on their students' progress.
 
 <hr style="border: none; border-top: 1px solid #e4e4e7; margin: 24px 0;">
 
@@ -101,4 +101,12 @@ View your registrations
 
 Thanks,<br>
 {{ config('app.name') }}
+
+<hr style="border: none; border-top: 1px solid #e4e4e7; margin: 24px 0;">
+
+Don't want these weekly updates? Unsubscribing stops them for every event; you can turn them back on under Settings → Email Preferences.
+
+<x-mail::button :url="$unsubscribeUrl">
+Unsubscribe
+</x-mail::button>
 </x-mail::message>

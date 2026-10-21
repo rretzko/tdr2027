@@ -6,10 +6,12 @@ use App\Enums\CandidateStatus;
 use App\Enums\EventStatus;
 use App\Enums\FeeType;
 use App\Enums\PaymentTransactionStatus;
+use App\Enums\UnsubscribableEmail;
 use App\Enums\VersionDateType;
 use App\Enums\VersionInvitationStatus;
 use App\Mail\DirectorWeeklyUpdateMail;
 use App\Models\Candidate;
+use App\Models\EmailUnsubscribe;
 use App\Models\EmergencyContact;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
@@ -23,6 +25,7 @@ use App\Models\VoicePart;
 use App\Services\DirectorWeeklyUpdateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\Mime\Email;
 
 use function Pest\Laravel\actingAs;
 use function Pest\Laravel\artisan;
@@ -136,7 +139,7 @@ test('builds counts, fees, dates, and rosters from the director\'s own candidate
     expect($missingByName[$missingContact->student->user->name])->toBe(['Emergency contact'])
         ->and($missingByName[$capHeld->student->user->name])->toBe([DirectorWeeklyUpdateService::AUDITION_CAP_HOLD]);
 
-    $html = (new DirectorWeeklyUpdateMail($update))->render();
+    $html = (new DirectorWeeklyUpdateMail($update, $invitation->teacher->user))->render();
     expect($html)->toContain('Obligated')
         ->toContain('Some value of the student')
         ->toContain('All required values for registration have been satisfied')
@@ -167,7 +170,7 @@ test('shows an overpayment as a credit rather than a negative balance due', func
     PaymentAllocation::factory()->create(['payment_transaction_id' => $transaction->id, 'candidate_id' => $candidate->id, 'amount' => 2800]);
 
     $update = app(DirectorWeeklyUpdateService::class)->updateFor($invitation->fresh());
-    $html = (new DirectorWeeklyUpdateMail($update))->render();
+    $html = (new DirectorWeeklyUpdateMail($update, $invitation->teacher->user))->render();
 
     expect($update->balanceDueCents())->toBe(-2800)
         ->and($html)->toContain('Credit')
@@ -182,5 +185,68 @@ test('hides the fees section when the version charges no fees', function () {
     $update = app(DirectorWeeklyUpdateService::class)->updateFor($invitation->fresh());
 
     expect($update->hasFees())->toBeFalse()
-        ->and((new DirectorWeeklyUpdateMail($update))->render())->not->toContain('Balance Due');
+        ->and((new DirectorWeeklyUpdateMail($update, $invitation->teacher->user))->render())->not->toContain('Balance Due');
+});
+
+test('stops emailing directors once the version\'s adjudication has started', function () {
+    Mail::fake();
+
+    $version = Version::factory()->active()->create();
+    $invitation = inviteDirectorForWeeklyUpdate($version, VersionInvitationStatus::Participating);
+    VersionDate::create(['version_id' => $version->id, 'date_type' => VersionDateType::Adjudication, 'start_at' => now()->subMinute(), 'end_at' => now()->addDay()]);
+
+    artisan('versions:send-director-weekly-update')->assertSuccessful();
+
+    Mail::assertNotSent(DirectorWeeklyUpdateMail::class, fn ($mail) => $mail->hasTo($invitation->teacher->user->email));
+});
+
+test('keeps emailing directors of a version with no adjudication date', function () {
+    Mail::fake();
+
+    $invitation = inviteDirectorForWeeklyUpdate(Version::factory()->active()->create(), VersionInvitationStatus::Participating);
+
+    artisan('versions:send-director-weekly-update')->assertSuccessful();
+
+    Mail::assertSent(DirectorWeeklyUpdateMail::class, fn ($mail) => $mail->hasTo($invitation->teacher->user->email));
+});
+
+test('skips a director who unsubscribed, for every version', function () {
+    Mail::fake();
+
+    $teacher = Teacher::factory()->create();
+    foreach ([Version::factory()->active()->create(), Version::factory()->active()->create()] as $version) {
+        VersionInvitation::create([
+            'version_id' => $version->id,
+            'teacher_id' => $teacher->id,
+            'status' => VersionInvitationStatus::Invited->value,
+            'invited_at' => now(),
+            'invited_by_user_id' => User::factory()->create()->id,
+        ]);
+    }
+    EmailUnsubscribe::create(['user_id' => $teacher->user_id, 'email_type' => UnsubscribableEmail::DirectorWeeklyUpdate]);
+    $subscribed = inviteDirectorForWeeklyUpdate(Version::factory()->active()->create(), VersionInvitationStatus::Invited);
+
+    artisan('versions:send-director-weekly-update')->assertSuccessful();
+
+    Mail::assertNotSent(DirectorWeeklyUpdateMail::class, fn ($mail) => $mail->hasTo($teacher->user->email));
+    Mail::assertSent(DirectorWeeklyUpdateMail::class, fn ($mail) => $mail->hasTo($subscribed->teacher->user->email));
+});
+
+test('the email has an unsubscribe button and one-click unsubscribe headers', function () {
+    $invitation = inviteDirectorForWeeklyUpdate(Version::factory()->active()->create(), VersionInvitationStatus::Invited);
+    $user = $invitation->teacher->user;
+    $mail = new DirectorWeeklyUpdateMail(app(DirectorWeeklyUpdateService::class)->updateFor($invitation->fresh()), $user);
+
+    $mail->assertSeeInHtml('Unsubscribe')
+        ->assertSeeInHtml($user->unsubscribeUrl(UnsubscribableEmail::DirectorWeeklyUpdate), false);
+
+    $message = new Email;
+    foreach ($mail->envelope()->using as $callback) {
+        $callback($message);
+    }
+
+    expect($message->getHeaders()->get('List-Unsubscribe')?->getBodyAsString())
+        ->toBe('<'.$user->unsubscribeUrl(UnsubscribableEmail::DirectorWeeklyUpdate).'>')
+        ->and($message->getHeaders()->get('List-Unsubscribe-Post')?->getBodyAsString())
+        ->toBe('List-Unsubscribe=One-Click');
 });

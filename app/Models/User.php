@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\UnsubscribableEmail;
 use App\Support\NameFormatter;
 use App\Support\PhoneNormalizer;
 use Database\Factories\UserFactory;
@@ -20,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -119,6 +121,28 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function loginEvents(): HasMany
     {
         return $this->hasMany(LoginEvent::class);
+    }
+
+    /**
+     * @return HasMany<EmailUnsubscribe, $this>
+     */
+    public function emailUnsubscribes(): HasMany
+    {
+        return $this->hasMany(EmailUnsubscribe::class);
+    }
+
+    public function isUnsubscribedFrom(UnsubscribableEmail $email): bool
+    {
+        return $this->emailUnsubscribes()->where('email_type', $email->value)->exists();
+    }
+
+    /**
+     * Permanent signed link: it lives in emails that may be opened long after
+     * sending, and only ever lets the recipient opt themselves out.
+     */
+    public function unsubscribeUrl(UnsubscribableEmail $email): string
+    {
+        return URL::signedRoute('email-unsubscribe', ['user' => $this->id, 'email' => $email->value]);
     }
 
     /**

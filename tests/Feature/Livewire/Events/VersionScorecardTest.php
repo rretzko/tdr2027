@@ -164,7 +164,7 @@ class VersionScorecardTest extends TestCase
     {
         $version = $this->makeVersion();
 
-        $mail = new MondayMorningScorecardMail($version, app(VersionScorecardService::class)->metricsFor($version));
+        $mail = new MondayMorningScorecardMail($version, app(VersionScorecardService::class)->metricsFor($version), User::factory()->create());
 
         $mail->assertSeeInHtml(route('events.versions.scorecard', $version));
     }

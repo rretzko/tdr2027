@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\CandidateApplicationPdfController;
 use App\Http\Controllers\CandidateScoreReportPdfController;
 use App\Http\Controllers\DirectorUploadTemplateController;
+use App\Http\Controllers\EmailUnsubscribeController;
 use App\Http\Controllers\EstimateFormPdfController;
 use App\Http\Controllers\PaymentRegisterCsvController;
 use App\Http\Controllers\PaymentRegisterPdfController;
@@ -92,6 +93,7 @@ use App\Livewire\Registrations\ResultsIndex;
 use App\Livewire\Registrations\VersionDashboard;
 use App\Livewire\Registrations\VersionObligations;
 use App\Livewire\Schools\Index as SchoolsIndex;
+use App\Livewire\Settings\EmailPreferences;
 use App\Livewire\Settings\Password;
 use App\Livewire\Settings\Profile;
 use App\Livewire\Sfdi\EmergencyContacts as SfdiEmergencyContacts;
@@ -179,6 +181,16 @@ Route::get('/version-invitation-requests/{versionInvitationRequest}/{user}/appro
 Route::get('/version-invitation-requests/{versionInvitationRequest}/{user}/deny', [VersionInvitationRequestController::class, 'deny'])
     ->middleware('signed')
     ->name('version-invitation-requests.deny');
+
+// Signed, unauthenticated: unsubscribe links in the scheduled digest emails.
+// GET confirms, POST unsubscribes (also the RFC 8058 one-click target, so
+// it's CSRF-exempt in bootstrap/app.php).
+Route::get('/email/unsubscribe/{user}/{email}', [EmailUnsubscribeController::class, 'show'])
+    ->middleware('signed')
+    ->name('email-unsubscribe');
+Route::post('/email/unsubscribe/{user}/{email}', [EmailUnsubscribeController::class, 'unsubscribe'])
+    ->middleware('signed')
+    ->name('email-unsubscribe.store');
 
 // Profile completion: auth only — user may not yet have a verified email.
 Route::middleware('auth')->group(function () {
@@ -334,4 +346,5 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
 
     Route::get('/settings/profile', Profile::class)->name('settings.profile');
     Route::get('/settings/password', Password::class)->name('settings.password');
+    Route::get('/settings/email-preferences', EmailPreferences::class)->name('settings.email-preferences');
 });
