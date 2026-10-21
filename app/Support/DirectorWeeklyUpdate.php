@@ -9,7 +9,7 @@ use App\Models\Version;
 use App\Models\VersionDate;
 
 /**
- * One director's Tuesday participation update for a single Version, computed
+ * One director's Wednesday participation update for a single Version, computed
  * by DirectorWeeklyUpdateService and rendered by DirectorWeeklyUpdateMail.
  * All fee amounts are cents; the *InDollars() helpers are for the email view
  * only.

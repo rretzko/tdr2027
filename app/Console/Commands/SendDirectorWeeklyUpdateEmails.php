@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 /**
- * Every Tuesday morning, emails each director with an Invited, Obligated, or
+ * Every Wednesday morning, emails each director with an Invited, Obligated, or
  * Participating version_invitations row on an Active Version a participation
  * update on their students' progress. Rejected invitations are skipped.
  *

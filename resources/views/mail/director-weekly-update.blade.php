@@ -12,7 +12,7 @@
 <x-mail::message>
 # {{ $update->version->event->name }} — {{ $update->version->name }}
 
-This email is automatically sent every Tuesday morning to directors participating in {{ $update->version->name }} with an update on their students' progress.
+This email is automatically sent every Wednesday morning to directors participating in {{ $update->version->name }} with an update on their students' progress.
 
 <hr style="border: none; border-top: 1px solid #e4e4e7; margin: 24px 0;">
 

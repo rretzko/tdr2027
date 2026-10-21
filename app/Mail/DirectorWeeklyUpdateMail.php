@@ -10,7 +10,7 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 
 /**
- * Sent every Tuesday morning by SendDirectorWeeklyUpdateEmails to each
+ * Sent every Wednesday morning by SendDirectorWeeklyUpdateEmails to each
  * invited/obligated/participating director of an Active Version, summarizing
  * their own students' registration progress, fees, and key dates.
  */

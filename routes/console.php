@@ -26,5 +26,5 @@ Schedule::command(SendMondayMorningScorecardEmails::class)
 
 // Same America/New_York wall-clock convention as the Monday scorecard above.
 Schedule::command(SendDirectorWeeklyUpdateEmails::class)
-    ->weeklyOn(2, '7:30')
+    ->weeklyOn(3, '8:00')
     ->timezone('America/New_York');

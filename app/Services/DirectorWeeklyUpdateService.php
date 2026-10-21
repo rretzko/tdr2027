@@ -17,7 +17,7 @@ use App\Models\VersionInvitation;
 use App\Support\DirectorWeeklyUpdate;
 
 /**
- * Computes one director's Tuesday participation update
+ * Computes one director's Wednesday participation update
  * (SendDirectorWeeklyUpdateEmails). The candidate roster is the same one the
  * director sees on their Registrations dashboard — their own candidates plus
  * any visible via a co-teaching grant (CoTeacherAccessService::candidateQuery())
