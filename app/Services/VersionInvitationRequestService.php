@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionInvitation;
 use App\Models\VersionInvitationRequest;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -77,26 +78,33 @@ class VersionInvitationRequestService
      * Approves a pending request and creates the actual version_invitations
      * row via the same shape as an Event-Manager-initiated invite (§5.4).
      *
+     * Wrapped in a transaction because creating the invitation fires
+     * VersionInvitationObserver's auto-enrollment: if that fails partway,
+     * the whole approval rolls back rather than leaving an approved request
+     * with only some of the teacher's students enrolled.
+     *
      * @throws RuntimeException if the request isn't pending (already decided)
      */
     public function approve(VersionInvitationRequest $request, User $decidedBy): VersionInvitation
     {
         $this->assertPending($request);
 
-        $request->update([
-            'status' => VersionInvitationRequestStatus::Approved->value,
-            'decided_at' => now(),
-            'decided_by_user_id' => $decidedBy->id,
-        ]);
+        return DB::transaction(function () use ($request, $decidedBy): VersionInvitation {
+            $request->update([
+                'status' => VersionInvitationRequestStatus::Approved->value,
+                'decided_at' => now(),
+                'decided_by_user_id' => $decidedBy->id,
+            ]);
 
-        return VersionInvitation::updateOrCreate(
-            ['version_id' => $request->version_id, 'teacher_id' => $request->teacher_id],
-            [
-                'status' => VersionInvitationStatus::Invited->value,
-                'invited_at' => now(),
-                'invited_by_user_id' => $decidedBy->id,
-            ],
-        );
+            return VersionInvitation::updateOrCreate(
+                ['version_id' => $request->version_id, 'teacher_id' => $request->teacher_id],
+                [
+                    'status' => VersionInvitationStatus::Invited->value,
+                    'invited_at' => now(),
+                    'invited_by_user_id' => $decidedBy->id,
+                ],
+            );
+        });
     }
 
     /**
