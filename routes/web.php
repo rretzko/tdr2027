@@ -80,6 +80,7 @@ use App\Livewire\Founder\Impersonate as FounderImpersonate;
 use App\Livewire\Founder\Issues as FounderIssues;
 use App\Livewire\Founder\MergeStudents as FounderMergeStudents;
 use App\Livewire\Founder\RemoveBotRegistrations as FounderRemoveBotRegistrations;
+use App\Livewire\Founder\StudentFolio as FounderStudentFolio;
 use App\Livewire\Founder\TeacherVerification as FounderTeacherVerification;
 use App\Livewire\Founder\TrackablePages as FounderTrackablePages;
 use App\Livewire\Onboarding\TeacherOnboardingWizard;
@@ -212,6 +213,7 @@ Route::middleware(['auth', 'verified', 'founder'])->group(function () {
     Route::get('/founder/event-deadlines', FounderEventDeadlines::class)->name('founder.event-deadlines');
     Route::get('/founder/trackable-pages', FounderTrackablePages::class)->name('founder.trackable-pages');
     Route::get('/founder/merge-students', FounderMergeStudents::class)->name('founder.merge-students');
+    Route::get('/founder/student-folio', FounderStudentFolio::class)->name('founder.student-folio');
     Route::get('/founder/teacher-verification', FounderTeacherVerification::class)->name('founder.teacher-verification');
     Route::get('/founder/remove-bot-registrations', FounderRemoveBotRegistrations::class)->name('founder.remove-bot-registrations');
     Route::get('/founder/issues', FounderIssues::class)->name('founder.issues');
