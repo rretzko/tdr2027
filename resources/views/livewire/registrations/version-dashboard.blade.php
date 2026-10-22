@@ -63,7 +63,7 @@
                 <div id="tour-registration-summary">
                     <flux:heading size="sm" class="mb-4">Registration Summary</flux:heading>
                     <div class="space-y-4">
-                        <flux:table class="min-w-0 w-fit">
+                        <flux:table class="min-w-0 w-fit !table-auto">
                             <flux:table.columns>
                                 @foreach ($voicePartCounts as $row)
                                     <flux:table.column>{{ $row['label'] }}</flux:table.column>
@@ -80,7 +80,7 @@
                             </flux:table.rows>
                         </flux:table>
 
-                        <flux:table class="min-w-0 w-fit">
+                        <flux:table class="min-w-0 w-fit !table-auto">
                             <flux:table.columns>
                                 @foreach ($statusCounts as $row)
                                     <flux:table.column align="center" class="!px-4">{{ $row['label'] }}</flux:table.column>
