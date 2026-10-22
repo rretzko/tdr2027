@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Enums\CandidateStatus;
 use App\Models\Candidate;
+use App\Models\EmergencyContact;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\Version;
@@ -42,7 +43,9 @@ class CandidateService
             'voice_part_id' => $voicePartId,
             'status' => CandidateStatus::Eligible->value,
             'program_name' => '',
-            'emergency_contact_id' => null,
+            // Most recently updated contact; NULL when the student has none
+            // yet, in which case EmergencyContactObserver::created() links it.
+            'emergency_contact_id' => EmergencyContact::latestIdForStudent($student->id),
         ]);
     }
 
