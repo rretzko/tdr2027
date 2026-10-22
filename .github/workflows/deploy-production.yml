@@ -3,9 +3,12 @@ name: Deploy Production
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
+    # Manual runs can pick any branch; only ever deploy main to production.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
