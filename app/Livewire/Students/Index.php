@@ -1520,7 +1520,9 @@ class Index extends Component
             }
         }
 
-        $student->emergencyContacts()->whereNotIn('id', $keptIds)->delete();
+        // Per-model delete (not a bulk query) so EmergencyContactObserver
+        // re-points any candidate linked to a removed contact.
+        $student->emergencyContacts()->whereNotIn('id', $keptIds)->get()->each->delete();
     }
 
     /**
