@@ -312,11 +312,9 @@ class CandidateDetail extends Component
 
             $ec->update($attributes);
         } else {
+            // EmergencyContactObserver::created() links it to this (and any
+            // other unlinked) candidate of the student.
             $ec = EmergencyContact::create(['student_id' => $this->candidate->student_id, ...$attributes]);
-
-            if ($this->candidate->emergency_contact_id === null) {
-                $this->candidate->update(['emergency_contact_id' => $ec->id]);
-            }
         }
 
         $this->editingEmergencyContactId = null;
