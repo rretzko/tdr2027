@@ -7,13 +7,19 @@ namespace Tests\Feature;
 use App\Enums\VersionInvitationRequestStatus;
 use App\Enums\VersionInvitationStatus;
 use App\Mail\VersionInvitationRequestApprovedMail;
+use App\Models\Candidate;
+use App\Models\CandidateStatusHistory;
+use App\Models\Ensemble;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Models\School;
+use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionInvitation;
 use App\Models\VersionInvitationRequest;
+use App\Models\VoicePart;
 use App\Services\VersionRoleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -82,6 +88,56 @@ class VersionInvitationRequestControllerTest extends TestCase
         $this->assertSame($eventManager->id, $invitation->invited_by_user_id);
 
         Mail::assertSent(VersionInvitationRequestApprovedMail::class, fn ($mail) => $mail->hasTo($teacher->user->email));
+    }
+
+    /**
+     * Regression: the signed approve link is unauthenticated, so the initial
+     * CandidateStatusHistory row written for each auto-enrolled Candidate has
+     * no user. That insert used to throw after the first Candidate, leaving
+     * the rest of the teacher's students silently un-enrolled.
+     */
+    public function test_approve_auto_enrolls_every_eligible_student_without_a_signed_in_user(): void
+    {
+        Mail::fake();
+
+        $teacher = $this->makeTeacherUser();
+        $school = School::factory()->create();
+        $teacher->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
+
+        $organization = Organization::factory()->create();
+        $event = Event::factory()->create(['organization_id' => $organization->id]);
+        $version = Version::factory()->active()->create(['event_id' => $event->id]);
+        $voicePart = VoicePart::factory()->create(['sort_order' => 1]);
+        Ensemble::factory()->create(['event_id' => $event->id])->voiceParts()->attach($voicePart->id);
+
+        $students = Student::factory()->count(3)->create()->each(function (Student $student) use ($school, $teacher): void {
+            $student->schools()->attach($school->id, ['is_active' => true, 'class_of' => (int) date('Y') + 1]);
+            $student->teachers()->attach($teacher->id, [
+                'school_id' => $school->id,
+                'subject' => 'chorus',
+                'role' => 'primary',
+                'is_active' => true,
+            ]);
+        });
+
+        $eventManager = $this->makeEventManager($version);
+        $request = $this->pendingRequest($version, $teacher);
+
+        $approveUrl = UrlFacade::temporarySignedRoute('version-invitation-requests.approve', now()->addDays(7), [
+            'versionInvitationRequest' => $request->id,
+            'user' => $eventManager->id,
+        ]);
+
+        $this->assertGuest();
+        $this->get($approveUrl)->assertOk()->assertSeeText('Request approved');
+
+        $candidates = Candidate::where('version_id', $version->id)->get();
+        $this->assertEqualsCanonicalizing($students->pluck('id')->all(), $candidates->pluck('student_id')->all());
+
+        foreach ($candidates as $candidate) {
+            $history = CandidateStatusHistory::where('candidate_id', $candidate->id)->sole();
+            $this->assertNull($history->user_id);
+        }
     }
 
     public function test_approve_on_an_already_decided_request_shows_the_already_handled_page_without_side_effects(): void
