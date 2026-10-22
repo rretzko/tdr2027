@@ -3,9 +3,12 @@ name: Deploy Staging
 on:
   push:
     branches: [dev]
+  workflow_dispatch:
 
 jobs:
   deploy:
+    # Manual runs can pick any branch; only ever deploy dev to staging.
+    if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
