@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\Events;
 
 use App\Models\Candidate;
+use App\Models\Pivots\SchoolTeacher;
 use App\Models\School;
 use App\Models\Teacher;
 use App\Models\User;
@@ -61,7 +62,7 @@ class WebRegistration extends Component
     {
         $this->fromTeacherId = null;
 
-        $teachers = $this->teachersAtSchool($this->fromSchoolId);
+        $teachers = $this->fromTeacherOptions();
 
         // A school with only one invited teacher has nothing to choose — skip
         // straight to that teacher's roster instead of making the manager
@@ -177,6 +178,54 @@ class WebRegistration extends Component
     }
 
     /**
+     * From offers everyone who can still own a current student at the
+     * school: the invited, active+verified pool (same as To), plus any
+     * teacher whose school_teacher link there is no longer active+verified
+     * but who still holds active student_teacher rows � otherwise those
+     * students are orphaned with no way to move them. Active teachers who
+     * simply weren't invited are deliberately not offered.
+     *
+     * @return Collection<int, Teacher>
+     */
+    private function fromTeacherOptions(): Collection
+    {
+        $school = $this->fromSchoolId !== null ? School::find($this->fromSchoolId) : null;
+
+        if ($school === null) {
+            return new Collection;
+        }
+
+        return $this->teachersAtSchool($school->id)
+            ->concat($this->inactiveFromTeachers($school))
+            ->sortBy(fn (Teacher $teacher): string => $teacher->user->sort_name)
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, Teacher>
+     */
+    private function inactiveFromTeachers(School $school): Collection
+    {
+        return app(TeacherStudentTransferService::class)->inactiveTeachersWithCurrentStudents($school);
+    }
+
+    /**
+     * From's school list also covers schools where an invited teacher's
+     * link has since gone inactive (the To list stays active+verified only),
+     * so a school doesn't vanish from From the moment its only invited
+     * teacher lapses, stranding that teacher's students.
+     *
+     * @param  Collection<int, Teacher>  $invitedTeachers
+     * @return Collection<int, School>
+     */
+    private function fromSchoolOptions(Collection $invitedTeachers): Collection
+    {
+        $schoolIds = SchoolTeacher::whereIn('teacher_id', $invitedTeachers->pluck('id'))->pluck('school_id');
+
+        return School::whereIn('id', $schoolIds)->orderBy('name')->get();
+    }
+
+    /**
      * The To teacher list is the same "invited teachers at this school" pool
      * as From, minus the From teacher when the same school is picked on both
      * sides — picking the same teacher as both source and destination is a
@@ -267,7 +316,7 @@ class WebRegistration extends Component
         $this->redirect(route('sfdi.events.candidate', $candidate), navigate: true);
     }
 
-    public function transferStudents(TeacherStudentTransferService $service, VersionRoleAssignmentService $roles, VersionInvitationEligibilityService $eligibility): void
+    public function transferStudents(TeacherStudentTransferService $service, VersionRoleAssignmentService $roles): void
     {
         abort_unless($roles->canManageWebRegistration(Auth::user(), $this->version), 403);
 
@@ -280,9 +329,12 @@ class WebRegistration extends Component
             'selectedStudentIds.*' => ['integer'],
         ]);
 
-        $invitedTeacherIds = $eligibility->invitedTeachers($this->version)->pluck('id');
-        abort_unless($invitedTeacherIds->contains((int) $validated['fromTeacherId']), 403);
-        abort_unless($invitedTeacherIds->contains((int) $validated['toTeacherId']), 403);
+        // Re-derived server-side from the same lists the dropdowns use, so a
+        // tampered request can't name a From teacher outside the invited or
+        // inactive-with-students pool, or a To teacher not invited+active at
+        // the chosen To school.
+        abort_unless($this->fromTeacherOptions()->contains('id', (int) $validated['fromTeacherId']), 403);
+        abort_unless($this->teachersAtSchool((int) $validated['toSchoolId'])->contains('id', (int) $validated['toTeacherId']), 403);
 
         $fromSchool = School::findOrFail($validated['fromSchoolId']);
         $fromTeacher = Teacher::findOrFail($validated['fromTeacherId']);
@@ -305,7 +357,9 @@ class WebRegistration extends Component
             ->sortBy('name')
             ->values();
 
-        $fromTeacherOptions = $this->teachersAtSchool($this->fromSchoolId);
+        $fromTeacherOptions = $this->fromTeacherOptions();
+        $fromSchool = $this->fromSchoolId !== null ? School::find($this->fromSchoolId) : null;
+        $inactiveFromTeacherIds = $fromSchool !== null ? $this->inactiveFromTeachers($fromSchool)->pluck('id')->all() : [];
         $toTeacherOptions = $this->toTeacherOptions();
 
         $fromStudents = ($this->fromSchoolId !== null && $this->fromTeacherId !== null)
@@ -320,6 +374,8 @@ class WebRegistration extends Component
             'teachersForImpersonation' => $this->teachersForImpersonation($eligibility),
             'candidatesForStudentPreview' => $this->candidatesForStudentPreview(),
             'schoolOptions' => $schoolOptions,
+            'fromSchoolOptions' => $this->fromSchoolOptions($invitedTeachers),
+            'inactiveFromTeacherIds' => $inactiveFromTeacherIds,
             'fromTeacherOptions' => $fromTeacherOptions,
             'toTeacherOptions' => $toTeacherOptions,
             'fromStudents' => $fromStudents,
