@@ -96,14 +96,14 @@
 
                     <div class="space-y-3">
                         <flux:select wire:model.live="fromSchoolId" label="School" placeholder="Select a school..." autofocus>
-                            @foreach ($schoolOptions as $school)
+                            @foreach ($fromSchoolOptions as $school)
                                 <flux:select.option value="{{ $school->id }}">{{ $school->name }}</flux:select.option>
                             @endforeach
                         </flux:select>
 
                         <flux:select wire:key="from-teacher-select-{{ $fromSchoolId }}" wire:model.live="fromTeacherId" label="Teacher" placeholder="Select a teacher..." :disabled="$fromSchoolId === null">
                             @foreach ($fromTeacherOptions as $teacher)
-                                <flux:select.option wire:key="from-teacher-option-{{ $fromSchoolId }}-{{ $teacher->id }}" value="{{ $teacher->id }}">{{ $teacher->user->name }}</flux:select.option>
+                                <flux:select.option wire:key="from-teacher-option-{{ $fromSchoolId }}-{{ $teacher->id }}" value="{{ $teacher->id }}">{{ $teacher->user->name }}{{ in_array($teacher->id, $inactiveFromTeacherIds, true) ? ' (inactive)' : '' }}</flux:select.option>
                             @endforeach
                         </flux:select>
                     </div>

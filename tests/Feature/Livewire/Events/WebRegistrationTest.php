@@ -601,3 +601,186 @@ test('transferStudents rejects a toTeacher who is not invited to this Version', 
         ->call('transferStudents')
         ->assertStatus(403);
 });
+
+function attachWebRegCurrentStudent(School $school, Teacher $teacher): Student
+{
+    $student = Student::factory()->create();
+    $school->students()->attach($student->id, ['is_active' => true, 'class_of' => $school->senior_year + 1]);
+    StudentTeacher::create([
+        'student_id' => $student->id,
+        'teacher_id' => $teacher->id,
+        'school_id' => $school->id,
+        'subject' => 'chorus',
+        'role' => TeacherRole::Primary->value,
+        'is_active' => true,
+    ]);
+
+    return $student;
+}
+
+test('the From teacher list includes an uninvited teacher whose school link is inactive but who still has current students, labeled inactive', function () {
+    $version = makeWebRegVersion();
+    $manager = User::factory()->create();
+    grantVersionRole($manager, $version, 'Web Registration Manager');
+
+    $school = School::factory()->create();
+
+    $current = Teacher::factory()->create();
+    $current->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
+    inviteWebRegTeacher($version, $current);
+
+    $former = Teacher::factory()->create();
+    $former->schools()->attach($school->id, ['is_active' => false, 'verified_at' => now()]);
+    attachWebRegCurrentStudent($school, $former);
+
+    Livewire::actingAs($manager)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->set('fromSchoolId', $school->id)
+        ->assertViewHas('fromTeacherOptions', fn ($teachers) => $teachers->pluck('id')->sort()->values()->all() === collect([$current->id, $former->id])->sort()->values()->all())
+        ->assertViewHas('inactiveFromTeacherIds', [$former->id])
+        ->assertSee($former->user->name.' (inactive)');
+});
+
+test('the From teacher list excludes an inactive teacher with no current students', function () {
+    $version = makeWebRegVersion();
+    $manager = User::factory()->create();
+    grantVersionRole($manager, $version, 'Web Registration Manager');
+
+    $school = School::factory()->create();
+
+    $current = Teacher::factory()->create();
+    $current->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
+    inviteWebRegTeacher($version, $current);
+
+    $former = Teacher::factory()->create();
+    $former->schools()->attach($school->id, ['is_active' => false, 'verified_at' => null]);
+
+    Livewire::actingAs($manager)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->set('fromSchoolId', $school->id)
+        ->assertViewHas('fromTeacherOptions', fn ($teachers) => $teachers->pluck('id')->all() === [$current->id]);
+});
+
+test('the From teacher list excludes an active, verified teacher who simply was not invited', function () {
+    $version = makeWebRegVersion();
+    $manager = User::factory()->create();
+    grantVersionRole($manager, $version, 'Web Registration Manager');
+
+    $school = School::factory()->create();
+
+    $invited = Teacher::factory()->create();
+    $invited->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
+    inviteWebRegTeacher($version, $invited);
+
+    $uninvited = Teacher::factory()->create();
+    $uninvited->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
+    attachWebRegCurrentStudent($school, $uninvited);
+
+    Livewire::actingAs($manager)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->set('fromSchoolId', $school->id)
+        ->assertViewHas('fromTeacherOptions', fn ($teachers) => $teachers->pluck('id')->all() === [$invited->id]);
+});
+
+test('the From school list keeps a school whose only invited teacher has gone inactive there, but the To list does not', function () {
+    $version = makeWebRegVersion();
+    $manager = User::factory()->create();
+    grantVersionRole($manager, $version, 'Web Registration Manager');
+
+    $oldSchool = School::factory()->create();
+    $newSchool = School::factory()->create();
+
+    $teacher = Teacher::factory()->create();
+    $teacher->schools()->attach($oldSchool->id, ['is_active' => false, 'verified_at' => null]);
+    $teacher->schools()->attach($newSchool->id, ['is_active' => true, 'verified_at' => now()]);
+    inviteWebRegTeacher($version, $teacher);
+
+    Livewire::actingAs($manager)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->assertViewHas('fromSchoolOptions', fn ($schools) => $schools->contains('id', $oldSchool->id) && $schools->contains('id', $newSchool->id))
+        ->assertViewHas('schoolOptions', fn ($schools) => ! $schools->contains('id', $oldSchool->id) && $schools->contains('id', $newSchool->id));
+});
+
+test('transferStudents moves an orphaned student from an inactive, uninvited teacher to an invited teacher', function () {
+    $version = makeWebRegVersion();
+    $manager = User::factory()->create();
+    grantVersionRole($manager, $version, 'Web Registration Manager');
+
+    $school = School::factory()->create();
+
+    $former = Teacher::factory()->create();
+    $former->schools()->attach($school->id, ['is_active' => false, 'verified_at' => null]);
+    $student = attachWebRegCurrentStudent($school, $former);
+
+    $current = Teacher::factory()->create();
+    $current->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
+    inviteWebRegTeacher($version, $current);
+
+    Livewire::actingAs($manager)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->set('fromSchoolId', $school->id)
+        ->set('fromTeacherId', $former->id)
+        ->set('toSchoolId', $school->id)
+        ->set('toTeacherId', $current->id)
+        ->set('selectedStudentIds', [$student->id])
+        ->call('transferStudents')
+        ->assertHasNoErrors()
+        ->assertDispatched('toast-show');
+
+    expect(StudentTeacher::where('student_id', $student->id)->where('teacher_id', $current->id)->where('is_active', true)->exists())->toBeTrue()
+        ->and(StudentTeacher::where('student_id', $student->id)->where('teacher_id', $former->id)->exists())->toBeFalse();
+});
+
+test('transferStudents rejects an active, uninvited From teacher even if submitted directly', function () {
+    $version = makeWebRegVersion();
+    $manager = User::factory()->create();
+    grantVersionRole($manager, $version, 'Web Registration Manager');
+
+    $school = School::factory()->create();
+
+    $uninvited = Teacher::factory()->create();
+    $uninvited->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
+    $student = attachWebRegCurrentStudent($school, $uninvited);
+
+    $current = Teacher::factory()->create();
+    $current->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
+    inviteWebRegTeacher($version, $current);
+
+    Livewire::actingAs($manager)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->set('fromSchoolId', $school->id)
+        ->set('fromTeacherId', $uninvited->id)
+        ->set('toSchoolId', $school->id)
+        ->set('toTeacherId', $current->id)
+        ->set('selectedStudentIds', [$student->id])
+        ->call('transferStudents')
+        ->assertStatus(403);
+});
+
+test('transferStudents rejects an invited To teacher who is not active at the chosen To school', function () {
+    $version = makeWebRegVersion();
+    $manager = User::factory()->create();
+    grantVersionRole($manager, $version, 'Web Registration Manager');
+
+    $school = School::factory()->create();
+    $otherSchool = School::factory()->create();
+
+    $from = Teacher::factory()->create();
+    $from->schools()->attach($school->id, ['is_active' => true, 'verified_at' => now()]);
+    inviteWebRegTeacher($version, $from);
+    $student = attachWebRegCurrentStudent($school, $from);
+
+    $to = Teacher::factory()->create();
+    $to->schools()->attach($otherSchool->id, ['is_active' => true, 'verified_at' => now()]);
+    inviteWebRegTeacher($version, $to);
+
+    Livewire::actingAs($manager)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->set('fromSchoolId', $school->id)
+        ->set('fromTeacherId', $from->id)
+        ->set('toSchoolId', $school->id)
+        ->set('toTeacherId', $to->id)
+        ->set('selectedStudentIds', [$student->id])
+        ->call('transferStudents')
+        ->assertStatus(403);
+});
