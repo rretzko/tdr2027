@@ -198,9 +198,14 @@
         <div class="space-y-4">
             <flux:heading>Annual Verification Reset</flux:heading>
             <flux:text>
-                This will set <strong>all</strong> school email verifications to null and immediately queue
-                a re-verification email to every teacher who has a school email on file.
-                This action cannot be undone.
+                This will clear the school email verification <strong>and deactivate</strong> every active
+                school link that has a school email on file, then immediately queue a re-verification email
+                to each of those teachers. This action cannot be undone.
+            </flux:text>
+            <flux:text>
+                Until a teacher clicks their link (valid 30 days), they lose access to their students, disappear
+                from students' teacher lists and invitation eligibility, and lose any co-teacher grants. Clicking
+                the link reactivates the school link automatically. Links with no school email are left alone.
             </flux:text>
             <flux:callout variant="warning" icon="exclamation-triangle">
                 <flux:callout.text>Typically run on September 1 each year.</flux:callout.text>

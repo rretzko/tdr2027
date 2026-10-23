@@ -883,6 +883,24 @@ test('visiting a valid signed verification link marks the pivot verified', funct
     expect($pivot->refresh()->verified_at)->not->toBeNull();
 });
 
+test('visiting the verification link reactivates a link deactivated by the annual reset', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+
+    $user->teacher->schools()->attach($school, ['school_email' => 'teacher@theschool.edu', 'is_active' => false]);
+    $pivot = SchoolTeacher::where('school_id', $school->id)->where('teacher_id', $user->teacher->id)->first();
+
+    $url = URL::temporarySignedRoute(
+        'school-email.verify',
+        now()->addDays(30),
+        ['schoolTeacher' => $pivot->id, 'email' => 'teacher@theschool.edu'],
+    );
+
+    get($url)->assertOk();
+
+    expect($pivot->refresh()->is_active)->toBeTrue();
+});
+
 test('visiting the verification link transfers current students from the identified replaced teacher', function () {
     $user = makeOnboardedTeacherUser();
     $school = School::factory()->create();
