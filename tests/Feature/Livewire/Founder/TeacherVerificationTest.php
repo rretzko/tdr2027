@@ -122,3 +122,82 @@ test('resetAllAndSendEmails goes through Eloquent per row, so it auto-revokes co
     // docs/plans/co-teacher-definition.md §3.
     expect(CoTeacherGrant::find($grant->id))->toBeNull();
 });
+
+test('resetAllAndSendEmails deactivates every active school_teacher row with a school email', function () {
+    $founder = makeFounderUser();
+
+    $pivot = SchoolTeacher::factory()->create([
+        'teacher_id' => Teacher::factory()->create()->id,
+        'school_id' => School::factory()->create()->id,
+        'school_email' => 'teacher@school.edu',
+        'is_active' => true,
+        'verified_at' => now(),
+    ]);
+
+    Mail::fake();
+
+    Livewire::actingAs($founder)
+        ->test(TeacherVerification::class)
+        ->call('resetAllAndSendEmails');
+
+    expect($pivot->refresh()->is_active)->toBeFalse();
+});
+
+test('resetAllAndSendEmails leaves an already-inactive row alone and sends it no email', function () {
+    $founder = makeFounderUser();
+
+    $pivot = SchoolTeacher::factory()->create([
+        'teacher_id' => Teacher::factory()->create()->id,
+        'school_id' => School::factory()->create()->id,
+        'school_email' => 'former@school.edu',
+        'is_active' => false,
+        'verified_at' => now(),
+    ]);
+
+    Mail::fake();
+
+    Livewire::actingAs($founder)
+        ->test(TeacherVerification::class)
+        ->call('resetAllAndSendEmails');
+
+    expect($pivot->refresh()->verified_at)->not->toBeNull();
+    Mail::assertNotQueued(SchoolEmailVerificationMail::class, fn ($mail) => $mail->hasTo('former@school.edu'));
+});
+
+test('resetAllAndSendEmails leaves a row with no school_email active', function () {
+    $founder = makeFounderUser();
+
+    $pivot = SchoolTeacher::factory()->create([
+        'teacher_id' => Teacher::factory()->create()->id,
+        'school_id' => School::factory()->create()->id,
+        'school_email' => null,
+        'is_active' => true,
+        'verified_at' => now(),
+    ]);
+
+    Mail::fake();
+
+    Livewire::actingAs($founder)
+        ->test(TeacherVerification::class)
+        ->call('resetAllAndSendEmails');
+
+    expect($pivot->refresh()->is_active)->toBeTrue();
+});
+
+test('verifyTeacher reactivates a school link deactivated by the annual reset', function () {
+    $founder = makeFounderUser();
+
+    $pivot = SchoolTeacher::factory()->create([
+        'teacher_id' => Teacher::factory()->create()->id,
+        'school_id' => School::factory()->create()->id,
+        'school_email' => 'teacher@school.edu',
+        'is_active' => false,
+        'verified_at' => null,
+    ]);
+
+    Livewire::actingAs($founder)
+        ->test(TeacherVerification::class)
+        ->call('verifyTeacher', $pivot->id);
+
+    expect($pivot->refresh()->is_active)->toBeTrue();
+});
