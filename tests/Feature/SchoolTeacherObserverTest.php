@@ -136,3 +136,38 @@ test('a save with no is_active/verified_at change leaves grants untouched', func
 
     expect(CoTeacherGrant::find($grant->id))->not->toBeNull();
 });
+
+test('verifying an inactive school link reactivates it', function () {
+    $pivot = SchoolTeacher::factory()->create([
+        'school_email' => 'teacher@school.edu',
+        'is_active' => false,
+        'verified_at' => null,
+    ]);
+
+    $pivot->update(['verified_at' => now()]);
+
+    expect($pivot->refresh()->is_active)->toBeTrue();
+});
+
+test('clearing verification on an active link does not reactivate anything or flip is_active', function () {
+    $pivot = SchoolTeacher::factory()->create([
+        'is_active' => true,
+        'verified_at' => now(),
+    ]);
+
+    $pivot->update(['verified_at' => null, 'is_active' => false]);
+
+    expect($pivot->refresh()->is_active)->toBeFalse();
+});
+
+test('updating an already-verified inactive link without touching verified_at leaves it inactive', function () {
+    $pivot = SchoolTeacher::factory()->create([
+        'is_active' => false,
+        'verified_at' => now(),
+    ]);
+
+    $pivot->update(['role' => $pivot->role]);
+    $pivot->update(['replacing_teacher_name' => 'Someone']);
+
+    expect($pivot->refresh()->is_active)->toBeFalse();
+});

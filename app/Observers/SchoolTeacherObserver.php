@@ -22,6 +22,25 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class SchoolTeacherObserver
 {
+    /**
+     * Re-verifying a school email reactivates the link. The annual reset
+     * (Founder\TeacherVerification::resetAllAndSendEmails()) clears both
+     * verified_at and is_active, so a teacher who has left the school drops
+     * off student-facing teacher lists until they prove they're still there.
+     * Hooked here rather than in each verification path (email link, founder
+     * manual verify, AddTeacher, Schools\Index auto-verify) so none can miss it.
+     */
+    public function updating(SchoolTeacher $pivot): void
+    {
+        $becameVerified = $pivot->isDirty('verified_at')
+            && $pivot->verified_at !== null
+            && $pivot->getOriginal('verified_at') === null;
+
+        if ($becameVerified && ! $pivot->is_active) {
+            $pivot->is_active = true;
+        }
+    }
+
     public function updated(SchoolTeacher $pivot): void
     {
         $wentInactive = $pivot->wasChanged('is_active') && ! $pivot->is_active;

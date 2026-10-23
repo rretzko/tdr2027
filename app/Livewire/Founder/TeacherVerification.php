@@ -164,13 +164,19 @@ class TeacherVerification extends Component
         // verification lapses, docs/plans/co-teacher-definition.md §3)
         // would never fire. Same fix already applied to
         // Schools\Index::deactivate()/saveEdit().
+        //
+        // Only currently-active rows: a row already inactive was deactivated
+        // on purpose (teacher left), so it gets no email and can't be revived
+        // by accident. is_active comes back via SchoolTeacherObserver::updating()
+        // once the teacher re-verifies.
         $pivots = SchoolTeacher::with(['teacher.user', 'school'])
             ->whereNotNull('school_email')
+            ->where('is_active', true)
             ->get();
 
         $count = 0;
         foreach ($pivots as $pivot) {
-            $pivot->update(['verified_at' => null]);
+            $pivot->update(['verified_at' => null, 'is_active' => false]);
 
             $url = UrlFacade::temporarySignedRoute(
                 'school-email.verify',

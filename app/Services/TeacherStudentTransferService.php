@@ -35,15 +35,10 @@ final class TeacherStudentTransferService
      */
     public function currentStudents(School $school, Teacher $teacher): Collection
     {
-        $currentStudentIds = $school->students()
-            ->wherePivot('is_active', true)
-            ->where('school_student.class_of', '>=', $school->senior_year)
-            ->pluck('students.id');
-
         $activeWithTeacherIds = StudentTeacher::where('school_id', $school->id)
             ->where('teacher_id', $teacher->id)
             ->where('is_active', true)
-            ->whereIn('student_id', $currentStudentIds)
+            ->whereIn('student_id', $this->currentStudentIds($school))
             ->pluck('student_id');
 
         return Student::whereIn('id', $activeWithTeacherIds)
@@ -54,6 +49,47 @@ final class TeacherStudentTransferService
             ->get()
             ->sortBy(fn (Student $student): string => $student->user->sort_name)
             ->values();
+    }
+
+    /**
+     * Teachers at $school who still hold active student_teacher rows for
+     * current students but whose own school_teacher link there is no longer
+     * active+verified (left the school, or lapsed at the annual reset).
+     * Without these as "Transfer From" choices their students would be
+     * orphaned — no invited, active teacher owns them, so the normal
+     * invited-teacher pool never surfaces them.
+     *
+     * @return Collection<int, Teacher>
+     */
+    public function inactiveTeachersWithCurrentStudents(School $school): Collection
+    {
+        $teacherIds = StudentTeacher::where('school_id', $school->id)
+            ->where('is_active', true)
+            ->whereIn('student_id', $this->currentStudentIds($school))
+            ->distinct()
+            ->pluck('teacher_id');
+
+        return Teacher::whereIn('id', $teacherIds)
+            ->whereDoesntHave('schools', function ($query) use ($school): void {
+                $query->where('schools.id', $school->id)
+                    ->where('school_teacher.is_active', true)
+                    ->whereNotNull('school_teacher.verified_at');
+            })
+            ->with('user')
+            ->get()
+            ->sortBy(fn (Teacher $teacher): string => $teacher->user->sort_name)
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
+    private function currentStudentIds(School $school): Collection
+    {
+        return $school->students()
+            ->wherePivot('is_active', true)
+            ->where('school_student.class_of', '>=', $school->senior_year)
+            ->pluck('students.id');
     }
 
     /**
