@@ -35,7 +35,7 @@ class Index extends Component
         /** @var Collection<int, Candidate> $candidates */
         $candidates = Candidate::where('student_id', $this->student()->id)
             ->whereHas('version', fn ($query) => $query->where('status', EventStatus::Active->value))
-            ->with(['version.event', 'teacher.user'])
+            ->with(['version.event', 'version.dates', 'teacher.user'])
             ->get();
 
         $sorted = $candidates->all();

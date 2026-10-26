@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\CandidateStatus;
 use App\Enums\EventStatus;
+use App\Enums\VersionDateType;
 use App\Livewire\Sfdi\Events\Index;
 use App\Models\Candidate;
 use App\Models\Event;
@@ -11,6 +12,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionDate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -76,3 +78,25 @@ test('another student\'s Candidate row is never shown', function () {
         ->test(Index::class)
         ->assertDontSee('Someone Else\'s Version');
 });
+
+test('each listed Event shows its candidate window state as a badge', function (string $startOffset, ?string $endOffset, string $expected) {
+    $user = makeSfdiEventsUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Candidate,
+        'start_at' => now()->modify($startOffset),
+        'end_at' => $endOffset === null ? null : now()->modify($endOffset),
+    ]);
+
+    actingAs($user);
+    Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee($expected);
+})->with([
+    'not yet open' => ['+1 day', '+1 month', 'Opens '],
+    'open' => ['-1 day', '+1 day', 'Closes '],
+    'closed' => ['-1 month', '-1 hour', 'Registration closed'],
+]);

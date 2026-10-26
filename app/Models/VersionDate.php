@@ -8,7 +8,12 @@ use App\Enums\VersionDateType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property Carbon|null $start_at
+ * @property Carbon|null $end_at
+ */
 #[Fillable(['version_id', 'date_type', 'start_at', 'end_at'])]
 class VersionDate extends Model
 {
