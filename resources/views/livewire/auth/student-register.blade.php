@@ -64,6 +64,12 @@
             viewable
         />
 
+        <x-turnstile action="sfdi-register" />
+
+        @assets
+            <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+        @endassets
+
         <flux:button type="submit" variant="primary">
             Register
         </flux:button>

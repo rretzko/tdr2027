@@ -63,6 +63,8 @@ class TeacherRegister extends Component
 
         $this->ensureRegistrationIsNotRateLimited();
 
+        $this->ensureTurnstilePassed('tdr-register');
+
         $this->validate([
             'cell_phone' => ['required', 'string', 'min:10', 'max:20', Rule::unique('users', 'cell_phone')],
         ]);
