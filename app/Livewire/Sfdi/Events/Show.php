@@ -13,7 +13,6 @@ use App\Enums\FeeType;
 use App\Enums\PaymentTransactionStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\UploadType;
-use App\Enums\VersionDateType;
 use App\Models\Candidate;
 use App\Models\CandidateUploadFile;
 use App\Models\PaymentAllocation;
@@ -57,8 +56,13 @@ use Livewire\WithFileUploads;
  * for it. The PDF download link/View modal are read-only and available
  * regardless of the two gates below; only the two checkboxes are gated.
  *
- * Two gates apply uniformly to every write action below (§5.3, §0 second
- * pass, 2026-08-18):
+ * Three gates apply uniformly to every write action below (§5.3, §0 second
+ * pass, 2026-08-18; window gate added 2026-10-26):
+ * - Candidate window (Version::candidateWindowIsOpen()): read-only before
+ *   the Candidate date's start_at and after its end_at. Pitch Files and
+ *   student Registration fee payment use the longer
+ *   Version::candidateReferenceWindowIsOpen() instead (through Final
+ *   Teacher Changes).
  * - Status lock (isLocked()): read-only once the candidate is no longer in
  *   an active registration state.
  * - Obligations iron gate (isObligationsBlocked()): read-only while the
@@ -125,6 +129,17 @@ class Show extends Component
      */
     public function viewPitchFiles(): void
     {
+        if (! $this->version->candidateReferenceWindowIsOpen()) {
+            Flux::toast(
+                $this->version->candidateWindowHasOpened()
+                    ? 'Pitch Files for this Event are no longer available.'
+                    : 'Pitch Files will be available once student registration opens.',
+                variant: 'warning',
+            );
+
+            return;
+        }
+
         $this->modal('pitch-files')->show();
     }
 
@@ -458,11 +473,16 @@ class Show extends Component
             [PitchFileVisibility::Both->value, PitchFileVisibility::Candidate->value],
             true,
         );
+        // Skip building the signed S3 URLs at all outside the window —
+        // viewPitchFiles() refuses to open the modal then anyway.
+        $pitchFilesOpen = $pitchFilesVisible && $this->version->candidateReferenceWindowIsOpen();
 
         return view('livewire.sfdi.events.show', [
             'checklistDefs' => $checklistDefs,
             'writeActionsBlocked' => $this->writeActionsBlocked(),
             'obligationsBlocked' => $this->isObligationsBlocked(),
+            'windowNotYetOpen' => ! $this->version->candidateWindowHasOpened(),
+            'windowClosed' => $this->version->candidateWindowHasClosed(),
             'previewSession' => $this->isEventManagerPreviewSession(),
             'candidateRequirementsMet' => $this->candidateRequirementsMet($checklistDefs),
             'uploadSlots' => $this->version->getRawOriginal('audition_type') === AuditionType::Remote->value
@@ -470,8 +490,8 @@ class Show extends Component
                 : collect(),
             'candidateUploads' => $this->candidate->uploadFiles->keyBy('version_upload_file_id'),
             'pitchFilesVisible' => $pitchFilesVisible,
-            'pitchFiles' => $pitchFilesVisible ? $this->matchingPitchFiles() : new Collection,
-            'registrationPeriod' => $this->version->dates->firstWhere('date_type', VersionDateType::Candidate),
+            'pitchFiles' => $pitchFilesOpen ? $this->matchingPitchFiles() : new Collection,
+            'registrationPeriod' => $this->version->candidateDate(),
             ...$this->applicationDocumentView(),
             ...$this->paymentView(),
         ]);
@@ -484,7 +504,10 @@ class Show extends Component
      */
     private function writeActionsBlocked(): bool
     {
-        return $this->isLocked() || $this->isObligationsBlocked() || $this->isEventManagerPreviewSession();
+        return ! $this->version->candidateWindowIsOpen()
+            || $this->isLocked()
+            || $this->isObligationsBlocked()
+            || $this->isEventManagerPreviewSession();
     }
 
     /**

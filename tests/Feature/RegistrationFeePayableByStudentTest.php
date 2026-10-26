@@ -46,3 +46,44 @@ test('registrationFeePayableByStudent is false once the Adjudication window has 
     // Closed" — deliberately unchanged, studentfolder-module.md §9 item 2.
     expect($version->registrationFeePayable())->toBeTrue();
 });
+
+test('registrationFeePayableByStudent is false before the Candidate window opens', function () {
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Candidate,
+        'start_at' => now()->addDay(),
+        'end_at' => now()->addMonth(),
+    ]);
+
+    expect($version->registrationFeePayableByStudent())->toBeFalse();
+});
+
+test('registrationFeePayableByStudent falls back to the Candidate end_at when no Final Teacher Changes date is configured', function () {
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Candidate,
+        'start_at' => now()->subMonth(),
+        'end_at' => now()->subHour(),
+    ]);
+
+    expect($version->registrationFeePayableByStudent())->toBeFalse();
+});
+
+test('registrationFeePayableByStudent stays true past the Candidate end_at until Final Teacher Changes', function () {
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Candidate,
+        'start_at' => now()->subMonth(),
+        'end_at' => now()->subHour(),
+    ]);
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::FinalTeacherChanges,
+        'start_at' => now()->addWeek(),
+    ]);
+
+    expect($version->registrationFeePayableByStudent())->toBeTrue();
+});
