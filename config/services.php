@@ -69,4 +69,14 @@ return [
         'environment' => env('PAYMENTS_ENVIRONMENT', 'sandbox'),
     ],
 
+    // Cloudflare Turnstile on teacher/student registration — see
+    // App\Support\TurnstileVerifier. TURNSTILE_HOSTNAMES is a comma list of
+    // the hostnames siteverify may report; never include localhost in
+    // production. Locally, use Cloudflare's testing keys with "example.com".
+    'turnstile' => [
+        'site_key' => env('TURNSTILE_SITE_KEY'),
+        'secret_key' => env('TURNSTILE_SECRET_KEY'),
+        'hostnames' => array_values(array_filter(array_map('trim', explode(',', (string) env('TURNSTILE_HOSTNAMES', ''))))),
+    ],
+
 ];
