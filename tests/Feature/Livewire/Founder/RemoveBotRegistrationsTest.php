@@ -192,3 +192,33 @@ test('removeSelected deletes a flagged teacher and their teacher record', functi
     expect(User::find($user->id))->toBeNull();
     expect(Teacher::find($teacher->id))->toBeNull();
 });
+
+test('selectAll selects only bot-pattern rows and leaves unverified real-looking students unselected', function () {
+    $founder = makeFounderUser();
+    $bot = makeStaleUnverifiedUser(['middle_name' => 'Albina Schinner', 'suffix_name' => 'Albina Schinner']);
+    Student::factory()->for($bot)->create();
+    $unverifiedStudent = makeStaleUnverifiedUser(['middle_name' => 'Rose', 'suffix_name' => null]);
+    Student::factory()->for($unverifiedStudent)->create();
+
+    $component = Livewire::actingAs($founder)
+        ->test(RemoveBotRegistrations::class)
+        ->assertSee($bot->email)
+        ->assertSee($unverifiedStudent->email)
+        ->call('selectAll');
+
+    expect($component->get('selected'))->toBe([$bot->id]);
+});
+
+test('suspects flags the bot pattern on each row', function () {
+    $founder = makeFounderUser();
+    $bot = makeStaleUnverifiedUser(['middle_name' => 'Kub Fadel', 'suffix_name' => 'Kub Fadel']);
+    Student::factory()->for($bot)->create();
+    $unverifiedStudent = makeStaleUnverifiedUser();
+    Student::factory()->for($unverifiedStudent)->create();
+
+    actingAs($founder);
+    $suspects = collect((new RemoveBotRegistrations)->suspects())->keyBy('user_id');
+
+    expect($suspects[$bot->id]['bot_pattern'])->toBeTrue()
+        ->and($suspects[$unverifiedStudent->id]['bot_pattern'])->toBeFalse();
+});
