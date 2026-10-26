@@ -7,6 +7,7 @@ namespace App\Livewire\Founder;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
+use App\Support\BotNameSignature;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -33,12 +34,19 @@ use Livewire\Component;
  * either direction is asymmetric: leaving a real bot account behind is a
  * minor annoyance, deleting a real person's account and history is not.
  *
+ * That zero-engagement profile is also exactly what a real student looks
+ * like who registered and never clicked the verification link (often
+ * because a school mail server blocked it). So rows are additionally marked
+ * bot_pattern when the name matches BotNameSignature, and "Select All" only
+ * picks those; the rest must be reviewed and ticked individually.
+ *
  * @property-read array<int, array{
  *     user_id: int,
  *     type: string,
  *     name: string,
  *     email: string,
  *     created_at: string,
+ *     bot_pattern: bool,
  *     reasons: list<string>,
  * }> $suspects
  */
@@ -62,6 +70,7 @@ class RemoveBotRegistrations extends Component
      *     name: string,
      *     email: string,
      *     created_at: string,
+     *     bot_pattern: bool,
      *     reasons: list<string>,
      * }>
      */
@@ -71,6 +80,8 @@ class RemoveBotRegistrations extends Component
         $users = $this->candidateQuery()->orderBy('created_at')->get();
 
         return $users->map(function (User $user): array {
+            $botPattern = BotNameSignature::matches($user->middle_name, $user->suffix_name);
+
             $reasons = [
                 'Email never verified',
                 'No login recorded',
@@ -78,12 +89,17 @@ class RemoveBotRegistrations extends Component
                 'No activity anywhere in the system',
             ];
 
+            if ($botPattern) {
+                array_unshift($reasons, 'Middle name and suffix are identical (known bot pattern)');
+            }
+
             return [
                 'user_id' => $user->id,
                 'type' => $user->student !== null ? 'Student' : 'Teacher',
                 'name' => trim("{$user->first_name} {$user->last_name}"),
                 'email' => $user->email,
                 'created_at' => $user->created_at->format('M j, Y'),
+                'bot_pattern' => $botPattern,
                 'reasons' => $reasons,
             ];
         })->all();
@@ -128,9 +144,16 @@ class RemoveBotRegistrations extends Component
             ->with(['student', 'teacher']);
     }
 
+    /**
+     * Selects only rows matching the known bot name pattern — unpatterned
+     * rows may be real students who simply haven't verified yet.
+     */
     public function selectAll(): void
     {
-        $this->selected = array_column($this->suspects(), 'user_id');
+        $this->selected = array_column(
+            array_filter($this->suspects(), fn (array $s): bool => $s['bot_pattern']),
+            'user_id',
+        );
     }
 
     public function deselectAll(): void

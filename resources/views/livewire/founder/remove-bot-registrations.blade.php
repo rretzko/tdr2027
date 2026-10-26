@@ -5,6 +5,9 @@
             <flux:subheading>
                 Accounts that never verified their email, never logged in, never visited a page, and never joined a school &mdash; the pattern of a registration bot from before the honeypot guard was added.
             </flux:subheading>
+            <flux:subheading class="mt-1">
+                Rows marked <strong>Bot pattern</strong> have identical middle name and suffix. Rows marked <strong>Review</strong> may be real students who haven't verified yet &mdash; Select All skips them; tick them individually only after checking.
+            </flux:subheading>
         </div>
         <flux:button size="sm" icon="arrow-path" wire:click="refresh" wire:loading.attr="disabled">
             Refresh
@@ -20,9 +23,10 @@
                 <flux:badge>{{ count($this->suspects) }}</flux:badge>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-                @if (count($selected) < count($this->suspects))
-                    <flux:button size="sm" variant="ghost" wire:click="selectAll">Select All</flux:button>
-                @else
+                <flux:button size="sm" variant="ghost" wire:click="selectAll">
+                    Select All Bot-pattern ({{ collect($this->suspects)->where('bot_pattern', true)->count() }})
+                </flux:button>
+                @if (! empty($selected))
                     <flux:button size="sm" variant="ghost" wire:click="deselectAll">Deselect All</flux:button>
                 @endif
                 <flux:button size="sm" variant="danger" icon="trash" wire:click="confirmRemoval" :disabled="empty($selected)">
@@ -41,6 +45,11 @@
                             <div class="flex items-center gap-2">
                                 <flux:text class="font-medium">{{ $s['name'] !== '' ? $s['name'] : '(no name)' }}</flux:text>
                                 <flux:badge size="sm">{{ $s['type'] }}</flux:badge>
+                                @if ($s['bot_pattern'])
+                                    <flux:badge size="sm" color="red">Bot pattern</flux:badge>
+                                @else
+                                    <flux:badge size="sm" color="amber">Review</flux:badge>
+                                @endif
                             </div>
                             <flux:text size="sm" class="truncate text-zinc-500">{{ $s['email'] }}</flux:text>
                             <flux:text size="sm" class="text-zinc-500">Registered {{ $s['created_at'] }}</flux:text>
@@ -76,7 +85,14 @@
                                 {{ $s['name'] !== '' ? $s['name'] : '(no name)' }}
                             </flux:table.cell>
                             <flux:table.cell>
-                                <flux:badge size="sm">{{ $s['type'] }}</flux:badge>
+                                <div class="flex flex-wrap gap-1">
+                                    <flux:badge size="sm">{{ $s['type'] }}</flux:badge>
+                                    @if ($s['bot_pattern'])
+                                        <flux:badge size="sm" color="red">Bot pattern</flux:badge>
+                                    @else
+                                        <flux:badge size="sm" color="amber">Review</flux:badge>
+                                    @endif
+                                </div>
                             </flux:table.cell>
                             <flux:table.cell class="break-all">{{ $s['email'] }}</flux:table.cell>
                             <flux:table.cell class="whitespace-nowrap text-zinc-500">{{ $s['created_at'] }}</flux:table.cell>

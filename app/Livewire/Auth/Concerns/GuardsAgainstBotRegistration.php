@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Auth\Concerns;
 
+use App\Support\BotNameSignature;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 
@@ -26,6 +27,10 @@ trait GuardsAgainstBotRegistration
     protected function isSuspectedBot(): bool
     {
         if ($this->company !== '') {
+            return true;
+        }
+
+        if (BotNameSignature::matches($this->middle_name, $this->suffix_name)) {
             return true;
         }
 
