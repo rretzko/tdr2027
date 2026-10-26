@@ -87,3 +87,56 @@ test('teacher registration is rate limited per IP after repeated attempts', func
 
     expect(User::where('email', 'jane@example.com')->exists())->toBeFalse();
 });
+
+test('student registration is silently dropped when middle name and suffix are identical', function () {
+    Livewire::test(StudentRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
+        ->set('honorific', 'Mr.')
+        ->set('first_name', 'Julianne')
+        ->set('middle_name', 'Albina Schinner')
+        ->set('last_name', 'Marvin')
+        ->set('suffix_name', 'Albina Schinner')
+        ->set('email', 'victim@example.com')
+        ->set('password', 'Sfdi-Zx9Quokka!')
+        ->set('password_confirmation', 'Sfdi-Zx9Quokka!')
+        ->call('register')
+        ->assertNoRedirect()
+        ->assertHasNoErrors();
+
+    expect(User::where('email', 'victim@example.com')->exists())->toBeFalse();
+});
+
+test('teacher registration is silently dropped when middle name and suffix are identical', function () {
+    Livewire::test(TeacherRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
+        ->set('first_name', 'Jane')
+        ->set('middle_name', 'Kub Fadel')
+        ->set('last_name', 'Smith')
+        ->set('suffix_name', 'kub fadel ')
+        ->set('pronoun_id', '2')
+        ->set('email', 'jane@example.com')
+        ->set('cell_phone', '5551234567')
+        ->set('password', 'Tdr-Zx9Quokka!')
+        ->set('password_confirmation', 'Tdr-Zx9Quokka!')
+        ->call('register')
+        ->assertNoRedirect()
+        ->assertHasNoErrors();
+
+    expect(User::where('email', 'jane@example.com')->exists())->toBeFalse();
+});
+
+test('student registration with a distinct middle name and suffix still succeeds', function () {
+    Livewire::test(StudentRegister::class)
+        ->set('formRenderedAt', now()->subSeconds(3)->timestamp)
+        ->set('first_name', 'Alex')
+        ->set('middle_name', 'James')
+        ->set('last_name', 'Lee')
+        ->set('suffix_name', 'Jr.')
+        ->set('email', 'alex@example.com')
+        ->set('password', 'Sfdi-Zx9Quokka!')
+        ->set('password_confirmation', 'Sfdi-Zx9Quokka!')
+        ->call('register')
+        ->assertRedirect();
+
+    expect(User::where('email', 'alex@example.com')->exists())->toBeTrue();
+});
