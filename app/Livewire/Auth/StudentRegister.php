@@ -66,6 +66,8 @@ class StudentRegister extends Component
 
         $this->ensureRegistrationIsNotRateLimited();
 
+        $this->ensureTurnstilePassed('sfdi-register');
+
         $generatedEmail = $this->email === '';
 
         $email = $generatedEmail ? Str::uuid().'@studentfolder.info' : $this->email;

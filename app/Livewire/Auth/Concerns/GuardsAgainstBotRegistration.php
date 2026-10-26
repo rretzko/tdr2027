@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\Auth\Concerns;
 
 use App\Support\BotNameSignature;
+use App\Support\TurnstileVerifier;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 
@@ -18,6 +19,9 @@ trait GuardsAgainstBotRegistration
     public string $company = '';
 
     public ?int $formRenderedAt = null;
+
+    /** Set client-side by the <x-turnstile> widget's callback. */
+    public string $turnstileToken = '';
 
     public function mountGuardsAgainstBotRegistration(): void
     {
@@ -37,6 +41,26 @@ trait GuardsAgainstBotRegistration
         // Scripted submissions tend to post within milliseconds of loading the
         // form; a human needs at least a couple seconds to fill it out.
         return $this->formRenderedAt !== null && now()->timestamp - $this->formRenderedAt < 2;
+    }
+
+    /**
+     * Unlike the silent checks above, a Turnstile failure shows an error —
+     * real people can fail or time out the challenge and need to retry.
+     */
+    protected function ensureTurnstilePassed(string $action): void
+    {
+        $passed = app(TurnstileVerifier::class)->verify($this->turnstileToken, $action, request()->ip());
+
+        // Tokens are single-use: pass or fail, any retry (including one after
+        // a later validation error) needs a fresh token from the widget.
+        $this->turnstileToken = '';
+        $this->dispatch('turnstile-reset');
+
+        if (! $passed) {
+            throw ValidationException::withMessages([
+                'turnstile' => 'We couldn\'t confirm you\'re a person. Please complete the check above and try again.',
+            ]);
+        }
     }
 
     protected function ensureRegistrationIsNotRateLimited(): void
