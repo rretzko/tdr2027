@@ -20,6 +20,13 @@
                         default => 'zinc',
                     };
                     $statusLabel = $candidate->status->label();
+                    $candidateDate = $candidate->version->candidateDate();
+                    [$windowLabel, $windowColor] = match (true) {
+                        ! $candidate->version->candidateWindowHasOpened() => ['Opens '.$candidateDate->start_at->forDisplay()->format('M j, g:i A'), 'sky'],
+                        $candidate->version->candidateWindowHasClosed() => ['Registration closed', 'zinc'],
+                        $candidateDate?->end_at !== null => ['Closes '.$candidateDate->end_at->forDisplay()->format('M j, g:i A'), 'green'],
+                        default => [null, null],
+                    };
                 @endphp
                 <a href="{{ route('sfdi.events.candidate', $candidate) }}" wire:navigate class="block transition hover:shadow-md">
                     <flux:card size="sm">
@@ -30,6 +37,9 @@
                             </div>
 
                             <div class="flex items-center gap-3 shrink-0">
+                                @if ($windowLabel)
+                                    <flux:badge :color="$windowColor" size="sm">{{ $windowLabel }}</flux:badge>
+                                @endif
                                 <flux:badge :color="$statusColor" size="sm">{{ $statusLabel }}</flux:badge>
                                 <flux:button size="sm" icon-trailing="chevron-right">View</flux:button>
                             </div>

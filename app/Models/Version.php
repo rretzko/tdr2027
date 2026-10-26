@@ -15,6 +15,7 @@ use App\Enums\UploadType;
 use App\Enums\VersionDateType;
 use App\Observers\VersionObserver;
 use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Database\Factories\VersionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
@@ -226,7 +227,8 @@ class Version extends Model
      * with no Adjudication date configured at all is treated as payable —
      * there's nothing to cut off against, so it falls back to the base rule
      * rather than permanently blocking student payment on incomplete date
-     * config.
+     * config. Also bounded by candidateReferenceWindowIsOpen() — opens with
+     * the Candidate window, closes at Final Teacher Changes (2026-10-26).
      */
     public function registrationFeePayableByStudent(): bool
     {
@@ -234,7 +236,79 @@ class Version extends Model
             return false;
         }
 
+        if (! $this->candidateReferenceWindowIsOpen()) {
+            return false;
+        }
+
         return ! $this->adjudicationHasStarted();
+    }
+
+    /**
+     * This Version's Candidate (StudentFolder.info) date row, if configured.
+     */
+    public function candidateDate(): ?VersionDate
+    {
+        return $this->dates->firstWhere('date_type', VersionDateType::Candidate);
+    }
+
+    /**
+     * True once the Candidate window's start_at has passed. A Version with
+     * no Candidate date (or no start_at) is treated as open — there's
+     * nothing to gate against (product-owner direction, 2026-10-26).
+     */
+    public function candidateWindowHasOpened(): bool
+    {
+        $start = $this->candidateDate()?->start_at;
+
+        return $start === null || ! $start->isFuture();
+    }
+
+    /**
+     * True once the Candidate window's end_at has passed; no end_at means
+     * open-ended.
+     */
+    public function candidateWindowHasClosed(): bool
+    {
+        $end = $this->candidateDate()?->end_at;
+
+        return $end !== null && ! $end->isFuture();
+    }
+
+    /**
+     * The student-side write window (edits, uploads, signatures, withdraw)
+     * on the SFDI Candidate page.
+     */
+    public function candidateWindowIsOpen(): bool
+    {
+        return $this->candidateWindowHasOpened() && ! $this->candidateWindowHasClosed();
+    }
+
+    /**
+     * When students lose Pitch Files and student-initiated Registration fee
+     * payment — later than the Candidate window's own end_at: through the
+     * Final Teacher Changes date, falling back to the Candidate end_at when
+     * no Final Teacher Changes date is configured. Null means no cutoff.
+     */
+    public function candidateReferenceCutoff(): ?CarbonInterface
+    {
+        $finalTeacherChanges = $this->dates->firstWhere('date_type', VersionDateType::FinalTeacherChanges);
+
+        if ($finalTeacherChanges?->start_at !== null) {
+            return $finalTeacherChanges->start_at;
+        }
+
+        return $this->candidateDate()?->end_at;
+    }
+
+    /**
+     * Pitch Files + student Registration fee window: opens with the
+     * Candidate window, closes at candidateReferenceCutoff().
+     */
+    public function candidateReferenceWindowIsOpen(): bool
+    {
+        $cutoff = $this->candidateReferenceCutoff();
+
+        return $this->candidateWindowHasOpened() && ($cutoff === null || $cutoff->isFuture());
     }
 
     /**

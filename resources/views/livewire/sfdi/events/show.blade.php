@@ -42,7 +42,11 @@
     @if ($writeActionsBlocked)
         <flux:callout variant="warning" icon="exclamation-triangle" class="mb-6">
             <flux:callout.text>
-                @if ($obligationsBlocked)
+                @if ($windowNotYetOpen)
+                    Student registration for this Event opens {{ $registrationPeriod->start_at->forDisplay()->format('l, F j \a\t g:i A') }}.
+                @elseif ($windowClosed)
+                    Student registration for this Event closed {{ $registrationPeriod->end_at->forDisplay()->format('l, F j \a\t g:i A') }}.
+                @elseif ($obligationsBlocked)
                     Registration is temporarily paused — your teacher needs to review this Event's requirements before you can continue.
                 @else
                     This Event is no longer open for changes at your current status ({{ $candidate->status->label() }}).

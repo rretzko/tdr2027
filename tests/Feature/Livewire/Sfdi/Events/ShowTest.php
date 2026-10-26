@@ -1365,3 +1365,200 @@ test('hides the Student Registration Period when the Version has no candidate ve
         ->test(Show::class, ['candidate' => $candidate])
         ->assertDontSee('Student Registration Period:');
 });
+
+// --- Candidate window gate (2026-10-26) ---
+
+function setSfdiCandidateWindow(Version $version, ?Carbon $startAt, ?Carbon $endAt, ?Carbon $finalTeacherChangesAt = null): void
+{
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Candidate,
+        'start_at' => $startAt,
+        'end_at' => $endAt,
+    ]);
+
+    if ($finalTeacherChangesAt !== null) {
+        VersionDate::create([
+            'version_id' => $version->id,
+            'date_type' => VersionDateType::FinalTeacherChanges,
+            'start_at' => $finalTeacherChangesAt,
+        ]);
+    }
+}
+
+test('write actions are blocked, with an opens-on notice, before the candidate window starts', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    // UTC for Oct 2 2099 7:00 AM Eastern (EDT)
+    setSfdiCandidateWindow($version, Carbon::parse('2099-10-02 11:00:00'), Carbon::parse('2099-10-26 19:30:00'));
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'status' => CandidateStatus::Pending,
+    ]);
+
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->assertSeeText('Student registration for this Event opens Friday, October 2 at 7:00 AM.')
+        ->assertDontSee('Withdraw from this Event');
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->set('edit_program_name', 'Jamie Lee')->call('saveProgramName')->assertForbidden();
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->call('withdraw')->assertForbidden();
+
+    expect($candidate->fresh()->status)->toBe(CandidateStatus::Pending);
+});
+
+test('write actions are blocked, with a closed notice, once the candidate window ends', function () {
+    Carbon::setTestNow(Carbon::parse('2026-10-26 19:38:00'));
+
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    // UTC for Oct 26 2026 3:30 PM Eastern (EDT)
+    setSfdiCandidateWindow($version, Carbon::parse('2026-10-02 11:00:00'), Carbon::parse('2026-10-26 19:30:00'));
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'status' => CandidateStatus::Pending,
+    ]);
+
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->assertSeeText('Student registration for this Event closed Monday, October 26 at 3:30 PM.')
+        ->assertDontSee('Withdraw from this Event');
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->call('editProgramName')->assertForbidden();
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->call('uploadRecording', 1)->assertForbidden();
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->call('withdraw')->assertForbidden();
+
+    Carbon::setTestNow();
+});
+
+test('write actions are available inside the candidate window', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    setSfdiCandidateWindow($version, now()->subDay(), now()->addDay());
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+    ]);
+
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->assertDontSee('Student registration for this Event')
+        ->call('editProgramName')
+        ->set('edit_program_name', 'Jamie Lee')
+        ->call('saveProgramName')
+        ->assertHasNoErrors();
+
+    expect($candidate->fresh()->program_name)->toBe('Jamie Lee');
+});
+
+test('a candidate window with no end_at stays open after start', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    setSfdiCandidateWindow($version, now()->subDay(), null);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'status' => CandidateStatus::Registered,
+    ]);
+
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->call('withdraw')
+        ->assertRedirect(route('sfdi.events.index'));
+});
+
+test('Pitch Files stay open after the candidate window closes, through Final Teacher Changes', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    setSfdiCandidateWindow($version, now()->subMonth(), now()->subHour(), now()->addWeek());
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+    ]);
+
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->call('viewPitchFiles')
+        ->assertNotDispatched('toast-show');
+});
+
+test('Pitch Files stay visible but are refused with a toast once Final Teacher Changes has passed', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    setSfdiCandidateWindow($version, now()->subMonth(), now()->subWeek(), now()->subHour());
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+    ]);
+
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->assertSee('Pitch Files')
+        ->call('viewPitchFiles')
+        ->assertDispatched('toast-show');
+});
+
+test('Pitch Files are refused with a toast before the candidate window opens', function () {
+    $user = makeSfdiEventsShowUser();
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    setSfdiCandidateWindow($version, now()->addDay(), now()->addMonth(), now()->addMonths(2));
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+    ]);
+
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->call('viewPitchFiles')
+        ->assertDispatched('toast-show');
+});
+
+test('Pay Registration Fee stays available after the candidate window closes, through Final Teacher Changes', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    setSfdiCandidateWindow($version, now()->subMonth(), now()->subHour(), now()->addWeek());
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Pending,
+    ]);
+
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->assertSee('Pay Registration Fee');
+});
+
+test('payNow aborts with 403 for registration once Final Teacher Changes has passed', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    setSfdiCandidateWindow($version, now()->subMonth(), now()->subWeek(), now()->subHour());
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Pending,
+    ]);
+
+    Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])
+        ->assertDontSee('Pay Registration Fee')
+        ->call('payNow', 'registration')
+        ->assertStatus(403);
+});
