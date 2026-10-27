@@ -19,6 +19,7 @@ use App\Models\VersionEnsembleOrder;
 use App\Models\VersionRoom;
 use App\Models\VoicePart;
 use App\Services\AdjudicationService;
+use App\Services\EnsembleHistoryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -376,3 +377,68 @@ test('the History tables render a live client-side Total column, entangled with 
 // Snapshotting this season into EnsembleHistory happens on Close (VersionEdit's
 // general Status field), not from a button on this page — see VersionEditTest.php's
 // "saveGeneral snapshots..." test.
+
+test('a closed version renders read-only: scores are not clickable and a reopen advisory links to Close Audition', function () {
+    ['manager' => $manager, 'version' => $version, 'voicePart' => $voicePart] = makeEnsembleCutoffScenario(CutoffStrategy::PerVoicePartPerEnsemble);
+    $version->update(['status' => 'closed']);
+
+    Livewire::actingAs($manager)
+        ->test(EnsembleCutoffs::class, ['version' => $version])
+        ->assertOk()
+        ->assertSee('To change cut-offs, the audition must be')
+        ->assertSee(route('events.versions.tab-room.close', $version), escape: false)
+        ->assertDontSee('Click a score to apply that cutoff.')
+        ->assertDontSeeHtml("applyCutoff({$voicePart->id}");
+});
+
+test('a closed per-Ensemble-strategy version hides the Apply Ensemble Cutoffs panel', function () {
+    ['manager' => $manager, 'version' => $version] = makeEnsembleCutoffScenario(CutoffStrategy::SequentialEnsembleFill);
+    $version->update(['status' => 'closed']);
+
+    Livewire::actingAs($manager)
+        ->test(EnsembleCutoffs::class, ['version' => $version])
+        ->assertDontSee('Apply Ensemble Cutoffs')
+        ->assertDontSee('Finalize — reject remaining');
+});
+
+test('applyCutoff is rejected on a closed version', function () {
+    ['manager' => $manager, 'version' => $version, 'voicePart' => $voicePart, 'high' => $high, 'low' => $low] = makeEnsembleCutoffScenario(CutoffStrategy::PerVoicePartPerEnsemble);
+
+    $component = Livewire::actingAs($manager)->test(EnsembleCutoffs::class, ['version' => $version]);
+    $version->update(['status' => 'closed']);
+
+    $component->call('applyCutoff', $voicePart->id, 70)->assertStatus(422);
+
+    expect($high->fresh()->status)->toBe(CandidateStatus::Registered);
+    expect($low->fresh()->status)->toBe(CandidateStatus::Registered);
+});
+
+test('applyEnsembleCutoff and finalizeVoicePart are rejected on a closed version', function () {
+    ['manager' => $manager, 'version' => $version, 'voicePart' => $voicePart, 'ensemble' => $ensemble, 'high' => $high, 'low' => $low] = makeEnsembleCutoffScenario(CutoffStrategy::SequentialEnsembleFill);
+
+    $component = Livewire::actingAs($manager)
+        ->test(EnsembleCutoffs::class, ['version' => $version])
+        ->set("ensembleCutoffInputs.{$voicePart->id}_{$ensemble->id}", '70');
+    $version->update(['status' => 'closed']);
+
+    $component->call('applyEnsembleCutoff', $voicePart->id, $ensemble->id)->assertStatus(422);
+    Livewire::actingAs($manager)
+        ->test(EnsembleCutoffs::class, ['version' => $version])
+        ->call('finalizeVoicePart', $voicePart->id)
+        ->assertStatus(422);
+
+    expect($high->fresh()->status)->toBe(CandidateStatus::Registered);
+    expect($low->fresh()->status)->toBe(CandidateStatus::Registered);
+});
+
+test('History rows stay editable on a closed version', function () {
+    ['manager' => $manager, 'version' => $version, 'ensemble' => $ensemble] = makeEnsembleCutoffScenario(CutoffStrategy::PerVoicePartPerEnsemble);
+    $version->update(['status' => 'closed']);
+
+    $year = app(EnsembleHistoryService::class)->priorSeasonYears($version)[0];
+
+    Livewire::actingAs($manager)
+        ->test(EnsembleCutoffs::class, ['version' => $version])
+        ->call('saveHistoryRow', $ensemble->id, $year)
+        ->assertOk();
+});

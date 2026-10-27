@@ -193,9 +193,14 @@
     <flux:card class="mb-4">
         <div class="flex items-center justify-between mb-2">
             <flux:heading size="lg">Score Cut-offs</flux:heading>
-            @unless ($needsPerEnsemble)
+            @if ($versionIsClosed)
+                <flux:text size="sm" class="text-zinc-500">
+                    To change cut-offs, the audition must be
+                    <flux:link href="{{ route('events.versions.tab-room.close', $version) }}" wire:navigate>reopened</flux:link>.
+                </flux:text>
+            @elseif (! $needsPerEnsemble)
                 <flux:text size="sm" class="text-zinc-500">Click a score to apply that cutoff.</flux:text>
-            @endunless
+            @endif
         </div>
 
         <div class="overflow-auto max-h-[36rem] border border-zinc-200 dark:border-zinc-700 rounded-md">
@@ -243,7 +248,7 @@
                                             default => '',
                                         };
                                     @endphp
-                                    @if ($needsPerEnsemble)
+                                    @if ($needsPerEnsemble || $versionIsClosed)
                                         <div class="px-2 py-1 text-center text-sm tabular-nums border-b border-zinc-100 dark:border-zinc-800 {{ $rowClasses }}" style="{{ $rowStyle }}" wire:key="score-{{ $voicePart->id }}-{{ $row['candidate']->id }}">
                                             {{ $row['total'] }}
                                         </div>
@@ -267,7 +272,7 @@
             </div>
         </div>
 
-        @if (! $needsPerEnsemble)
+        @if (! $needsPerEnsemble || $versionIsClosed)
             <div class="flex flex-wrap gap-3 mt-2 text-xs text-zinc-500">
                 @foreach ($ensembles as $ensemble)
                     <span><span class="inline-block w-2.5 h-2.5 rounded-sm me-1" style="background-color: {{ $ensembleColors[$ensemble->id] }}"></span>Accepted — {{ $ensemble->name }}</span>
@@ -281,8 +286,8 @@
          score per Ensemble (SequentialEnsembleFill, GradeSegmentedEnsembles).
          Laid out as compact cards that wrap, not one full-width card per
          Voice Part. Hidden once a Voice Part is fully decided, unless
-         reopened. --}}
-    @if ($needsPerEnsemble)
+         reopened, and entirely while the Version is Closed. --}}
+    @if ($needsPerEnsemble && ! $versionIsClosed)
         <flux:card>
             <flux:heading size="lg" class="mb-2">Apply Ensemble Cutoffs</flux:heading>
             <flux:text size="sm" class="text-zinc-500 mb-3">Enter a cutoff for each Ensemble above, then finalize once every Ensemble has been applied.</flux:text>

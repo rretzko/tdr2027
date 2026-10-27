@@ -41,6 +41,11 @@ use Livewire\Component;
  * clicking a different score re-decides the whole Voice Part in place
  * (previously-accepted candidates who no longer qualify move to
  * NotAccepted, and vice versa) without ever reverting anyone to Registered.
+ *
+ * A Closed Version stays viewable, but applyCutoff(), applyEnsembleCutoff()
+ * and finalizeVoicePart() are blocked until the audition is reopened via
+ * CloseAudition (same rule as AddEditScores). History entry is about prior
+ * seasons, so it stays editable.
  */
 #[Layout('components.layouts.app')]
 class EnsembleCutoffs extends Component
@@ -100,6 +105,8 @@ class EnsembleCutoffs extends Component
 
     public function applyCutoff(int $voicePartId, int $score, EnsembleCutoffService $cutoffs): void
     {
+        abort_if($this->version->isClosed(), 422);
+
         $voicePart = VoicePart::findOrFail($voicePartId);
 
         $cutoffs->applyCutoff($this->version, $voicePart, $score);
@@ -109,6 +116,8 @@ class EnsembleCutoffs extends Component
 
     public function applyEnsembleCutoff(int $voicePartId, int $ensembleId, EnsembleCutoffService $cutoffs): void
     {
+        abort_if($this->version->isClosed(), 422);
+
         $voicePart = VoicePart::findOrFail($voicePartId);
         $ensemble = Ensemble::findOrFail($ensembleId);
 
@@ -128,6 +137,8 @@ class EnsembleCutoffs extends Component
 
     public function finalizeVoicePart(int $voicePartId, EnsembleCutoffService $cutoffs): void
     {
+        abort_if($this->version->isClosed(), 422);
+
         $voicePart = VoicePart::findOrFail($voicePartId);
 
         $cutoffs->finalizeVoicePart($this->version, $voicePart);
@@ -228,6 +239,7 @@ class EnsembleCutoffs extends Component
         return view('livewire.events.tab-room.ensemble-cutoffs', [
             'ensembleColors' => $ensembleColors,
             'needsPerEnsemble' => $needsPerEnsemble,
+            'versionIsClosed' => $this->version->isClosed(),
             'voiceParts' => $voiceParts,
             'voicePartData' => $voicePartData,
             'ensembles' => $ensembles,
