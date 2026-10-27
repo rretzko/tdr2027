@@ -555,17 +555,20 @@ test('saveScores stamps overridden_by_user_id and overridden_at only when a Tab 
     expect($row->score)->toBe(5);
 });
 
-test('findCandidate matches by exact candidates.id, scoped to Registered status in this Version', function () {
+test('findCandidate matches by exact candidates.id in this Version, regardless of candidate status', function () {
     $service = app(AdjudicationService::class);
     $version = Version::factory()->create();
     $registered = Candidate::factory()->registered()->create(['version_id' => $version->id]);
-    $pending = Candidate::factory()->create(['version_id' => $version->id]); // not Registered
+    $accepted = Candidate::factory()->create(['version_id' => $version->id, 'status' => 'accepted']);
+    $otherVersion = Candidate::factory()->registered()->create();
 
     $found = $service->findCandidate($version, (string) $registered->id, null);
     expect($found['candidate']->id)->toBe($registered->id);
     expect($found['matches'])->toBeEmpty();
 
-    $notFound = $service->findCandidate($version, (string) $pending->id, null);
+    expect($service->findCandidate($version, (string) $accepted->id, null)['candidate']->id)->toBe($accepted->id);
+
+    $notFound = $service->findCandidate($version, (string) $otherVersion->id, null);
     expect($notFound['candidate'])->toBeNull();
     expect($notFound['matches'])->toBeEmpty();
 });

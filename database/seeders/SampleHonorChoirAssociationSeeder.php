@@ -50,15 +50,12 @@ use Illuminate\Support\Facades\Hash;
  * by the fixed organization/school names below) before rebuilding it, so
  * it's safe to run again before a specific prospect call.
  *
- * Scope note: this seeder does NOT populate the judge/rubric/room
- * adjudication pipeline (score_categories, score_factors, rooms,
- * room_judges, scores) — that rubric is configured per-Version through the
- * VersionScoringRubric admin screen, not seed data, and reproducing it here
- * risked violating invariants for little demo value. Instead, "scored"
- * candidates in the closed cycle get a terminal status (Accepted /
+ * Scored candidates in the closed cycle get a terminal status (Accepted /
  * NotAccepted), a frozen AuditionResult tally row, and — for Accepted
- * candidates — an accepted_ensemble_id, which is what the Registration
- * Manager / Tab Room / results screens actually read from.
+ * candidates — an accepted_ensemble_id. The judge/rubric/room adjudication
+ * pipeline (score_categories, score_factors, rooms, room_judges, scores) is
+ * layered on afterwards by SampleAdjudicationSeeder, which also rewrites
+ * those AuditionResult totals to match the real seeded scores.
  */
 class SampleHonorChoirAssociationSeeder extends Seeder
 {
@@ -164,6 +161,8 @@ class SampleHonorChoirAssociationSeeder extends Seeder
 
             Auth::logout();
         });
+
+        $this->call(SampleAdjudicationSeeder::class);
 
         $this->command->info('Sample Honor Choir Association demo data seeded.');
         $this->command->info('Demo logins (password: "'.self::DEMO_PASSWORD.'"): see docs/plans/staging-demo-setup.md');
@@ -466,6 +465,10 @@ class SampleHonorChoirAssociationSeeder extends Seeder
 
     private function wipeExisting(): void
     {
+        // Rooms/rubric/scores cascade from the Version and Event deletes
+        // below; the judge users themselves don't.
+        SampleAdjudicationSeeder::deleteJudgeUsers();
+
         $organization = Organization::where('name', self::ORG_NAME)->first();
 
         if ($organization !== null) {

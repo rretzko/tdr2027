@@ -226,3 +226,85 @@ test('changeVoicePart removes existing scores and non-relevant recordings, then 
     expect(Recording::find($nonRelevant->id))->toBeNull();
     expect($candidate->fresh()->voice_part_id)->toBe($newVoicePart->id);
 });
+
+test('search finds a candidate already resolved by Ensemble Cut-offs, and warns that cut-offs need re-evaluating', function () {
+    ['manager' => $manager, 'version' => $version, 'candidate' => $candidate] = makeTabRoomScenario();
+    $candidate->update(['status' => 'accepted']);
+
+    Livewire::actingAs($manager)
+        ->test(AddEditScores::class, ['version' => $version])
+        ->set('candidateIdSearch', (string) $candidate->id)
+        ->call('search')
+        ->assertSet('selectedCandidateId', $candidate->id)
+        ->assertSee('already been resolved by Ensemble Cut-offs')
+        ->assertDontSee('the audition must be');
+});
+
+test('a registered candidate shows no cut-off warning', function () {
+    ['manager' => $manager, 'version' => $version, 'candidate' => $candidate] = makeTabRoomScenario();
+
+    Livewire::actingAs($manager)
+        ->test(AddEditScores::class, ['version' => $version])
+        ->call('selectCandidate', $candidate->id)
+        ->assertDontSee('already been resolved by Ensemble Cut-offs');
+});
+
+test('an accepted candidate on an active version can still have scores saved', function () {
+    ['manager' => $manager, 'version' => $version, 'roomJudge' => $roomJudge, 'factor' => $factor, 'candidate' => $candidate] = makeTabRoomScenario();
+    $candidate->update(['status' => 'accepted']);
+
+    Livewire::actingAs($manager)
+        ->test(AddEditScores::class, ['version' => $version])
+        ->call('selectCandidate', $candidate->id)
+        ->set("scores.{$factor->id}", 3)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(Score::where('judge_id', $roomJudge->id)->where('candidate_id', $candidate->id)->value('score'))->toBe(3);
+});
+
+test('a closed version shows scores with a reopen advisory linking to Close Audition, and suppresses the cut-off warning', function () {
+    ['manager' => $manager, 'version' => $version, 'roomJudge' => $roomJudge, 'factor' => $factor, 'candidate' => $candidate] = makeTabRoomScenario();
+    app(AdjudicationService::class)->saveScores($roomJudge, $candidate, $version, [$factor->id => 4]);
+    $candidate->update(['status' => 'accepted']);
+    $version->update(['status' => 'closed']);
+
+    Livewire::actingAs($manager)
+        ->test(AddEditScores::class, ['version' => $version])
+        ->call('selectCandidate', $candidate->id)
+        ->assertSet("scores.{$factor->id}", 4)
+        ->assertSee('To change scores, the audition must be')
+        ->assertSee(route('events.versions.tab-room.close', $version), escape: false)
+        ->assertDontSee('already been resolved by Ensemble Cut-offs');
+});
+
+test('save is rejected on a closed version', function () {
+    ['manager' => $manager, 'version' => $version, 'roomJudge' => $roomJudge, 'factor' => $factor, 'candidate' => $candidate] = makeTabRoomScenario();
+
+    $component = Livewire::actingAs($manager)
+        ->test(AddEditScores::class, ['version' => $version])
+        ->call('selectCandidate', $candidate->id)
+        ->set("scores.{$factor->id}", 4);
+
+    $version->update(['status' => 'closed']);
+
+    $component->call('save')->assertStatus(422);
+
+    expect(Score::where('judge_id', $roomJudge->id)->where('candidate_id', $candidate->id)->exists())->toBeFalse();
+});
+
+test('changeVoicePart is rejected on a closed version', function () {
+    ['manager' => $manager, 'version' => $version, 'candidate' => $candidate, 'voicePart' => $voicePart] = makeTabRoomScenario();
+    $newVoicePart = VoicePart::factory()->create();
+
+    $component = Livewire::actingAs($manager)
+        ->test(AddEditScores::class, ['version' => $version])
+        ->call('selectCandidate', $candidate->id)
+        ->set('newVoicePartId', (string) $newVoicePart->id);
+
+    $version->update(['status' => 'closed']);
+
+    $component->call('changeVoicePart')->assertStatus(422);
+
+    expect($candidate->fresh()->voice_part_id)->toBe($voicePart->id);
+});

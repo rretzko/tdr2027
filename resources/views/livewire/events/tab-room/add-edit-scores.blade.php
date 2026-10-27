@@ -43,6 +43,16 @@
     </flux:card>
 
     @if ($candidate)
+        @if (! $versionIsClosed && $candidateStatus->isCutoffResolved())
+            <flux:callout variant="warning" icon="exclamation-triangle" class="mb-4">
+                <flux:callout.text>
+                    This candidate has already been resolved by Ensemble Cut-offs ({{ $candidateStatus->label() }}). Changing their scores won't update that result — re-evaluate the
+                    <flux:link href="{{ route('events.versions.tab-room.cutoffs', $version) }}" wire:navigate>score cut-offs</flux:link>
+                    after saving.
+                </flux:callout.text>
+            </flux:callout>
+        @endif
+
         {{-- Basic bio --}}
         <flux:card class="mb-4">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -52,6 +62,7 @@
                     <div><span class="text-zinc-500">Teacher:</span> <span class="font-medium">{{ $candidate->teacher?->user?->name ?? '—' }}</span></div>
                     <div><span class="text-zinc-500">School:</span> <span class="font-medium">{{ $candidate->school?->name ?? '—' }}</span></div>
                     <div><span class="text-zinc-500">Voice Part:</span> <span class="font-medium">{{ $candidate->voicePart->name }}</span></div>
+                    <div><span class="text-zinc-500">Status:</span> <flux:badge size="sm" color="zinc">{{ $candidateStatus->label() }}</flux:badge></div>
                 </div>
 
                 <div>
@@ -64,9 +75,13 @@
                                     <flux:select.option value="{{ $vp->id }}">{{ $vp->name }}</flux:select.option>
                                 @endforeach
                             </flux:select>
-                            <flux:modal.trigger name="change-voice-part">
-                                <flux:button>Change voice part</flux:button>
-                            </flux:modal.trigger>
+                            @if ($versionIsClosed)
+                                <flux:button disabled>Change voice part</flux:button>
+                            @else
+                                <flux:modal.trigger name="change-voice-part">
+                                    <flux:button>Change voice part</flux:button>
+                                </flux:modal.trigger>
+                            @endif
                         </div>
                         <flux:error name="newVoicePartId" />
                     </flux:field>
@@ -191,7 +206,15 @@
                             </flux:callout>
                         @endif
 
-                        <flux:button type="submit" variant="primary">Save</flux:button>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <flux:button type="submit" variant="primary" :disabled="$versionIsClosed">Save</flux:button>
+                            @if ($versionIsClosed)
+                                <flux:text size="sm" class="text-zinc-500">
+                                    To change scores, the audition must be
+                                    <flux:link href="{{ route('events.versions.tab-room.close', $version) }}" wire:navigate>reopened</flux:link>.
+                                </flux:text>
+                            @endif
+                        </div>
                     </form>
                 @endif
             </flux:card>

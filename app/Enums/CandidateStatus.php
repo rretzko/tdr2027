@@ -60,6 +60,17 @@ enum CandidateStatus: string
         return [self::Registered, self::NoShow, self::Incomplete, self::Accepted, self::NotAccepted];
     }
 
+    /**
+     * Whether Ensemble Cut-offs has already resolved this Candidate — the
+     * four states EnsembleCutoffService writes. Editing such a Candidate's
+     * scores leaves that resolution stale until cut-offs are re-applied
+     * (see Tab Room Add/Edit Scores' re-evaluate warning).
+     */
+    public function isCutoffResolved(): bool
+    {
+        return in_array($this, [self::NoShow, self::Incomplete, self::Accepted, self::NotAccepted], true);
+    }
+
     public function isActive(): bool
     {
         return in_array($this, [self::Eligible, self::Pending, self::Registered], true);
