@@ -149,6 +149,23 @@
                             <flux:text>
                                 You co-teach with <span class="font-medium">{{ $pairing['otherTeacher']->user->name }}</span> at {{ $pairing['school']->name }}.
                             </flux:text>
+                            {{-- Grants are one-directional; say which way access runs so a one-sided grant isn't mistaken for full sharing. --}}
+                            @if ($pairing['sharesWithOther'] && $pairing['sharedWithMe'])
+                                <flux:text size="sm" class="text-zinc-500">
+                                    You can each see the other's candidates here.
+                                </flux:text>
+                            @elseif ($pairing['sharedWithMe'])
+                                <flux:text size="sm" class="text-amber-700 dark:text-amber-400">
+                                    {{ $pairing['otherTeacher']->user->name }} shares their candidates with you, but you haven't shared yours —
+                                    {{ $pairing['otherTeacher']->user->name }} can't see your candidates here.
+                                    <flux:link href="{{ route('schools.index') }}" wire:navigate>Grant access on your Schools page.</flux:link>
+                                </flux:text>
+                            @else
+                                <flux:text size="sm" class="text-amber-700 dark:text-amber-400">
+                                    You share your candidates with {{ $pairing['otherTeacher']->user->name }}, but they haven't shared theirs —
+                                    you can't see {{ $pairing['otherTeacher']->user->name }}'s candidates here.
+                                </flux:text>
+                            @endif
                             @if ($pairing['existing'] !== null)
                                 <flux:text size="sm" class="text-zinc-500">
                                     Shared candidates are currently recorded under
