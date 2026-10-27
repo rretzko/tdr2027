@@ -467,6 +467,59 @@ test('the co-teacher consolidation panel renders for a school with a shared cand
         ->assertSee('Consolidate under me');
 });
 
+test('the co-teacher panel warns the co-teacher when the grant only runs toward them', function () {
+    $granting = makeRegistrationTeacher();
+    $coTeacher = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $granting->id, 'school_id' => $school->id]);
+
+    grantRegistrationCoTeacherAccess($school, $granting, $coTeacher);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee("shares their candidates with you, but you haven't shared yours", false)
+        ->assertSee('Grant access on your Schools page.')
+        ->assertDontSee("You can each see the other's candidates here.", false);
+});
+
+test("the co-teacher panel warns the granting teacher that they cannot see the other teacher's candidates", function () {
+    $granting = makeRegistrationTeacher();
+    $coTeacher = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $granting->id, 'school_id' => $school->id]);
+
+    grantRegistrationCoTeacherAccess($school, $granting, $coTeacher);
+
+    Livewire::actingAs($granting->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee("but they haven't shared theirs", false)
+        ->assertDontSee('Grant access on your Schools page.');
+});
+
+test('the co-teacher panel confirms mutual sharing when grants run both ways', function () {
+    $granting = makeRegistrationTeacher();
+    $coTeacher = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+
+    actingAs($granting->user);
+    Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $granting->id, 'school_id' => $school->id]);
+
+    grantRegistrationCoTeacherAccess($school, $granting, $coTeacher);
+    grantRegistrationCoTeacherAccess($school, $coTeacher, $granting);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee("You can each see the other's candidates here.", false)
+        ->assertDontSee('Grant access on your Schools page.');
+});
+
 test('the co-teacher consolidation panel does not render with no grant at all', function () {
     $teacher = makeRegistrationTeacher();
     $version = Version::factory()->create();
