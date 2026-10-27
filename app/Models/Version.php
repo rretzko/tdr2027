@@ -185,6 +185,16 @@ class Version extends Model
     }
 
     /**
+     * Formally closed via CloseAudition (or VersionEdit's Status field).
+     * Tab Room score edits and Ensemble Cut-off decisions are locked until
+     * the audition is reopened.
+     */
+    public function isClosed(): bool
+    {
+        return $this->getRawOriginal('status') === EventStatus::Closed->value;
+    }
+
+    /**
      * Registration is owed by any active candidate and collected before/
      * during the audition process — chargeable any time up until the
      * Version is formally closed. Never combined with participation()'s

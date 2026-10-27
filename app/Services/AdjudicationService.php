@@ -418,8 +418,11 @@ final class AdjudicationService
 
     /**
      * Candidate lookup for the Tab Room Add/Edit Scores search box — by
-     * exact candidates.id, or by student last name. Only ever matches
-     * status=Registered candidates in this Version, per Tab Room Module.docx.
+     * exact candidates.id, or by student last name, in this Version. Matches
+     * every Candidate status — a Tab Room Manager must still be able to
+     * review and correct scores after Ensemble Cut-offs has resolved a
+     * Candidate to Accepted/NotAccepted/etc. (AddEditScores gates editing
+     * on the Version's status instead, and warns on cut-off-resolved ones).
      *
      * @return array{candidate: ?Candidate, matches: Collection<int, Candidate>}
      */
@@ -428,7 +431,6 @@ final class AdjudicationService
         if ($candidateId !== null && $candidateId !== '') {
             $candidate = Candidate::where('version_id', $version->id)
                 ->where('id', $candidateId)
-                ->where('status', CandidateStatus::Registered)
                 ->first();
 
             return ['candidate' => $candidate, 'matches' => collect()];
@@ -443,7 +445,6 @@ final class AdjudicationService
 
         $matches = Candidate::where('version_id', $version->id)
             ->whereIn('student_id', $studentIds)
-            ->where('status', CandidateStatus::Registered)
             ->with(['student.user', 'voicePart'])
             ->get();
 

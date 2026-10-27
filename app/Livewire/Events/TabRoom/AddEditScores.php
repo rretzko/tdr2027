@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Events\TabRoom;
 
+use App\Enums\CandidateStatus;
 use App\Models\Candidate;
 use App\Models\RoomJudge;
 use App\Models\ScoreCategory;
@@ -26,6 +27,12 @@ use Livewire\Component;
  * scores on that Candidate's behalf. Structurally mirrors Adjudicate.php,
  * but candidate/room/judge are all manager-selected rather than implied by
  * the logged-in judge's own RoomJudge row.
+ *
+ * Any Candidate status is findable and viewable. Editing (save() and
+ * changeVoicePart()) is blocked only once the Version is Closed — the
+ * manager must reopen it via CloseAudition first. A Candidate already
+ * resolved by Ensemble Cut-offs stays editable, with a warning that the
+ * cut-offs need re-evaluating.
  */
 #[Layout('components.layouts.app')]
 class AddEditScores extends Component
@@ -97,7 +104,7 @@ class AddEditScores extends Component
         $this->selectedCandidateId = null;
         $this->matches = [];
 
-        Flux::toast(text: 'No registered candidate matched that search.', variant: 'danger');
+        Flux::toast(text: 'No candidate in this version matched that search.', variant: 'danger');
     }
 
     public function selectCandidate(int $candidateId, AdjudicationService $adjudication): void
@@ -124,6 +131,8 @@ class AddEditScores extends Component
 
     public function changeVoicePart(AdjudicationService $adjudication): void
     {
+        abort_if($this->version->isClosed(), 422);
+
         $candidate = Candidate::findOrFail($this->selectedCandidateId);
 
         $validated = $this->validate([
@@ -146,6 +155,8 @@ class AddEditScores extends Component
 
     public function save(AdjudicationService $adjudication): void
     {
+        abort_if($this->version->isClosed(), 422);
+
         $candidate = Candidate::findOrFail($this->selectedCandidateId);
         $judge = RoomJudge::findOrFail($this->selectedJudgeId);
 
@@ -209,6 +220,10 @@ class AddEditScores extends Component
             'roomScores' => $roomScores,
             'inTolerance' => $inTolerance,
             'availableVoiceParts' => $this->version->availableVoiceParts(),
+            'versionIsClosed' => $this->version->isClosed(),
+            // getRawOriginal(), not the enum cast — Larastan can't infer it
+            // through the method-based casts() (see PHPStan-quirks memory).
+            'candidateStatus' => $candidate !== null ? CandidateStatus::from((string) $candidate->getRawOriginal('status')) : null,
         ]);
     }
 
