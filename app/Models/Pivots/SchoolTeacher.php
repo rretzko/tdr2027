@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
-#[Fillable(['school_id', 'teacher_id', 'role', 'replacing_teacher_name', 'is_active', 'school_email', 'verified_at'])]
+#[Fillable(['school_id', 'teacher_id', 'role', 'replacing_teacher_name', 'replaced_teacher_id', 'is_active', 'school_email', 'verified_at', 'replacement_transferred_at'])]
 #[ObservedBy(SchoolTeacherObserver::class)]
 class SchoolTeacher extends Pivot
 {
@@ -28,6 +28,13 @@ class SchoolTeacher extends Pivot
     protected $table = 'school_teacher';
 
     /**
+     * Students moved by the most recent ReplacedTeacherStudentTransfer run that
+     * SchoolTeacherObserver triggered on this instance — not persisted; read back
+     * by the verification page/toasts right after the save that triggered it.
+     */
+    public int $replacementTransferCount = 0;
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
@@ -36,6 +43,7 @@ class SchoolTeacher extends Pivot
             'role' => TeacherRole::class,
             'is_active' => 'boolean',
             'verified_at' => 'datetime',
+            'replacement_transferred_at' => 'datetime',
         ];
     }
 
@@ -53,6 +61,14 @@ class SchoolTeacher extends Pivot
     public function teacher(): BelongsTo
     {
         return $this->belongsTo(Teacher::class);
+    }
+
+    /**
+     * @return BelongsTo<Teacher, $this>
+     */
+    public function replacedTeacher(): BelongsTo
+    {
+        return $this->belongsTo(Teacher::class, 'replaced_teacher_id');
     }
 
     /**

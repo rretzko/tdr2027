@@ -35,7 +35,12 @@ class CoTeacherConsolidationService
      * panel; a pairing with no Candidates yet has nothing to consolidate, so
      * it's left out rather than shown as a no-op control.
      *
-     * @return Collection<int, covariant array{school: School, otherTeacher: Teacher, existing: ?VersionCoTeacherConsolidation}>
+     * Grants are one-directional (CoTeacherAccessService::candidateQuery()),
+     * so each pairing also reports which way access actually runs:
+     * sharesWithOther = $teacher granted the other teacher access,
+     * sharedWithMe = the other teacher granted $teacher access.
+     *
+     * @return Collection<int, covariant array{school: School, otherTeacher: Teacher, existing: ?VersionCoTeacherConsolidation, sharesWithOther: bool, sharedWithMe: bool}>
      */
     public function relevantPairings(Teacher $teacher, Version $version): Collection
     {
@@ -54,7 +59,15 @@ class CoTeacherConsolidationService
                 ? $grant->co_teacher_id
                 : $grant->granting_teacher_id;
 
-            $pairs["{$grant->school_id}-{$otherTeacherId}"] = ['school_id' => $grant->school_id, 'other_teacher_id' => $otherTeacherId];
+            $key = "{$grant->school_id}-{$otherTeacherId}";
+
+            $pairs[$key] ??= ['school_id' => $grant->school_id, 'other_teacher_id' => $otherTeacherId, 'shares_with_other' => false, 'shared_with_me' => false];
+
+            if ($grant->granting_teacher_id === $teacher->id) {
+                $pairs[$key]['shares_with_other'] = true;
+            } else {
+                $pairs[$key]['shared_with_me'] = true;
+            }
         }
 
         $results = [];
@@ -84,7 +97,13 @@ class CoTeacherConsolidationService
                 ->where('second_teacher_id', $secondId)
                 ->first();
 
-            $results[] = ['school' => $school, 'otherTeacher' => $otherTeacher, 'existing' => $existing];
+            $results[] = [
+                'school' => $school,
+                'otherTeacher' => $otherTeacher,
+                'existing' => $existing,
+                'sharesWithOther' => $pair['shares_with_other'],
+                'sharedWithMe' => $pair['shared_with_me'],
+            ];
         }
 
         return new Collection($results);

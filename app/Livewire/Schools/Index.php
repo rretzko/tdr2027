@@ -17,6 +17,7 @@ use App\Models\Teacher;
 use App\Rules\NotCommercialEmailDomain;
 use App\Services\CoTeacherAccessService;
 use App\Support\CommercialEmailDomains;
+use App\Support\ReplacedTeacherStudentTransfer;
 use App\Support\SchoolMatcher;
 use Flux\Flux;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -61,6 +62,12 @@ class Index extends Component
 
     public bool $edit_is_replacing_teacher = false;
 
+    public string $edit_replaced_teacher_id = '';
+
+    /**
+     * A free-typed replaced-teacher name from before the picker existed, kept
+     * as-is unless the teacher picks someone from the list instead.
+     */
     public string $edit_replacing_teacher_name = '';
 
     public string $edit_school_email = '';
@@ -158,6 +165,7 @@ class Index extends Component
 
         $this->edit_role = TeacherRole::Primary->value;
         $this->edit_is_replacing_teacher = false;
+        $this->edit_replaced_teacher_id = '';
         $this->edit_replacing_teacher_name = '';
         $this->edit_school_email = '';
 
@@ -179,8 +187,9 @@ class Index extends Component
         $this->editingSchoolId = $school->id;
 
         $this->edit_role = (string) $pivot->getRawOriginal('role');
-        $this->edit_is_replacing_teacher = $pivot->replacing_teacher_name !== null;
-        $this->edit_replacing_teacher_name = $pivot->replacing_teacher_name ?? '';
+        $this->edit_is_replacing_teacher = $pivot->replaced_teacher_id !== null || $pivot->replacing_teacher_name !== null;
+        $this->edit_replaced_teacher_id = $pivot->replaced_teacher_id !== null ? (string) $pivot->replaced_teacher_id : '';
+        $this->edit_replacing_teacher_name = $pivot->replaced_teacher_id === null ? ($pivot->replacing_teacher_name ?? '') : '';
         $this->edit_school_email = $pivot->school_email ?? '';
 
         $this->edit_name = $school->name;
@@ -200,10 +209,10 @@ class Index extends Component
 
     /**
      * Other teachers linked to the school in scope (active or not — a departing
-     * teacher's pivot row isn't necessarily removed when they leave), so the
-     * teacher being replaced can be picked from a list instead of free-typed and
-     * risk a typo that breaks the record's usefulness. Empty while adding a
-     * brand-new school, since there's no one there yet to replace.
+     * teacher's pivot row isn't necessarily removed when they leave), keyed by
+     * teacher id, so the teacher being replaced is picked from a list instead of
+     * free-typed and matched by name. Empty while adding a brand-new school,
+     * since there's no one there yet to replace.
      *
      * @return Collection<int, string>
      */
@@ -215,16 +224,7 @@ class Index extends Component
             return collect();
         }
 
-        return Teacher::query()
-            ->whereHas('schools', fn ($query) => $query->where('schools.id', $schoolId))
-            ->where('id', '!=', $this->teacher()->id)
-            ->with('user')
-            ->get()
-            ->pluck('user.name')
-            ->filter(fn (?string $name): bool => filled($name))
-            ->unique()
-            ->sort()
-            ->values();
+        return ReplacedTeacherStudentTransfer::replaceableTeacherOptions($schoolId, $this->teacher()->id);
     }
 
     public function schoolEmailDomainWarning(): ?string
@@ -305,11 +305,11 @@ class Index extends Component
         $newSchoolEmail = $this->edit_school_email !== '' ? $this->edit_school_email : null;
         $previousSchoolEmail = $existingPivot !== null && $existingPivot->school_email !== '' ? $existingPivot->school_email : null;
 
-        SchoolTeacher::updateOrCreate(
+        $pivot = SchoolTeacher::updateOrCreate(
             ['school_id' => $school->id, 'teacher_id' => $teacher->id],
             [
                 'role' => $this->edit_role,
-                'replacing_teacher_name' => $this->edit_is_replacing_teacher ? $this->edit_replacing_teacher_name : null,
+                ...$this->replacementFields($school->id),
                 'is_active' => true,
                 'school_email' => $newSchoolEmail,
                 ...$this->schoolEmailVerificationFields($previousSchoolEmail, $newSchoolEmail, $teacher),
@@ -325,7 +325,7 @@ class Index extends Component
         $this->linkingSchoolId = null;
         $this->modal('edit-school')->close();
 
-        Flux::toast(text: $this->addedSchoolToastMessage("You're now linked to {$school->name}."), variant: 'success');
+        Flux::toast(text: "You're now linked to {$school->name}.".$this->replacementToastSuffix($pivot), variant: 'success');
     }
 
     public function saveEdit(): void
@@ -346,7 +346,7 @@ class Index extends Component
         // instance for this row (Teacher::schools() uses ->using(SchoolTeacher::class)).
         $pivot->update([
             'role' => $this->edit_role,
-            'replacing_teacher_name' => $this->edit_is_replacing_teacher ? $this->edit_replacing_teacher_name : null,
+            ...$this->replacementFields($school->id),
             'school_email' => $newSchoolEmail,
             ...$this->schoolEmailVerificationFields($previousSchoolEmail, $newSchoolEmail, $teacher),
         ]);
@@ -367,7 +367,7 @@ class Index extends Component
         $this->editingSchoolId = null;
         $this->modal('edit-school')->close();
 
-        Flux::toast(text: "{$school->name} updated successfully.", variant: 'success');
+        Flux::toast(text: "{$school->name} updated successfully.".$this->replacementToastSuffix($pivot), variant: 'success');
     }
 
     public function saveAdd(): void
@@ -397,9 +397,10 @@ class Index extends Component
 
         $newSchoolEmail = $this->edit_school_email !== '' ? $this->edit_school_email : null;
 
+        // No replacing-teacher fields: a brand-new school has no one to replace
+        // (the question is hidden while adding — see replacingTeacherOptions()).
         $teacher->schools()->attach($school->id, [
             'role' => $this->edit_role,
-            'replacing_teacher_name' => $this->edit_is_replacing_teacher ? $this->edit_replacing_teacher_name : null,
             'is_active' => true,
             'school_email' => $newSchoolEmail,
             ...$this->schoolEmailVerificationFields(null, $newSchoolEmail, $teacher),
@@ -412,21 +413,57 @@ class Index extends Component
         $this->isAdding = false;
         $this->modal('edit-school')->close();
 
-        Flux::toast(text: $this->addedSchoolToastMessage("{$school->name} added successfully."), variant: 'success');
+        Flux::toast(text: "{$school->name} added successfully.", variant: 'success');
     }
 
     /**
-     * Appends a note about the pending student transfer to a just-added-school
-     * toast, when a replacement teacher was identified — the transfer itself only
-     * runs once the school email is verified (see ReplacedTeacherStudentTransfer).
+     * The replacement fields to write for the school in scope: the picked teacher
+     * (id + their name, for display), else an untouched legacy free-typed name,
+     * else nothing.
+     *
+     * @return array{replaced_teacher_id: int|null, replacing_teacher_name: string|null}
      */
-    private function addedSchoolToastMessage(string $message): string
+    private function replacementFields(int $schoolId): array
     {
         if (! $this->edit_is_replacing_teacher) {
-            return $message;
+            return ['replaced_teacher_id' => null, 'replacing_teacher_name' => null];
         }
 
-        return "{$message} Current students will be transferred to you once your school email is verified.";
+        if ($this->edit_replaced_teacher_id !== '') {
+            $teacherId = (int) $this->edit_replaced_teacher_id;
+
+            return [
+                'replaced_teacher_id' => $teacherId,
+                'replacing_teacher_name' => $this->replacingTeacherOptions($schoolId)->get($teacherId),
+            ];
+        }
+
+        return [
+            'replaced_teacher_id' => null,
+            'replacing_teacher_name' => $this->edit_replacing_teacher_name !== '' ? $this->edit_replacing_teacher_name : null,
+        ];
+    }
+
+    /**
+     * Reports what happened to the replaced teacher's students on this save:
+     * moved now (SchoolTeacherObserver ran the transfer because the link is
+     * already verified), or still waiting on school email verification.
+     */
+    private function replacementToastSuffix(SchoolTeacher $pivot): string
+    {
+        $count = $pivot->replacementTransferCount;
+
+        if ($count > 0) {
+            return " {$count} current ".str('student')->plural($count).' '.($count === 1 ? 'was' : 'were').' transferred to you.';
+        }
+
+        $namesReplacement = $pivot->replaced_teacher_id !== null || filled($pivot->replacing_teacher_name);
+
+        if ($namesReplacement && $pivot->verified_at === null) {
+            return ' Current students will be transferred to you once your school email is verified.';
+        }
+
+        return '';
     }
 
     /**
@@ -470,7 +507,11 @@ class Index extends Component
 
         return [
             'edit_role' => ['required', Rule::in([TeacherRole::Primary->value, TeacherRole::Coteacher->value])],
-            'edit_replacing_teacher_name' => [$this->edit_is_replacing_teacher ? 'required' : 'nullable', 'string', 'max:255'],
+            // Required when replacing, unless a legacy free-typed name is already on file.
+            'edit_replaced_teacher_id' => [
+                $this->edit_is_replacing_teacher && $this->edit_replacing_teacher_name === '' ? 'required' : 'nullable',
+                Rule::in($this->replacingTeacherOptions()->keys()->map(fn (int $id): string => (string) $id)->all()),
+            ],
             'edit_school_email' => $schoolEmailRules,
         ];
     }

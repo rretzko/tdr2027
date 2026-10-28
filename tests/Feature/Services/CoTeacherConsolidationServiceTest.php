@@ -184,6 +184,53 @@ test('relevantPairings includes a school where a grant exists and at least one s
     expect($pairings->first()['existing'])->toBeNull();
 });
 
+test('relevantPairings reports a one-way grant from the teacher as sharesWithOther only', function () {
+    $version = Version::factory()->create();
+    $school = School::factory()->create();
+    $teacher = Teacher::factory()->create();
+    $coTeacher = Teacher::factory()->create();
+
+    grantConsolidationCoTeacherAccess($school, $teacher, $coTeacher);
+    Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $school->id, 'teacher_id' => $teacher->id]);
+
+    $pairing = (new CoTeacherConsolidationService)->relevantPairings($teacher, $version)->first();
+
+    expect($pairing['sharesWithOther'])->toBeTrue();
+    expect($pairing['sharedWithMe'])->toBeFalse();
+});
+
+test('relevantPairings reports a one-way grant to the teacher as sharedWithMe only', function () {
+    $version = Version::factory()->create();
+    $school = School::factory()->create();
+    $teacher = Teacher::factory()->create();
+    $coTeacher = Teacher::factory()->create();
+
+    grantConsolidationCoTeacherAccess($school, $coTeacher, $teacher);
+    Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $school->id, 'teacher_id' => $teacher->id]);
+
+    $pairing = (new CoTeacherConsolidationService)->relevantPairings($teacher, $version)->first();
+
+    expect($pairing['sharesWithOther'])->toBeFalse();
+    expect($pairing['sharedWithMe'])->toBeTrue();
+});
+
+test('relevantPairings merges grants in both directions into one pairing with both flags set', function () {
+    $version = Version::factory()->create();
+    $school = School::factory()->create();
+    $teacher = Teacher::factory()->create();
+    $coTeacher = Teacher::factory()->create();
+
+    grantConsolidationCoTeacherAccess($school, $teacher, $coTeacher);
+    grantConsolidationCoTeacherAccess($school, $coTeacher, $teacher);
+    Candidate::factory()->create(['version_id' => $version->id, 'school_id' => $school->id, 'teacher_id' => $teacher->id]);
+
+    $pairings = (new CoTeacherConsolidationService)->relevantPairings($teacher, $version);
+
+    expect($pairings)->toHaveCount(1);
+    expect($pairings->first()['sharesWithOther'])->toBeTrue();
+    expect($pairings->first()['sharedWithMe'])->toBeTrue();
+});
+
 test('relevantPairings excludes a grant with no candidates at that school in this Version yet', function () {
     $version = Version::factory()->create();
     $school = School::factory()->create();

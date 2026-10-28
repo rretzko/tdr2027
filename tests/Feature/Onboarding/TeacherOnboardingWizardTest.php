@@ -403,3 +403,58 @@ test('step 1 defaults the state to New Jersey', function () {
         ->test(TeacherOnboardingWizard::class)
         ->assertSet('geostate_id', (string) $newJersey->id);
 });
+
+test('step 2 records the replaced teacher picked from the school\'s teacher list', function () {
+    $user = makeTeacherUser();
+    $school = School::factory()->create();
+    SchoolTeacher::create(['school_id' => $school->id, 'teacher_id' => $user->teacher->id, 'is_active' => true]);
+    $formerUser = User::factory()->create(['first_name' => 'Pat', 'last_name' => 'Former']);
+    $former = Teacher::factory()->create(['user_id' => $formerUser->id]);
+    SchoolTeacher::create(['school_id' => $school->id, 'teacher_id' => $former->id, 'is_active' => false]);
+    $user->teacher->update(['onboarding_step' => 2]);
+
+    Livewire::actingAs($user)
+        ->test(TeacherOnboardingWizard::class)
+        ->set('role', 'primary')
+        ->set('isReplacingTeacher', true)
+        ->assertSee($formerUser->name)
+        ->assertSee('Someone not listed')
+        ->set('replaced_teacher_id', (string) $former->id)
+        ->set('subjects', ['chorus'])
+        ->call('saveRoleAndSubjects')
+        ->assertHasNoErrors()
+        ->assertSet('step', 3);
+
+    $pivot = SchoolTeacher::where('teacher_id', $user->teacher->id)->sole();
+    expect($pivot->replaced_teacher_id)->toBe($former->id);
+    expect($pivot->replacing_teacher_name)->toBe($formerUser->name);
+});
+
+test('step 2 requires a pick when the school has teachers, and takes a typed name for someone not listed', function () {
+    $user = makeTeacherUser();
+    $school = School::factory()->create();
+    SchoolTeacher::create(['school_id' => $school->id, 'teacher_id' => $user->teacher->id, 'is_active' => true]);
+    $other = Teacher::factory()->create();
+    SchoolTeacher::create(['school_id' => $school->id, 'teacher_id' => $other->id, 'is_active' => true]);
+    $user->teacher->update(['onboarding_step' => 2]);
+
+    $component = Livewire::actingAs($user)
+        ->test(TeacherOnboardingWizard::class)
+        ->set('role', 'primary')
+        ->set('isReplacingTeacher', true)
+        ->set('subjects', ['chorus'])
+        ->call('saveRoleAndSubjects')
+        ->assertHasErrors('replaced_teacher_id');
+
+    $component->set('replaced_teacher_id', TeacherOnboardingWizard::REPLACED_TEACHER_NOT_LISTED)
+        ->call('saveRoleAndSubjects')
+        ->assertHasErrors('replacing_teacher_name')
+        ->set('replacing_teacher_name', 'Jordan Gone')
+        ->call('saveRoleAndSubjects')
+        ->assertHasNoErrors()
+        ->assertSet('step', 3);
+
+    $pivot = SchoolTeacher::where('teacher_id', $user->teacher->id)->sole();
+    expect($pivot->replaced_teacher_id)->toBeNull();
+    expect($pivot->replacing_teacher_name)->toBe('Jordan Gone');
+});
