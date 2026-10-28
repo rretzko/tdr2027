@@ -23,6 +23,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Support\ClassOfCalculator;
+use App\Support\ReplacedTeacherStudentTransfer;
 use App\Support\SchoolMatcher;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -35,6 +36,8 @@ use Livewire\Component;
 #[Layout('components.layouts.app')]
 class TeacherOnboardingWizard extends Component
 {
+    public const string REPLACED_TEACHER_NOT_LISTED = 'not-listed';
+
     public int $step = 1;
 
     // Step 1 — link school/studio
@@ -61,6 +64,10 @@ class TeacherOnboardingWizard extends Component
 
     public bool $isReplacingTeacher = false;
 
+    /** A teacher id from replacingTeacherOptions(), or self::REPLACED_TEACHER_NOT_LISTED. */
+    public string $replaced_teacher_id = '';
+
+    /** Free-typed name, only when the replaced teacher isn't in the list. */
     public string $replacing_teacher_name = '';
 
     /** @var list<string> */
@@ -117,8 +124,13 @@ class TeacherOnboardingWizard extends Component
 
         if ($pivot !== null) {
             $this->role = (string) ($pivot->getRawOriginal('role') ?? '');
-            $this->isReplacingTeacher = $pivot->replacing_teacher_name !== null;
-            $this->replacing_teacher_name = $pivot->replacing_teacher_name ?? '';
+            $this->isReplacingTeacher = $pivot->replaced_teacher_id !== null || $pivot->replacing_teacher_name !== null;
+            $this->replaced_teacher_id = match (true) {
+                $pivot->replaced_teacher_id !== null => (string) $pivot->replaced_teacher_id,
+                $pivot->replacing_teacher_name !== null => self::REPLACED_TEACHER_NOT_LISTED,
+                default => '',
+            };
+            $this->replacing_teacher_name = $pivot->replaced_teacher_id === null ? ($pivot->replacing_teacher_name ?? '') : '';
             $this->subjects = SchoolTeacherSubject::where('school_teacher_id', $pivot->id)
                 ->pluck('subject')
                 ->map(fn (Subject $subject) => $subject->value)
@@ -176,18 +188,32 @@ class TeacherOnboardingWizard extends Component
     {
         $subjectValues = array_map(fn (Subject $subject) => $subject->value, Subject::cases());
 
+        $replacingTeacherOptions = $this->replacingTeacherOptions();
+        $typingName = $replacingTeacherOptions->isEmpty() || $this->replaced_teacher_id === self::REPLACED_TEACHER_NOT_LISTED;
+
         $this->validate([
             'role' => ['required', Rule::in([TeacherRole::Primary->value, TeacherRole::Coteacher->value])],
-            'replacing_teacher_name' => [$this->isReplacingTeacher ? 'required' : 'nullable', 'string', 'max:255'],
+            'replaced_teacher_id' => [
+                $this->isReplacingTeacher && $replacingTeacherOptions->isNotEmpty() ? 'required' : 'nullable',
+                Rule::in([...$replacingTeacherOptions->keys()->map(fn (int $id): string => (string) $id)->all(), self::REPLACED_TEACHER_NOT_LISTED]),
+            ],
+            'replacing_teacher_name' => [$this->isReplacingTeacher && $typingName ? 'required' : 'nullable', 'string', 'max:255'],
             'subjects' => ['required', 'array', 'min:1'],
             'subjects.*' => [Rule::in($subjectValues)],
         ]);
 
         $pivot = $this->currentSchoolTeacher();
 
+        $pickedTeacherId = $this->isReplacingTeacher && ! $typingName ? (int) $this->replaced_teacher_id : null;
+
         $pivot->update([
             'role' => $this->role,
-            'replacing_teacher_name' => $this->isReplacingTeacher ? $this->replacing_teacher_name : null,
+            'replaced_teacher_id' => $pickedTeacherId,
+            'replacing_teacher_name' => match (true) {
+                ! $this->isReplacingTeacher => null,
+                $pickedTeacherId !== null => $replacingTeacherOptions->get($pickedTeacherId),
+                default => $this->replacing_teacher_name,
+            },
         ]);
 
         SchoolTeacherSubject::where('school_teacher_id', $pivot->id)
@@ -379,7 +405,24 @@ class TeacherOnboardingWizard extends Component
             'organizationTree' => $this->step === 4 ? $this->organizationTree() : [],
             'openEvents' => $this->step === 5 ? $this->openEvents() : collect(),
             'subjectOptions' => Subject::cases(),
+            'replacingTeacherOptions' => $this->step === 2 ? $this->replacingTeacherOptions() : collect(),
         ]);
+    }
+
+    /**
+     * The current school's other teachers, so the one being replaced is picked
+     * rather than free-typed (a typed name has to match users.name to transfer
+     * their students — docs/plans/replaced-teacher-transfer-fix.md).
+     *
+     * @return Collection<int, string>
+     */
+    private function replacingTeacherOptions(): Collection
+    {
+        $school = $this->currentSchool();
+
+        return $school !== null
+            ? ReplacedTeacherStudentTransfer::replaceableTeacherOptions($school->id, $this->teacher()->id)
+            : collect();
     }
 
     /**

@@ -488,7 +488,7 @@ test('saving after selecting a suggested school links to it instead of creating 
     expect(School::count())->toBe($schoolCountBefore);
 });
 
-test('saveAdd toast mentions the pending student transfer when a replacement teacher is identified', function () {
+test('saveAdd records no replacement for a brand-new school, since there is no one there to replace', function () {
     $user = makeOnboardedTeacherUser();
     $geostate = Geostate::factory()->create();
     $county = County::factory()->create(['geostate_id' => $geostate->id]);
@@ -506,9 +506,48 @@ test('saveAdd toast mentions the pending student transfer when a replacement tea
         ->set('edit_replacing_teacher_name', 'Some Former Teacher')
         ->call('saveAdd')
         ->assertHasNoErrors()
+        ->assertDispatched('toast-show', slots: ['text' => 'Brand New School added successfully.']);
+
+    $pivot = SchoolTeacher::where('teacher_id', $user->teacher->id)->sole();
+    expect($pivot->replacing_teacher_name)->toBeNull();
+    expect($pivot->replaced_teacher_id)->toBeNull();
+});
+
+test('picking a replaced teacher on an auto-verified school transfers their current students and says so', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+    $formerUser = User::factory()->create(['first_name' => 'Pat', 'last_name' => 'Former']);
+    $former = Teacher::factory()->create(['user_id' => $formerUser->id]);
+    $former->schools()->attach($school, ['role' => 'primary', 'is_active' => false]);
+
+    $student = Student::factory()->create();
+    $school->students()->attach($student->id, ['is_active' => true, 'class_of' => ClassOfCalculator::classOfFromGrade(11, $school->senior_year)]);
+    StudentTeacher::create([
+        'student_id' => $student->id, 'teacher_id' => $former->id, 'school_id' => $school->id,
+        'subject' => 'chorus', 'role' => 'primary', 'is_active' => true,
+    ]);
+
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true]);
+
+    // School email == the teacher's verified login email → auto-verified on save,
+    // the path that used to skip the transfer entirely.
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $school->id)
+        ->set('edit_school_email', $user->email)
+        ->set('edit_is_replacing_teacher', true)
+        ->set('edit_replaced_teacher_id', (string) $former->id)
+        ->call('saveEdit')
+        ->assertHasNoErrors()
         ->assertDispatched('toast-show', slots: [
-            'text' => 'Brand New School added successfully. Current students will be transferred to you once your school email is verified.',
+            'text' => "{$school->name} updated successfully. 1 current student was transferred to you.",
         ]);
+
+    expect(StudentTeacher::where('student_id', $student->id)->value('teacher_id'))->toBe($user->teacher->id);
+
+    $pivot = SchoolTeacher::where('teacher_id', $user->teacher->id)->sole();
+    expect($pivot->replaced_teacher_id)->toBe($former->id);
+    expect($pivot->replacing_teacher_name)->toBe($formerUser->name);
 });
 
 test('selecting a suggested school disables the school fields and reveals the replacing-teacher question', function () {
@@ -590,7 +629,7 @@ test('saveEdit shows a personalized success toast', function () {
         ->assertDispatched('toast-show', slots: ['text' => 'New Name updated successfully.']);
 });
 
-test('saveEdit requires a replacing teacher name when replacing a teacher', function () {
+test('saveEdit requires picking the replaced teacher when replacing a teacher', function () {
     $user = makeOnboardedTeacherUser();
     $school = School::factory()->create();
 
@@ -602,7 +641,7 @@ test('saveEdit requires a replacing teacher name when replacing a teacher', func
         ->set('edit_is_replacing_teacher', true)
         ->set('edit_replacing_teacher_name', '')
         ->call('saveEdit')
-        ->assertHasErrors('edit_replacing_teacher_name');
+        ->assertHasErrors('edit_replaced_teacher_id');
 });
 
 test('the replacing-teacher select lists other teachers at the school but not the current teacher', function () {
@@ -644,7 +683,7 @@ test('the replacing-teacher question appears once an existing school is opened f
         ->assertSee("I'm replacing a teacher who is no longer at this school");
 });
 
-test('picking a listed teacher to replace sets the replacing-teacher name', function () {
+test('picking a listed teacher to replace records their id and name', function () {
     $user = makeOnboardedTeacherUser();
     $school = School::factory()->create();
     $otherUser = User::factory()->create(['first_name' => 'Alex', 'last_name' => 'Rivera']);
@@ -657,12 +696,13 @@ test('picking a listed teacher to replace sets the replacing-teacher name', func
         ->test(Index::class)
         ->call('edit', $school->id)
         ->set('edit_is_replacing_teacher', true)
-        ->set('edit_replacing_teacher_name', $otherUser->name)
+        ->set('edit_replaced_teacher_id', (string) $otherTeacher->id)
         ->call('saveEdit')
         ->assertHasNoErrors();
 
     $pivot = $user->teacher->schools()->find($school->id)->pivot;
     expect($pivot->replacing_teacher_name)->toBe($otherUser->name);
+    expect($pivot->replaced_teacher_id)->toBe($otherTeacher->id);
 });
 
 test('the replacing-teacher dropdown shows "No teachers found" and is disabled when the school has no other teachers', function () {
@@ -678,7 +718,7 @@ test('the replacing-teacher dropdown shows "No teachers found" and is disabled w
         ->assertSee('No teachers found')
         ->assertDontSee('Select a teacher...');
 
-    $selectTag = Str::match('/<select[^>]*wire:model\.live="edit_replacing_teacher_name"[^>]*>/', $component->html());
+    $selectTag = Str::match('/<select[^>]*wire:model\.live="edit_replaced_teacher_id"[^>]*>/', $component->html());
     expect($selectTag)->toContain('disabled');
 });
 
@@ -1119,4 +1159,40 @@ test('revokeCoTeacherGrant cannot revoke a grant made by another teacher', funct
     })->toThrow(ModelNotFoundException::class);
 
     expect(CoTeacherGrant::find($grant->id))->not->toBeNull();
+});
+
+test('editing a school whose replacement was already processed does not re-run the transfer', function () {
+    $user = makeOnboardedTeacherUser();
+    $school = School::factory()->create();
+    $formerUser = User::factory()->create(['first_name' => 'Pat', 'last_name' => 'Former']);
+    $former = Teacher::factory()->create(['user_id' => $formerUser->id]);
+    $former->schools()->attach($school, ['role' => 'primary', 'is_active' => false]);
+
+    $student = Student::factory()->create();
+    $school->students()->attach($student->id, ['is_active' => true, 'class_of' => ClassOfCalculator::classOfFromGrade(11, $school->senior_year)]);
+    StudentTeacher::create([
+        'student_id' => $student->id, 'teacher_id' => $former->id, 'school_id' => $school->id,
+        'subject' => 'chorus', 'role' => 'primary', 'is_active' => true,
+    ]);
+
+    // As the migration leaves prod's existing replacement rows: legacy typed
+    // name, verified, stamped as already processed.
+    $user->teacher->schools()->attach($school, [
+        'role' => 'primary',
+        'is_active' => true,
+        'school_email' => $user->email,
+        'verified_at' => now()->subMonth(),
+        'replacing_teacher_name' => $formerUser->name,
+        'replacement_transferred_at' => now()->subMonth(),
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('edit', $school->id)
+        ->set('edit_city', 'Elsewhere')
+        ->call('saveEdit')
+        ->assertHasNoErrors()
+        ->assertDispatched('toast-show', slots: ['text' => "{$school->name} updated successfully."]);
+
+    expect(StudentTeacher::where('student_id', $student->id)->value('teacher_id'))->toBe($former->id);
 });

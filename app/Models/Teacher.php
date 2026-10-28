@@ -46,7 +46,7 @@ class Teacher extends Model
     {
         return $this->belongsToMany(School::class, 'school_teacher')
             ->using(SchoolTeacher::class)
-            ->withPivot(['role', 'replacing_teacher_name', 'is_active', 'school_email', 'verified_at'])
+            ->withPivot(['role', 'replacing_teacher_name', 'replaced_teacher_id', 'is_active', 'school_email', 'verified_at', 'replacement_transferred_at'])
             ->withTimestamps();
     }
 

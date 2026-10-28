@@ -7,7 +7,6 @@ namespace App\Livewire\Founder;
 use App\Mail\SchoolEmailVerificationMail;
 use App\Models\Pivots\SchoolTeacher;
 use App\Models\User;
-use App\Support\ReplacedTeacherStudentTransfer;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Mail;
@@ -71,8 +70,8 @@ class TeacherVerification extends Component
     {
         $pivot = SchoolTeacher::with(['teacher.user', 'school'])->findOrFail($id);
 
+        // SchoolTeacherObserver runs ReplacedTeacherStudentTransfer on this save.
         $pivot->update(['verified_at' => now()]);
-        ReplacedTeacherStudentTransfer::transfer($pivot);
 
         $name = $pivot->teacher->user->first_name.' '.$pivot->teacher->user->last_name;
         Flux::toast(text: "{$name} manually verified at {$pivot->school->name}.", variant: 'success');

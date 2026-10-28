@@ -311,15 +311,20 @@
                     @php($replacingTeacherOptions = $this->replacingTeacherOptions())
 
                     <flux:select
-                        wire:model.live="edit_replacing_teacher_name"
+                        wire:model.live="edit_replaced_teacher_id"
                         label="Name of the teacher you're replacing"
                         placeholder="{{ $replacingTeacherOptions->isEmpty() ? 'No teachers found' : 'Select a teacher...' }}"
                         :disabled="$replacingTeacherOptions->isEmpty()"
                     >
-                        @foreach ($replacingTeacherOptions as $name)
-                            <flux:select.option value="{{ $name }}">{{ $name }}</flux:select.option>
+                        @foreach ($replacingTeacherOptions as $teacherId => $name)
+                            <flux:select.option value="{{ $teacherId }}">{{ $name }}</flux:select.option>
                         @endforeach
                     </flux:select>
+
+                    {{-- No "previously entered — pick to confirm" nudge for legacy typed names
+                         yet: picking runs the transfer immediately, and those schools' stuck
+                         rosters are being repaired with notice first (replaced-teacher-transfer-fix
+                         Phase 2). Revisit once Phase 2 is done. --}}
                 @endif
             @endif
 
