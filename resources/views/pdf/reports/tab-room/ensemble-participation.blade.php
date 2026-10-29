@@ -20,6 +20,9 @@
                     <th>School</th>
                     <th>Teacher</th>
                     <th>Emergency Contact</th>
+                    @foreach ($extraColumns as $column)
+                        <th>{{ $column['label'] }}</th>
+                    @endforeach
                     <th>Total</th>
                 </tr>
             </thead>
@@ -40,6 +43,9 @@
                                 <div class="contact-detail">{{ $row['candidate']->emergencyContact->preferred_phone }}</div>
                             @endif
                         </td>
+                        @foreach ($extraColumns as $column)
+                            <td>{{ $column['value']($row['candidate']) ?: '—' }}</td>
+                        @endforeach
                         <td>{{ $row['total'] }}</td>
                     </tr>
                 @endforeach
