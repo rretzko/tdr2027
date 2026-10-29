@@ -105,6 +105,27 @@ test('EnsembleParticipationExportController renders PDF and CSV', function () {
         ->assertHeader('content-type', 'text/csv; charset=UTF-8');
 });
 
+test('EnsembleParticipationExportController adds a column per enabled Version requirement flag', function () {
+    ['manager' => $manager, 'version' => $version, 'ensemble' => $ensemble] = makeTabRoomExportScenario();
+    $version->update(['birthday' => false, 'height' => false, 'shirt_size' => true, 'home_address' => true, 'teacher_cell' => false, 'emergency_contact_email' => false]);
+
+    $csv = get(route('events.versions.tab-room.reports.ensemble-participation.export', ['version' => $version, 'ensemble_id' => $ensemble->id, 'format' => 'csv']))
+        ->assertOk()
+        ->streamedContent();
+
+    $header = (string) strtok((string) $csv, "\n");
+
+    expect($header)->toContain('Shirt Size', 'Home Address');
+
+    foreach (['Birthday', 'Height', 'Teacher Cell', 'Emergency Email'] as $disabled) {
+        expect($header)->not->toContain($disabled);
+    }
+
+    get(route('events.versions.tab-room.reports.ensemble-participation.export', ['version' => $version, 'ensemble_id' => $ensemble->id, 'format' => 'pdf']))
+        ->assertOk()
+        ->assertHeader('content-type', 'application/pdf');
+});
+
 test('StudentSeniorityExportController renders PDF and CSV', function () {
     ['manager' => $manager, 'version' => $version, 'ensemble' => $ensemble] = makeTabRoomExportScenario();
 

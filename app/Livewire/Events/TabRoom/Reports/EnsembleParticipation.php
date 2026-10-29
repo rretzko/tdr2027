@@ -9,6 +9,7 @@ use App\Models\Version;
 use App\Services\EnsembleCutoffService;
 use App\Services\TabRoomReportService;
 use App\Services\VersionRoleAssignmentService;
+use App\Support\Reports\EnsembleParticipationColumns;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -41,6 +42,7 @@ class EnsembleParticipation extends Component
         return view('livewire.events.tab-room.reports.ensemble-participation', [
             'ensembles' => $this->version->ensembleOrder->map(fn ($order) => $order->ensemble),
             'rows' => $ensemble !== null ? $reports->ensembleParticipationRows($this->version, $ensemble, $cutoffs) : collect(),
+            'extraColumns' => EnsembleParticipationColumns::for($this->version),
         ]);
     }
 }

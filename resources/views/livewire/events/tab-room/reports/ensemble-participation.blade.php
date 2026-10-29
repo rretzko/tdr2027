@@ -56,6 +56,9 @@
                         <div>{{ $row['candidate']->school->name ?? '—' }} — Grade {{ $row['candidate']->student->grade ?? '—' }}</div>
                         <div>{{ $row['candidate']->teacher->user->name }} ({{ $row['candidate']->teacher->user->email }})</div>
                         <div>Emergency: {{ $row['candidate']->emergencyContact->name ?? '—' }} {{ $row['candidate']->emergencyContact->preferred_phone ?? '' }}</div>
+                        @foreach ($extraColumns as $column)
+                            <div>{{ $column['label'] }}: {{ $column['value']($row['candidate']) ?: '—' }}</div>
+                        @endforeach
                         <div>Total: {{ $row['total'] }}</div>
                     </div>
                 </flux:card>
@@ -71,6 +74,9 @@
                     <flux:table.column>School</flux:table.column>
                     <flux:table.column>Teacher</flux:table.column>
                     <flux:table.column>Emergency Contact</flux:table.column>
+                    @foreach ($extraColumns as $column)
+                        <flux:table.column>{{ $column['label'] }}</flux:table.column>
+                    @endforeach
                     <flux:table.column align="center">Total</flux:table.column>
                 </flux:table.columns>
 
@@ -91,6 +97,9 @@
                                     <flux:text size="sm" class="text-zinc-500 block">{{ $row['candidate']->emergencyContact->preferred_phone }}</flux:text>
                                 @endif
                             </flux:table.cell>
+                            @foreach ($extraColumns as $column)
+                                <flux:table.cell>{{ $column['value']($row['candidate']) ?: '—' }}</flux:table.cell>
+                            @endforeach
                             <flux:table.cell align="center" class="tabular-nums">{{ $row['total'] }}</flux:table.cell>
                         </flux:table.row>
                     @endforeach

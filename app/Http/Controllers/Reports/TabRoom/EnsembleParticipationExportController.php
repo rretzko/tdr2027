@@ -11,6 +11,7 @@ use App\Services\EnsembleCutoffService;
 use App\Services\TabRoomReportService;
 use App\Services\VersionRoleAssignmentService;
 use App\Support\Reports\CsvExport;
+use App\Support\Reports\EnsembleParticipationColumns;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -25,9 +26,10 @@ class EnsembleParticipationExportController extends Controller
 
         $ensemble = Ensemble::findOrFail($request->query('ensemble_id'));
         $rows = $reports->ensembleParticipationRows($version, $ensemble, $cutoffs);
+        $extraColumns = EnsembleParticipationColumns::for($version);
 
         if ($format === 'csv') {
-            $headers = ['Candidate #', 'Student', 'Grade', 'Voice Part', 'School', 'Teacher', 'Teacher Email', 'Emergency Contact', 'Emergency Phone', 'Total'];
+            $headers = ['Candidate #', 'Student', 'Grade', 'Voice Part', 'School', 'Teacher', 'Teacher Email', 'Emergency Contact', 'Emergency Phone', ...array_column($extraColumns, 'label'), 'Total'];
 
             return CsvExport::stream(
                 "ensemble-participation-{$ensemble->id}.csv",
@@ -42,6 +44,7 @@ class EnsembleParticipationExportController extends Controller
                     $row['candidate']->teacher->user->email,
                     $row['candidate']->emergencyContact->name ?? '',
                     $row['candidate']->emergencyContact->preferred_phone ?? '',
+                    ...array_map(fn (array $column): string => $column['value']($row['candidate']), $extraColumns),
                     $row['total'],
                 ]),
             );
@@ -51,6 +54,7 @@ class EnsembleParticipationExportController extends Controller
             'version' => $version,
             'ensemble' => $ensemble,
             'rows' => $rows,
+            'extraColumns' => $extraColumns,
         ])->setPaper('letter', 'landscape')->stream("ensemble-participation-{$ensemble->id}.pdf");
     }
 }

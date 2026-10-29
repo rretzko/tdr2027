@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Enums\CandidateStatus;
+use App\Enums\ShirtSize;
 use App\Livewire\Events\TabRoom\Reports\EnsembleParticipation;
 use App\Models\Candidate;
 use App\Models\Ensemble;
@@ -56,4 +57,25 @@ test('choosing an Ensemble lists only its accepted members with contact info', f
         ->set('ensembleId', $ensemble->id)
         ->assertSee($accepted->student->user->sort_name)
         ->assertDontSee($notAccepted->student->user->sort_name);
+});
+
+test('adds a column for each requirement flag enabled on the Version, and none for disabled ones', function () {
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active', 'shirt_size' => true, 'height' => false]);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    $ensemble = Ensemble::factory()->create(['event_id' => $event->id]);
+    $voicePart = VoicePart::factory()->create();
+    $candidate = Candidate::factory()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'status' => CandidateStatus::Accepted, 'accepted_ensemble_id' => $ensemble->id]);
+    $candidate->student->update(['shirt_size' => ShirtSize::XL, 'height' => 70]);
+
+    Livewire::actingAs($manager)
+        ->test(EnsembleParticipation::class, ['version' => $version])
+        ->set('ensembleId', $ensemble->id)
+        ->assertSee('Shirt Size')
+        ->assertSee('X-Large')
+        ->assertDontSee('Height')
+        ->assertDontSee('70"', false);
 });
