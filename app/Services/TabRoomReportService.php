@@ -501,7 +501,7 @@ final class TabRoomReportService
 
         // Not cached directly — see hydrateCandidateRows()'s docblock.
         $candidatesById = Candidate::whereIn('id', $cached->pluck('candidate_id'))
-            ->with(['student.user', 'school', 'teacher.user', 'emergencyContact', 'voicePart'])
+            ->with(['student.user', 'student.homeAddress', 'school', 'teacher.user', 'emergencyContact', 'voicePart'])
             ->get()
             ->keyBy('id');
 
