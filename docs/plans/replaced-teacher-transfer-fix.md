@@ -117,6 +117,27 @@ post-verification old-teacher links (East Brunswick, Pequannock, Somerville, UCV
 3. Backfill initial `candidate_status_history` rows for the observer-bypassed batches
    (2026-10-08 07:16:16, 2026-10-11 16:50:50).
 
+## Status / to-dos (end of 2026-10-28)
+
+Phase 1 **deployed to production** 2026-10-28: commit 71a3d23, dev merge a5ddaea, main 21dd72f
+(Vapor deployment 7574424). Prod SQL applied and verified (columns present, 10 rows stamped,
+migration recorded). Staging migrated too.
+
+- [ ] Smoke-check prod: a teacher (e.g. Ebersole) opens/edits a school on the Schools page without error.
+- [ ] Olivia Liebnitz: issue the Square refund for txn 672 (Square shows delayed_until 2026-11-02);
+      check txn 672 shows `refunded` (if not, CJMEA's Square webhook subscription likely lacks
+      `refund.updated`; set 672 to `refunded` manually, don't also add a manual Refund entry).
+- [ ] Then merge Liebnitz 21156 (keeper) ← 19794 with the *new* merge service (keeps 88-6973 +
+      moves txn 672/673 allocations), and deactivate Williams's student_teacher link.
+- [ ] Restore merge-students WIP: `git checkout feature/merge-students-keep-candidates && git stash pop`
+      (`stash@{0}`), finish + add the moved-school `school_student` guard (Phase 3 step 2), deploy.
+- [ ] Answer open decisions below, then build Phase 2's `teachers:transfer-replaced` command.
+- [ ] Phase 2 per-school repairs in order (Robbinsville → Frelinghuysen → Newton → Lazar MS → rest).
+- [ ] Look into teacher 208 @ school 4286 (bulk-insert row) and the source of post-verification
+      old-teacher links (East Brunswick, Pequannock, Somerville, UCVTS).
+- [ ] After Phase 2: restore the "Previously entered — pick to confirm" nudge on the Schools page.
+- [ ] Phase 3 merges (table above), then Phase 4 after the v88/v93/v97 registration windows close.
+
 ## Open decisions
 
 1. Newton: invite Abdallah to v88, or leave candidates with Malloy?
