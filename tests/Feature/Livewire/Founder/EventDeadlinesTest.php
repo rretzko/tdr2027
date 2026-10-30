@@ -2,13 +2,17 @@
 
 declare(strict_types=1);
 
+use App\Enums\CandidateStatus;
 use App\Enums\EventStatus;
 use App\Enums\VersionDateType;
 use App\Livewire\Founder\EventDeadlines;
+use App\Models\Candidate;
+use App\Models\Ensemble;
 use App\Models\Event;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionDate;
+use App\Models\VersionEnsembleOrder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -84,4 +88,49 @@ test('the next upcoming deadline is listed before a past deadline', function () 
         ->html();
 
     expect(strpos($html, 'Postmark Deadline'))->toBeLessThan(strpos($html, 'Teacher Access'));
+});
+
+test('registrant count includes registered and every later status so it holds steady after results', function () {
+    $founder = makeEventDeadlinesFounder();
+    $version = Version::factory()->create(['name' => 'Counted Version', 'status' => EventStatus::Active]);
+
+    // Counted: Registered plus each post-registration outcome
+    Candidate::factory()->count(2)->create(['version_id' => $version->id, 'status' => CandidateStatus::Registered]);
+    foreach ([CandidateStatus::Adjudicated, CandidateStatus::NoShow, CandidateStatus::Incomplete, CandidateStatus::Accepted, CandidateStatus::NotAccepted, CandidateStatus::Declined] as $status) {
+        Candidate::factory()->create(['version_id' => $version->id, 'status' => $status]);
+    }
+
+    // Not counted: never registered, or withdrawn/removed
+    foreach ([CandidateStatus::Eligible, CandidateStatus::Pending, CandidateStatus::Withdrew, CandidateStatus::TeacherWithdrawn, CandidateStatus::Removed] as $status) {
+        Candidate::factory()->create(['version_id' => $version->id, 'status' => $status]);
+    }
+
+    Livewire::actingAs($founder)
+        ->test(EventDeadlines::class)
+        ->assertSeeInOrder(['Counted Version', 'Registrant Count:', '8', 'Accepted:']);
+});
+
+test('each version shows accepted counts per ensemble in tab room order, zero before results', function () {
+    $founder = makeEventDeadlinesFounder();
+    $event = Event::factory()->create();
+    $version = Version::factory()->for($event)->create(['name' => 'Results Version', 'status' => EventStatus::Active]);
+    $mixed = Ensemble::factory()->create(['event_id' => $event->id, 'name' => 'Mixed Chorus']);
+    $treble = Ensemble::factory()->create(['event_id' => $event->id, 'name' => 'Treble Chorus']);
+    VersionEnsembleOrder::create(['version_id' => $version->id, 'ensemble_id' => $treble->id, 'order_by' => 1]);
+    VersionEnsembleOrder::create(['version_id' => $version->id, 'ensemble_id' => $mixed->id, 'order_by' => 2]);
+
+    Candidate::factory()->count(2)->create(['version_id' => $version->id, 'status' => CandidateStatus::Accepted, 'accepted_ensemble_id' => $treble->id]);
+    Candidate::factory()->create(['version_id' => $version->id, 'status' => CandidateStatus::NotAccepted]);
+    Candidate::factory()->create(['version_id' => $version->id, 'status' => CandidateStatus::Registered]);
+
+    Livewire::actingAs($founder)
+        ->test(EventDeadlines::class)
+        ->assertViewHas('accepted', fn (array $accepted): bool => $accepted[$version->id] === [
+            'total' => 2,
+            'ensembles' => [
+                ['name' => 'Treble Chorus', 'count' => 2],
+                ['name' => 'Mixed Chorus', 'count' => 0],
+            ],
+        ])
+        ->assertSeeInOrder(['Accepted:', '2', 'Treble Chorus', '2', 'Mixed Chorus', '0']);
 });

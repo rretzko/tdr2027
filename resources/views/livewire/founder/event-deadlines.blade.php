@@ -56,6 +56,28 @@
                                     @endforeach
                                 </ul>
                             @endif
+
+                            <div class="mt-2 flex items-center justify-between gap-3 border-t border-zinc-200 pt-2 text-sm text-zinc-800 dark:border-zinc-700 dark:text-zinc-100">
+                                <span>Registrant Count:</span>
+                                <span class="font-semibold">{{ number_format($version->registrant_count) }}</span>
+                            </div>
+
+                            <div class="mt-1.5 flex items-center justify-between gap-3 text-sm text-zinc-800 dark:text-zinc-100">
+                                <span>Accepted:</span>
+                                <span class="font-semibold">{{ number_format($accepted[$version->id]['total']) }}</span>
+                            </div>
+                            @if ($accepted[$version->id]['ensembles'] === [])
+                                <flux:text size="sm" class="mt-1 pl-4 text-zinc-500">No ensembles configured yet.</flux:text>
+                            @else
+                                <ul class="mt-1 flex flex-col gap-1 pl-4">
+                                    @foreach ($accepted[$version->id]['ensembles'] as $ensemble)
+                                        <li class="flex items-center justify-between gap-3 text-sm text-zinc-600 dark:text-zinc-300">
+                                            <span>{{ $ensemble['name'] }}</span>
+                                            <span>{{ number_format($ensemble['count']) }}</span>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            @endif
                         </div>
                     @endforeach
                 </div>
