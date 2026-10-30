@@ -1,6 +1,6 @@
 # To-do: MergeStudents loses candidates and payment allocations
 
-Status: **open** (logged 2026-10-26)
+Status: **fixed** (logged 2026-10-26; first fix 634d1ae on main 2026-10-30, same-version rule from the 2026-10-27 WIP merged in on `feature/merge-students-same-version-rule`)
 
 ## Problem
 
@@ -38,17 +38,48 @@ VALUES
   (504, 888720, 2800, NULL, '2026-10-24 20:55:00', NOW(), NOW());
 ```
 
-- [ ] Run the restore in prod and verify on teacher 285's v88 Registrations page
+- [x] Run the restore in prod and verify on teacher 285's v88 Registrations page (done 2026-10-27; allocation id 679 confirmed on local prod copy)
 
 ## Fix in `performMerge()` (feature branch off dev)
 
-- [ ] Reassign `payment_transactions.payer_student_id` loser → winner
-- [ ] Reassign the loser's `candidates` to the winner when the winner has no candidate in that version
-- [ ] When both have a candidate in the same version: decide which one survives and move
+- [x] Reassign `payment_transactions.payer_student_id` loser → winner
+- [x] Reassign the loser's `candidates` to the winner when the winner has no candidate in that version (plus `scores.student_id`, which also cascades on Student delete)
+- [x] When both have a candidate in the same version: decide which one survives and move
       `payment_allocations` (and other candidate children) onto it before deleting the other
-- [ ] Audit all other FKs to `candidates` / `students` with `cascadeOnDelete()` for similar data loss
-- [ ] Apply the same handling to the `MergeStudents` console command (`app/Console/Commands/MergeStudents.php`)
-- [ ] Tests: merge with a paid candidate on the loser keeps the allocation and the dashboard Paid amount
-- [ ] Look for other past merges with orphaned payments:
+- [x] Audit all other FKs to `candidates` / `students` with `cascadeOnDelete()` for similar data loss
+- [x] Apply the same handling to the `MergeStudents` console command (`app/Console/Commands/MergeStudents.php`)
+- [x] Tests: merge with a paid candidate on the loser keeps the allocation and the dashboard Paid amount
+- [x] Look for other past merges with orphaned payments:
       `SELECT * FROM payment_transactions WHERE payer_student_id IS NULL AND payer_teacher_id IS NULL;`
       and transactions where the allocated total is less than `amount`
+
+## Resolution (2026-10-27)
+
+Both entry points now call `App\Services\StudentMergeService`.
+
+- Same-version conflict rule (user decision): the winner's Candidate survives and the
+  loser's `payment_allocations` move onto it. If the loser's Candidate there has
+  `scores`, `recordings`, `candidate_upload_files` or `audition_results`, the merge is
+  refused before any write. The Founder page shows a danger toast naming the Version(s)
+  and the command exits FAILURE.
+- FK audit (local prod copy): cascades from `candidates` are audition_results,
+  candidate_payments (legacy, empty), candidate_status_history, candidate_upload_files,
+  payment_allocations, recordings, scores. From `students`: candidates and scores cascade,
+  payment_transactions sets null, the rest restrict. All are now handled.
+- History check: the only payerless transaction is 499, an *expired* $28 v88 checkout
+  with nothing paid. No completed transaction is under-allocated, so no other merge lost money.
+- 64 same-name groups have Candidates on both sides in one Version (37 with payments),
+  so the conflict path will be exercised.
+
+## Final shape (2026-10-30)
+
+The 2026-10-27 WIP sat in a stash while a separate fix (634d1ae) shipped to main. That fix
+refused *every* same-Version pair; this branch restores the rule above and keeps what 634d1ae added:
+
+- Before the loser's User is deleted, `recordings.uploaded_by` (CASCADE),
+  `candidate_status_history.user_id` (RESTRICT — would roll back the whole merge),
+  `candidate_upload_files.uploaded_by_user_id` and `payment_transactions.recorded_by_user_id`
+  move to the winner's User.
+- The winner's null `birthday`/`height`/`instrument_id`/`voice_part_id`/`home_school_id`
+  are filled from the loser.
+- `assertMergeable()` lets the command refuse before its confirmation prompt.

@@ -129,8 +129,9 @@ migration recorded). Staging migrated too.
       `refund.updated`; set 672 to `refunded` manually, don't also add a manual Refund entry).
 - [ ] Then merge Liebnitz 21156 (keeper) ← 19794 with the *new* merge service (keeps 88-6973 +
       moves txn 672/673 allocations), and deactivate Williams's student_teacher link.
-- [ ] Restore merge-students WIP: `git checkout feature/merge-students-keep-candidates && git stash pop`
-      (`stash@{0}`), finish + add the moved-school `school_student` guard (Phase 3 step 2), deploy.
+- [x] Restore merge-students WIP (`stash@{0}`): folded into `StudentMergeService` on
+      `feature/merge-students-same-version-rule` (2026-10-30).
+- [ ] Add the moved-school `school_student` guard (Phase 3 step 2) to `StudentMergeService`, deploy.
 - [ ] Answer open decisions below, then build Phase 2's `teachers:transfer-replaced` command.
 - [ ] Phase 2 per-school repairs in order (Robbinsville → Frelinghuysen → Newton → Lazar MS → rest).
 - [ ] Look into teacher 208 @ school 4286 (bulk-insert row) and the source of post-verification
