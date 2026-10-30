@@ -109,4 +109,21 @@ enum CandidateStatus: string
     {
         return [self::Registered, self::NoShow, self::Incomplete, self::Accepted, self::NotAccepted];
     }
+
+    /**
+     * Every Candidate who registered, whatever happened after — Registered
+     * itself plus each later state (adjudication, Ensemble Cut-offs, and an
+     * accepted student declining). Keeps a registrant headcount steady once
+     * results are released instead of draining as Registered resolves.
+     * Withdrawals and removals are excluded.
+     *
+     * @return list<self>
+     */
+    public static function registrantStates(): array
+    {
+        return [
+            self::Registered, self::Adjudicated, self::NoShow, self::Incomplete,
+            self::Accepted, self::NotAccepted, self::Declined,
+        ];
+    }
 }
