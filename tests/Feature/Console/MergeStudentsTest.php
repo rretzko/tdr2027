@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Console;
 
+use App\Models\Candidate;
 use App\Models\EmergencyContact;
 use App\Models\HomeAddress;
+use App\Models\PaymentAllocation;
+use App\Models\PaymentTransaction;
 use App\Models\School;
 use App\Models\Student;
 use App\Models\Teacher;
-use App\Models\User;
+use App\Models\Version;
+use App\Models\VoicePart;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -228,6 +232,139 @@ class MergeStudentsTest extends TestCase
 
         $this->assertDatabaseHas('home_addresses', ['student_id' => $winner->id, 'address1' => '1 Winner Lane']);
         $this->assertDatabaseMissing('home_addresses', ['student_id' => $loser->id]);
+    }
+
+    // -----------------------------------------------------------------------
+    // candidates / scores / payments
+    // -----------------------------------------------------------------------
+
+    public function test_reassigns_loser_candidates_to_winner_with_their_child_rows(): void
+    {
+        $winner = $this->makeStudent('Canonical', 'Xyzzyx');
+        $loser = $this->makeStudent('Duplicate', 'Xyzzyx');
+        $candidate = Candidate::factory()->create(['student_id' => $loser->id]);
+
+        // CandidateObserver::created() writes the initial status-history row
+        $this->assertSame(1, DB::table('candidate_status_history')->where('candidate_id', $candidate->id)->count());
+
+        $this->artisan('students:merge', ['winner' => $winner->id, 'loser' => $loser->id, '--force' => true])
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('candidates', ['id' => $candidate->id, 'student_id' => $winner->id]);
+        $this->assertSame(1, DB::table('candidate_status_history')->where('candidate_id', $candidate->id)->count());
+    }
+
+    public function test_candidate_recordings_and_payments_survive_the_merge(): void
+    {
+        $winner = $this->makeStudent('Canonical', 'Xyzzyx');
+        $loser = $this->makeStudent('Duplicate', 'Xyzzyx');
+        $candidate = Candidate::factory()->create(['student_id' => $loser->id]);
+        $teacherUserId = Teacher::factory()->create()->user_id;
+
+        $recordingId = DB::table('recordings')->insertGetId([
+            'version_id' => $candidate->version_id,
+            'candidate_id' => $candidate->id,
+            'file_type' => 'solo',
+            'uploaded_by' => $teacherUserId,
+            'url' => "candidateUploads/{$candidate->id}/solo.m4a",
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $allocation = PaymentAllocation::factory()->create(['candidate_id' => $candidate->id]);
+
+        $this->artisan('students:merge', ['winner' => $winner->id, 'loser' => $loser->id, '--force' => true])
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('candidates', ['id' => $candidate->id, 'student_id' => $winner->id]);
+        $this->assertDatabaseHas('recordings', ['id' => $recordingId, 'candidate_id' => $candidate->id]);
+        $this->assertDatabaseHas('payment_allocations', ['id' => $allocation->id, 'candidate_id' => $candidate->id]);
+    }
+
+    public function test_activity_by_the_loser_user_is_reassigned_to_the_winner_user(): void
+    {
+        $winner = $this->makeStudent('Canonical', 'Xyzzyx');
+        $loser = $this->makeStudent('Duplicate', 'Xyzzyx');
+        $candidate = Candidate::factory()->create(['student_id' => $loser->id]);
+
+        // The student uploaded their own recording (cascades on User delete) and
+        // changed a status (RESTRICT on User delete — would abort the merge).
+        $recordingId = DB::table('recordings')->insertGetId([
+            'version_id' => $candidate->version_id,
+            'candidate_id' => $candidate->id,
+            'file_type' => 'solo',
+            'uploaded_by' => $loser->user_id,
+            'url' => "candidateUploads/{$candidate->id}/solo.m4a",
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $historyId = DB::table('candidate_status_history')->insertGetId([
+            'candidate_id' => $candidate->id,
+            'from_status' => 'eligible',
+            'to_status' => 'registered',
+            'user_id' => $loser->user_id,
+            'created_at' => now(),
+        ]);
+
+        $this->artisan('students:merge', ['winner' => $winner->id, 'loser' => $loser->id, '--force' => true])
+            ->assertSuccessful();
+
+        $this->assertDatabaseMissing('users', ['id' => $loser->user_id]);
+        $this->assertDatabaseHas('recordings', ['id' => $recordingId, 'uploaded_by' => $winner->user_id]);
+        $this->assertDatabaseHas('candidate_status_history', ['id' => $historyId, 'user_id' => $winner->user_id]);
+    }
+
+    public function test_refuses_merge_when_both_students_have_a_candidate_in_the_same_version(): void
+    {
+        $winner = $this->makeStudent('Canonical', 'Xyzzyx');
+        $loser = $this->makeStudent('Duplicate', 'Xyzzyx');
+        $version = Version::factory()->create();
+        $winnerCandidate = Candidate::factory()->create(['student_id' => $winner->id, 'version_id' => $version->id]);
+        $loserCandidate = Candidate::factory()->create(['student_id' => $loser->id, 'version_id' => $version->id]);
+
+        $this->artisan('students:merge', ['winner' => $winner->id, 'loser' => $loser->id, '--force' => true])
+            ->expectsOutputToContain((string) $version->id)
+            ->assertFailed();
+
+        $this->assertDatabaseHas('students', ['id' => $loser->id]);
+        $this->assertDatabaseHas('candidates', ['id' => $winnerCandidate->id, 'student_id' => $winner->id]);
+        $this->assertDatabaseHas('candidates', ['id' => $loserCandidate->id, 'student_id' => $loser->id]);
+    }
+
+    public function test_reassigns_payment_transactions_paid_by_loser(): void
+    {
+        $winner = $this->makeStudent('Canonical', 'Xyzzyx');
+        $loser = $this->makeStudent('Duplicate', 'Xyzzyx');
+        $transaction = PaymentTransaction::factory()->create(['payer_student_id' => $loser->id]);
+
+        $this->artisan('students:merge', ['winner' => $winner->id, 'loser' => $loser->id, '--force' => true])
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('payment_transactions', ['id' => $transaction->id, 'payer_student_id' => $winner->id]);
+    }
+
+    // -----------------------------------------------------------------------
+    // Student profile fields
+    // -----------------------------------------------------------------------
+
+    public function test_fills_winner_blank_profile_fields_from_loser_without_overwriting(): void
+    {
+        $winner = $this->makeStudent('Canonical', 'Xyzzyx');
+        $loser = $this->makeStudent('Duplicate', 'Xyzzyx');
+        $voicePart = VoicePart::factory()->create();
+
+        // Raw writes: the date cast would store '2012-07-31 00:00:00' in SQLite
+        DB::table('students')->where('id', $winner->id)->update(['birthday' => null, 'height' => 60, 'voice_part_id' => null]);
+        DB::table('students')->where('id', $loser->id)->update(['birthday' => '2012-07-31', 'height' => 72, 'voice_part_id' => $voicePart->id]);
+
+        $this->artisan('students:merge', ['winner' => $winner->id, 'loser' => $loser->id, '--force' => true])
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('students', [
+            'id' => $winner->id,
+            'birthday' => '2012-07-31',
+            'voice_part_id' => $voicePart->id,
+            'height' => 60,
+        ]);
     }
 
     // -----------------------------------------------------------------------

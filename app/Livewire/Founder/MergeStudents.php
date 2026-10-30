@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\Founder;
 
 use App\Models\Student;
-use App\Models\User;
+use App\Services\StudentMergeService;
 use Carbon\Carbon;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
@@ -157,9 +157,14 @@ class MergeStudents extends Component
 
         $loserName = $loser->user->first_name.' '.$loser->user->last_name;
 
-        DB::transaction(function () use ($winner, $loser): void {
-            $this->performMerge($winner, $loser);
-        });
+        try {
+            app(StudentMergeService::class)->merge($winner, $loser);
+        } catch (\DomainException $e) {
+            $this->modal('merge-confirm')->close();
+            Flux::toast(variant: 'danger', text: $e->getMessage());
+
+            return;
+        }
 
         $this->modal('merge-confirm')->close();
 
@@ -170,61 +175,6 @@ class MergeStudents extends Component
         unset($this->winner, $this->loser);
 
         Flux::toast(variant: 'success', text: "{$loserName} merged and deleted successfully.");
-    }
-
-    private function performMerge(Student $winner, Student $loser): void
-    {
-        // school_student — unique on (student_id, school_id)
-        $winnerSchoolIds = DB::table('school_student')
-            ->where('student_id', $winner->id)
-            ->pluck('school_id')
-            ->all();
-
-        foreach (DB::table('school_student')->where('student_id', $loser->id)->get() as $row) {
-            if (in_array($row->school_id, $winnerSchoolIds, true)) {
-                DB::table('school_student')->where('id', $row->id)->delete();
-            } else {
-                DB::table('school_student')->where('id', $row->id)->update(['student_id' => $winner->id]);
-            }
-        }
-
-        // student_teacher — unique on (student_id, teacher_id, school_id, subject)
-        $winnerKeys = DB::table('student_teacher')
-            ->where('student_id', $winner->id)
-            ->get(['teacher_id', 'school_id', 'subject'])
-            ->map(fn (object $r): string => "{$r->teacher_id}:{$r->school_id}:{$r->subject}")
-            ->all();
-
-        foreach (DB::table('student_teacher')->where('student_id', $loser->id)->get() as $row) {
-            if (in_array("{$row->teacher_id}:{$row->school_id}:{$row->subject}", $winnerKeys, true)) {
-                DB::table('student_teacher')->where('id', $row->id)->delete();
-            } else {
-                DB::table('student_teacher')->where('id', $row->id)->update(['student_id' => $winner->id]);
-            }
-        }
-
-        // emergency_contacts — bypass soft-delete scope so deleted rows are also reassigned
-        DB::table('emergency_contacts')->where('student_id', $loser->id)->update(['student_id' => $winner->id]);
-
-        // home_address — keep winner's if they already have one
-        if ($winner->homeAddress()->exists()) {
-            DB::table('home_addresses')->where('student_id', $loser->id)->delete();
-        } else {
-            DB::table('home_addresses')->where('student_id', $loser->id)->update(['student_id' => $winner->id]);
-        }
-
-        // Delete loser Student, then its User if it has no Teacher record
-        $loserUserId = $loser->user_id;
-        $loser->delete();
-
-        $loserUser = User::find($loserUserId);
-
-        if ($loserUser !== null && ! $loserUser->teacher()->exists()) {
-            $loserUser->pageVisits()->delete();
-            $loserUser->phones()->delete();
-            $loserUser->socialAccounts()->delete();
-            $loserUser->delete();
-        }
     }
 
     // -----------------------------------------------------------------------
