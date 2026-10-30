@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Models\Student;
 use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -38,45 +39,68 @@ class StudentMergeService
     ];
 
     /**
-     * Version IDs where both students already have a Candidate. The
-     * (version_id, student_id) unique key means those can't be reassigned,
-     * and picking one to discard is a judgement call, so merge() refuses.
+     * Rows hanging off a Candidate that can't be folded into another
+     * Candidate in the same Version (unique slots, adjudication data).
      *
-     * @return array<int, int>
+     * @var list<string>
      */
-    public function conflictingVersionIds(Student $winner, Student $loser): array
+    private const UNMOVABLE_CANDIDATE_CHILDREN = ['scores', 'recordings', 'candidate_upload_files', 'audition_results'];
+
+    /**
+     * Version names where both students have a Candidate and the loser's
+     * carries scores, recordings, uploads or an audition result. Where both
+     * have a Candidate but the loser's has none of those, the winner's
+     * survives and the loser's payments move onto it (user decision,
+     * 2026-10-27); these are the cases that would still lose data, so
+     * merge() refuses while any exist.
+     *
+     * @return list<string>
+     */
+    public function conflicts(Student $winner, Student $loser): array
     {
-        return DB::table('candidates as w')
-            ->join('candidates as l', 'l.version_id', '=', 'w.version_id')
-            ->where('w.student_id', $winner->id)
-            ->where('l.student_id', $loser->id)
-            ->orderBy('w.version_id')
-            ->pluck('w.version_id')
-            ->map(fn ($id): int => (int) $id)
-            ->all();
+        $names = [];
+
+        foreach ($this->sharedVersionCandidates($winner, $loser) as $pair) {
+            $hasChildren = collect(self::UNMOVABLE_CANDIDATE_CHILDREN)
+                ->contains(fn (string $table): bool => DB::table($table)->where('candidate_id', $pair->loser_candidate_id)->exists());
+
+            if ($hasChildren) {
+                $names[] = (string) $pair->version_name;
+            }
+        }
+
+        return $names;
     }
 
     /**
      * @return array<int, array{string, string}> step/result log
      *
-     * @throws \DomainException when both students have a Candidate in the same Version
+     * @throws \DomainException when assertMergeable() fails
      */
     public function merge(Student $winner, Student $loser): array
+    {
+        $this->assertMergeable($winner, $loser);
+
+        return DB::transaction(fn (): array => $this->performMerge($winner, $loser));
+    }
+
+    /**
+     * @throws \DomainException naming the reason the merge would lose data
+     */
+    public function assertMergeable(Student $winner, Student $loser): void
     {
         if ($winner->id === $loser->id) {
             throw new \DomainException('Winner and loser must be different students.');
         }
 
-        $conflicts = $this->conflictingVersionIds($winner, $loser);
+        $conflicts = $this->conflicts($winner, $loser);
 
         if ($conflicts !== []) {
             throw new \DomainException(
-                'Both students have a candidate in Version(s) '.implode(', ', $conflicts)
-                .'. Resolve the duplicate candidate before merging.'
+                'Both students are Candidates in '.implode(', ', $conflicts)
+                .' and the duplicate already has scores, recordings, uploads or results there. Resolve that Candidate first.'
             );
         }
-
-        return DB::transaction(fn (): array => $this->performMerge($winner, $loser));
     }
 
     /**
@@ -142,12 +166,26 @@ class StudentMergeService
             $log[] = ['home_address', 'transferred'];
         }
 
-        // candidates — same-Version conflicts were refused in merge(), so a
-        // straight reassignment can't hit the (version_id, student_id) key.
-        // Child rows (uploads, recordings, history, payments) key on
-        // candidate_id and follow automatically.
-        $count = DB::table('candidates')->where('student_id', $loser->id)->update(['student_id' => $winner->id]);
+        // candidates — unique on (version_id, student_id). Where both have one,
+        // the winner's survives and the loser's payment allocations move onto
+        // it; conflicts() has already ruled out anything else worth keeping.
+        $allocationsMoved = $discarded = 0;
+
+        foreach ($this->sharedVersionCandidates($winner, $loser) as $pair) {
+            $allocationsMoved += DB::table('payment_allocations')
+                ->where('candidate_id', $pair->loser_candidate_id)
+                ->update(['candidate_id' => $pair->winner_candidate_id, 'updated_at' => now()]);
+
+            DB::table('candidates')->where('id', $pair->loser_candidate_id)->delete();
+            $discarded++;
+        }
+
+        // The rest move whole. They keep their IDs, so child rows (uploads,
+        // recordings, history, payments) key on candidate_id and follow.
+        $count = DB::table('candidates')->where('student_id', $loser->id)->update(['student_id' => $winner->id, 'updated_at' => now()]);
         $log[] = ['candidates reassigned', (string) $count];
+        $log[] = ['candidates discarded (winner has one in that Version)', (string) $discarded];
+        $log[] = ['payment_allocations moved to winner candidate', (string) $allocationsMoved];
 
         // scores — denormalised student_id alongside candidate_id; cascades on student delete
         $count = DB::table('scores')->where('student_id', $loser->id)->update(['student_id' => $winner->id]);
@@ -197,5 +235,20 @@ class StudentMergeService
         }
 
         return $log;
+    }
+
+    /**
+     * @return Collection<int, object{winner_candidate_id: int, loser_candidate_id: int, version_name: string}>
+     */
+    private function sharedVersionCandidates(Student $winner, Student $loser): Collection
+    {
+        /** @var Collection<int, object{winner_candidate_id: int, loser_candidate_id: int, version_name: string}> */
+        return DB::table('candidates as lc')
+            ->join('candidates as wc', fn ($join) => $join
+                ->on('wc.version_id', '=', 'lc.version_id')
+                ->where('wc.student_id', '=', $winner->id))
+            ->join('versions as v', 'v.id', '=', 'lc.version_id')
+            ->where('lc.student_id', $loser->id)
+            ->get(['wc.id as winner_candidate_id', 'lc.id as loser_candidate_id', 'v.name as version_name']);
     }
 }

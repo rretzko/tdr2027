@@ -161,7 +161,7 @@ class MergeStudents extends Component
             app(StudentMergeService::class)->merge($winner, $loser);
         } catch (\DomainException $e) {
             $this->modal('merge-confirm')->close();
-            Flux::toast(variant: 'danger', text: $e->getMessage());
+            Flux::toast(variant: 'danger', text: "{$loserName} can't be merged: {$e->getMessage()}");
 
             return;
         }

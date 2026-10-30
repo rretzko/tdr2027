@@ -37,6 +37,15 @@ class MergeStudents extends Command
 
         $this->displaySummary($winner, $loser);
 
+        // Refuse before prompting; merge() repeats the check itself.
+        try {
+            $merger->assertMergeable($winner, $loser);
+        } catch (\DomainException $e) {
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
+        }
+
         if (! $this->option('force') && ! $this->confirm("Merge loser #{$loser->id} into winner #{$winner->id} and permanently delete the loser?")) {
             $this->info('Aborted.');
 

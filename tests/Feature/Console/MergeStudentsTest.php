@@ -9,9 +9,11 @@ use App\Models\EmergencyContact;
 use App\Models\HomeAddress;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
+use App\Models\Recording;
 use App\Models\School;
 use App\Models\Student;
 use App\Models\Teacher;
+use App\Models\User;
 use App\Models\Version;
 use App\Models\VoicePart;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -313,21 +315,45 @@ class MergeStudentsTest extends TestCase
         $this->assertDatabaseHas('candidate_status_history', ['id' => $historyId, 'user_id' => $winner->user_id]);
     }
 
-    public function test_refuses_merge_when_both_students_have_a_candidate_in_the_same_version(): void
+    public function test_fails_without_prompting_when_loser_candidate_has_adjudication_data_in_a_shared_version(): void
+    {
+        $winner = $this->makeStudent('Canonical', 'Xyzzyx');
+        $loser = $this->makeStudent('Duplicate', 'Xyzzyx');
+        $version = Version::factory()->create(['name' => 'Region II Chorus 2027']);
+        $winnerCandidate = Candidate::factory()->create(['student_id' => $winner->id, 'version_id' => $version->id]);
+        $loserCandidate = Candidate::factory()->create(['student_id' => $loser->id, 'version_id' => $version->id]);
+        Recording::create([
+            'version_id' => $version->id,
+            'candidate_id' => $loserCandidate->id,
+            'file_type' => 'Solo',
+            'uploaded_by' => User::factory()->create()->id,
+            'url' => 'recordings/solo.mp3',
+        ]);
+
+        // No --force: the refusal must come before the confirmation prompt
+        $this->artisan('students:merge', ['winner' => $winner->id, 'loser' => $loser->id])
+            ->expectsOutputToContain('Region II Chorus 2027')
+            ->assertFailed();
+
+        $this->assertDatabaseHas('students', ['id' => $loser->id]);
+        $this->assertDatabaseHas('candidates', ['id' => $winnerCandidate->id, 'student_id' => $winner->id]);
+        $this->assertDatabaseHas('candidates', ['id' => $loserCandidate->id, 'student_id' => $loser->id]);
+    }
+
+    public function test_same_version_pair_keeps_winner_candidate_and_moves_loser_allocations_onto_it(): void
     {
         $winner = $this->makeStudent('Canonical', 'Xyzzyx');
         $loser = $this->makeStudent('Duplicate', 'Xyzzyx');
         $version = Version::factory()->create();
         $winnerCandidate = Candidate::factory()->create(['student_id' => $winner->id, 'version_id' => $version->id]);
         $loserCandidate = Candidate::factory()->create(['student_id' => $loser->id, 'version_id' => $version->id]);
+        $allocation = PaymentAllocation::factory()->create(['candidate_id' => $loserCandidate->id]);
 
         $this->artisan('students:merge', ['winner' => $winner->id, 'loser' => $loser->id, '--force' => true])
-            ->expectsOutputToContain((string) $version->id)
-            ->assertFailed();
+            ->assertSuccessful();
 
-        $this->assertDatabaseHas('students', ['id' => $loser->id]);
-        $this->assertDatabaseHas('candidates', ['id' => $winnerCandidate->id, 'student_id' => $winner->id]);
-        $this->assertDatabaseHas('candidates', ['id' => $loserCandidate->id, 'student_id' => $loser->id]);
+        $this->assertDatabaseMissing('candidates', ['id' => $loserCandidate->id]);
+        $this->assertDatabaseHas('payment_allocations', ['id' => $allocation->id, 'candidate_id' => $winnerCandidate->id]);
     }
 
     public function test_reassigns_payment_transactions_paid_by_loser(): void

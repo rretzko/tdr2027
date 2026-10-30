@@ -239,7 +239,7 @@
             </div>
 
             <flux:text size="sm" class="text-zinc-500">
-                The loser's school enrollments, teacher connections, emergency contacts, and home address will be transferred to the winner. The loser's student record and user account will be <strong>permanently deleted</strong>.
+                The loser's school enrollments, teacher connections, emergency contacts, home address, Candidates and payments will be transferred to the winner. Where both are Candidates in the same Version, the winner's Candidate is kept and the loser's payments move onto it. The loser's student record and user account will be <strong>permanently deleted</strong>.
             </flux:text>
 
             <div class="flex justify-end gap-2">
