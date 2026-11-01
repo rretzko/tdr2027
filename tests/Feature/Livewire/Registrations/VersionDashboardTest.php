@@ -41,6 +41,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 use function Pest\Laravel\actingAs;
@@ -1501,4 +1502,29 @@ test('Upcoming Deadlines keeps an in-progress window until its end_at passes, an
         ->test(VersionDashboard::class, ['version' => $version])
         ->assertViewHas('upcomingDates', fn (Collection $dates): bool => $dates->pluck('id')->all() === [$inProgress->id, $future->id])
         ->assertSee('StudentFolder.info dates');
+});
+
+test('the candidate list shows each student\'s email under their name', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    $real = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Registered,
+    ]);
+    $real->student->user->update(['email' => 'real.student@example.com']);
+    $placeholder = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Registered,
+    ]);
+    $placeholder->student->user->update(['email' => Str::uuid().'@studentfolder.info']);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSee('real.student@example.com')
+        ->assertSee('No email address')
+        ->assertDontSee('@studentfolder.info');
 });

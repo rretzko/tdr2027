@@ -371,6 +371,11 @@
                                 @endif
                                 <div>
                                     <flux:heading size="base">{{ $displayName }}</flux:heading>
+                                    @if ($this->hasRealEmail($studentUser->email))
+                                        <flux:text size="sm" class="ms-3 text-zinc-500">{{ $studentUser->email }}</flux:text>
+                                    @else
+                                        <flux:text size="sm" class="ms-3 italic text-zinc-400">No email address</flux:text>
+                                    @endif
                                     @if ($schoolOptions->count() > 1)
                                         <flux:text size="sm" class="text-zinc-500">{{ $candidate->school?->name }}</flux:text>
                                     @endif
@@ -472,7 +477,17 @@
                                     @endif
                                 </flux:table.cell>
                             @endif
-                            <flux:table.cell class="font-medium">{{ $displayName }}</flux:table.cell>
+                            <flux:table.cell>
+                                <div class="font-medium">{{ $displayName }}</div>
+
+                                <div class="mt-0.5 ms-3">
+                                    @if ($this->hasRealEmail($studentUser->email))
+                                        <flux:text size="sm" class="text-zinc-500">{{ $studentUser->email }}</flux:text>
+                                    @else
+                                        <flux:text size="sm" class="italic text-zinc-400">No email address</flux:text>
+                                    @endif
+                                </div>
+                            </flux:table.cell>
                             @if ($schoolOptions->count() > 1)
                                 <flux:table.cell>{{ $candidate->school?->name }}</flux:table.cell>
                             @endif
