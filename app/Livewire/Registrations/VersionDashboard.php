@@ -427,6 +427,15 @@ class VersionDashboard extends Component
         Flux::toast('Payment allocated.', variant: 'success');
     }
 
+    /**
+     * Same rule as the Students roster: a generated @studentfolder.info
+     * placeholder isn't a real address, so it's shown as "No email address".
+     */
+    public function hasRealEmail(?string $email): bool
+    {
+        return $email !== null && ! str_ends_with($email, '@studentfolder.info');
+    }
+
     public function render(CoTeacherAccessService $coTeacherAccess, CoTeacherConsolidationService $coTeacherConsolidation): View
     {
         $teacher = $this->teacher();
