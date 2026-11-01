@@ -1879,3 +1879,132 @@ test('dismissOrientation persists the dismissal for the acting user', function (
 
     expect($user->fresh()->dismissed_students_orientation_at)->not->toBeNull();
 });
+
+/**
+ * Gives an existing roster row's student a second subject with the same teacher at the same school.
+ */
+function addStudentsIndexSubjectRow(StudentTeacher $row, string $subject): StudentTeacher
+{
+    return StudentTeacher::create([
+        'student_id' => $row->student_id,
+        'teacher_id' => $row->teacher_id,
+        'school_id' => $row->school_id,
+        'subject' => $subject,
+        'role' => 'primary',
+        'is_active' => true,
+    ]);
+}
+
+test('a student with multiple subjects is listed once with the subjects combined', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Multi', 'Subject', 8, 'orchestra');
+    addStudentsIndexSubjectRow($row, 'chorus');
+
+    $component = Livewire::actingAs($user)->test(Index::class);
+
+    expect($component->viewData('rows')->total())->toBe(1);
+    $component->assertSee('Chorus, Orchestra');
+});
+
+test('the heading shows the count of unique students matching the filters', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Multi', 'Subject', 8, 'chorus');
+    addStudentsIndexSubjectRow($row, 'orchestra');
+    claimStudentForTeacher($user->teacher, $school, 'Single', 'Other', 8, 'chorus');
+
+    $component = Livewire::actingAs($user)->test(Index::class);
+
+    $component->assertViewHas('studentCount', 2)->assertSeeHtml('(2)</span>');
+
+    $component->set('search', 'Single');
+
+    $component->assertViewHas('studentCount', 1)->assertSeeHtml('(1)</span>');
+});
+
+test('the subject filter is only offered when the roster spans multiple subjects', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    claimStudentForTeacher($user->teacher, $school, 'Only', 'Chorus', 8, 'chorus');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertDontSee('All subjects');
+
+    claimStudentForTeacher($user->teacher, $school, 'Only', 'Band', 8, 'band');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('All subjects');
+});
+
+test('the subject filter matches any of a student\'s subjects and still shows them all', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Both', 'Student', 8, 'chorus');
+    addStudentsIndexSubjectRow($row, 'orchestra');
+    claimStudentForTeacher($user->teacher, $school, 'Choir', 'Only', 8, 'chorus');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->set('subjectFilter', 'orchestra')
+        ->assertSee('Student, Both')
+        ->assertSee('Chorus, Orchestra')
+        ->assertDontSee('Only, Choir')
+        ->assertViewHas('studentCount', 1);
+});
+
+test('a stale subject filter is ignored when the roster has a single subject', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    claimStudentForTeacher($user->teacher, $school, 'Choir', 'Only', 8, 'chorus');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->set('subjectFilter', 'orchestra')
+        ->assertSee('Only, Choir');
+});
+
+test('deactivate applies to all of the student\'s subject rows', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Multi', 'Subject', 8, 'chorus');
+    $second = addStudentsIndexSubjectRow($row, 'orchestra');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('deactivate', $row->id);
+
+    expect($row->refresh()->is_active)->toBeFalse()
+        ->and($second->refresh()->is_active)->toBeFalse();
+});
+
+test('remove deletes all of the student\'s subject rows', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Multi', 'Subject', 8, 'chorus');
+    $second = addStudentsIndexSubjectRow($row, 'orchestra');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('remove', $row->id);
+
+    expect(StudentTeacher::whereIn('id', [$row->id, $second->id])->count())->toBe(0);
+});
+
+test('sorting by subject orders combined subject labels', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $both = claimStudentForTeacher($user->teacher, $school, 'Both', 'Student', 8, 'orchestra');
+    addStudentsIndexSubjectRow($both, 'chorus');
+    claimStudentForTeacher($user->teacher, $school, 'Band', 'Student', 8, 'band');
+    claimStudentForTeacher($user->teacher, $school, 'Strings', 'Student', 8, 'orchestra');
+
+    $component = Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('sortBy', 'subject');
+
+    expect($component->viewData('rows')->getCollection()->map(fn (StudentTeacher $r) => $r->student->user->first_name)->all())
+        ->toBe(['Band', 'Both', 'Strings']);
+});

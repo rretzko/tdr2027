@@ -1,6 +1,9 @@
 <div>
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <flux:heading size="xl">Students</flux:heading>
+        <div class="flex items-baseline gap-2">
+            <flux:heading size="xl">Students</flux:heading>
+            <span class="text-xl font-medium text-zinc-800 dark:text-white">({{ $studentCount }})</span>
+        </div>
 
         <div class="flex flex-col items-end gap-3">
             <div class="flex flex-wrap items-center justify-end gap-3">
@@ -14,6 +17,15 @@
                         <flux:radio value="current" label="Current" />
                         <flux:radio value="alumni" label="Alumni" />
                     </flux:radio.group>
+                @endif
+
+                @if (count($filterSubjects) > 1)
+                    <flux:select wire:model.live="subjectFilter" placeholder="All subjects" class="sm:max-w-xs">
+                        <flux:select.option value="">All subjects</flux:select.option>
+                        @foreach ($filterSubjects as $filterSubject)
+                            <flux:select.option value="{{ $filterSubject->value }}">{{ $filterSubject->label() }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
                 @endif
 
                 @if ($filterSchools->count() > 1)
@@ -75,7 +87,7 @@
                 <dl class="mt-3 grid grid-cols-2 gap-2 text-sm">
                     <div>
                         <dt class="text-zinc-400">Subject</dt>
-                        <dd>{{ $row->subject->label() }}</dd>
+                        <dd>{{ $subjectsByRowId[$row->id] ?? $row->subject->label() }}</dd>
                     </div>
                     <div>
                         <dt class="text-zinc-400">Grade</dt>
@@ -184,7 +196,7 @@
                             </div>
                         </flux:table.cell>
                         <flux:table.cell>{{ $row->school->name }}</flux:table.cell>
-                        <flux:table.cell>{{ $row->subject->label() }}</flux:table.cell>
+                        <flux:table.cell>{{ $subjectsByRowId[$row->id] ?? $row->subject->label() }}</flux:table.cell>
                         <flux:table.cell>{{ $this->gradeLabel($gradeByRowId[$row->id] ?? null, $row->school) }}</flux:table.cell>
                         <flux:table.cell>{{ $row->student->voicePart?->name ?? '—' }}</flux:table.cell>
                         <flux:table.cell>
