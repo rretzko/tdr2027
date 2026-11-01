@@ -31,6 +31,7 @@ use App\Support\SchoolMatcher;
 use App\Support\StudentMatcher;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -62,6 +63,10 @@ class Index extends Component
     public string $sortDirection = 'asc';
 
     public string $schoolFilter = '';
+
+    // '' (all) or a Subject value — only offered when the roster spans 2+ subjects.
+    #[Url]
+    public string $subjectFilter = '';
 
     // all | current | alumni — grade 12 and below (or no school_student row to
     // compute one from) counts as current, anything above 12 as alumni.
@@ -210,6 +215,11 @@ class Index extends Component
         $this->resetPage();
     }
 
+    public function updatedSubjectFilter(): void
+    {
+        $this->resetPage();
+    }
+
     /**
      * Grade as shown in the roster — the class_of year once a student is past
      * 12th grade, since the computed number (13, 14, ...) keeps climbing after
@@ -237,18 +247,35 @@ class Index extends Component
         return (string) ClassOfCalculator::classOfFromGrade($grade, $school->senior_year);
     }
 
+    /**
+     * A roster row stands for the student at that school across all of their
+     * subjects, so Deactivate/Remove act on every subject row — dropping a
+     * single subject is done through Edit.
+     */
     public function deactivate(int $rowId): void
     {
-        StudentTeacher::where('id', $rowId)
-            ->where('teacher_id', $this->teacher()->id)
-            ->update(['is_active' => false]);
+        $this->subjectRowsFor($rowId)?->update(['is_active' => false]);
     }
 
     public function remove(int $rowId): void
     {
-        StudentTeacher::where('id', $rowId)
-            ->where('teacher_id', $this->teacher()->id)
-            ->delete();
+        $this->subjectRowsFor($rowId)?->delete();
+    }
+
+    /**
+     * @return Builder<StudentTeacher>|null
+     */
+    private function subjectRowsFor(int $rowId): ?Builder
+    {
+        $row = $this->teacherRow($rowId)->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        return StudentTeacher::where('student_id', $row->student_id)
+            ->where('teacher_id', $row->teacher_id)
+            ->where('school_id', $row->school_id);
     }
 
     public function studentAge(): ?int
@@ -1267,12 +1294,18 @@ class Index extends Component
     public function render(): View
     {
         $hasAlumni = $this->hasAlumni();
-        $rows = $this->rows($hasAlumni);
+        $filterSubjects = $this->rosterSubjects();
+        $query = $this->filteredRosterQuery($hasAlumni, count($filterSubjects) > 1);
+        $studentCount = (clone $query)->distinct()->count('student_teacher.student_id');
+        $rows = $this->rows($query);
         $activeSchools = $this->teacher()->schools()->wherePivot('is_active', true)->orderBy('name')->get();
 
         return view('livewire.students.index', [
             'rows' => $rows,
+            'studentCount' => $studentCount,
             'gradeByRowId' => $this->gradeByRowId($rows->getCollection()),
+            'subjectsByRowId' => $this->subjectsByRowId($rows->getCollection()),
+            'filterSubjects' => $filterSubjects,
             'subjectOptions' => Subject::cases(),
             'shirtSizeOptions' => ShirtSize::cases(),
             'relationshipOptions' => EmergencyContactRelationship::cases(),
@@ -1661,10 +1694,35 @@ class Index extends Component
     }
 
     /**
-     * @return LengthAwarePaginator<int, StudentTeacher>
+     * Distinct subjects across the teacher's whole roster — gates the subject
+     * filter, which is hidden unless there are at least two. Like hasAlumni(),
+     * ignores search and the other filters so the control doesn't flicker.
+     *
+     * @return list<Subject>
      */
-    private function rows(bool $hasAlumni): LengthAwarePaginator
+    private function rosterSubjects(): array
     {
+        $values = $this->rosterQuery()->distinct()->pluck('student_teacher.subject')
+            ->map(fn ($subject) => $subject instanceof Subject ? $subject->value : (string) $subject)
+            ->all();
+
+        return array_values(array_filter(Subject::cases(), fn (Subject $subject) => in_array($subject->value, $values, true)));
+    }
+
+    /**
+     * The roster as displayed: search and filters applied, then collapsed to
+     * one row per student per school — a student taking several subjects has
+     * a student_teacher row for each, and listing them separately read as
+     * duplicate students. The lowest-id row stands in for the group; the
+     * subject filter matches on any of the group's rows so the stand-in
+     * still qualifies when its own subject isn't the filtered one.
+     *
+     * @return Builder<StudentTeacher>
+     */
+    private function filteredRosterQuery(bool $hasAlumni, bool $hasMultipleSubjects): Builder
+    {
+        $teacherId = $this->teacher()->id;
+
         $query = $this->rosterQuery()
             ->leftJoin('voice_parts', 'voice_parts.id', '=', 'students.voice_part_id')
             ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'student.voicePart', 'school']);
@@ -1684,13 +1742,36 @@ class Index extends Component
             $this->applyGradeFilter($query, $this->gradeFilter);
         }
 
+        // Same stale-URL guard as the grade filter above.
+        if ($hasMultipleSubjects && Subject::tryFrom($this->subjectFilter) !== null) {
+            $query->whereExists(fn ($q) => $q->from('student_teacher as st_subject')
+                ->whereColumn('st_subject.student_id', 'student_teacher.student_id')
+                ->whereColumn('st_subject.teacher_id', 'student_teacher.teacher_id')
+                ->whereColumn('st_subject.school_id', 'student_teacher.school_id')
+                ->where('st_subject.subject', $this->subjectFilter));
+        }
+
+        return $query->whereIn('student_teacher.id', StudentTeacher::query()
+            ->selectRaw('min(id)')
+            ->where('teacher_id', $teacherId)
+            ->groupBy('student_id', 'school_id'));
+    }
+
+    /**
+     * @param  Builder<StudentTeacher>  $query
+     * @return LengthAwarePaginator<int, StudentTeacher>
+     */
+    private function rows(Builder $query): LengthAwarePaginator
+    {
         if ($this->sortColumn === 'grade') {
             return $this->paginateSortedByGrade($query);
         }
 
         match ($this->sortColumn) {
             'school' => $query->orderBy('schools.name', $this->sortDirection),
-            'subject' => $query->orderBy('student_teacher.subject', $this->sortDirection),
+            // Sorts the combined "Chorus, Orchestra" label by its first then last subject.
+            'subject' => $query->orderBy($this->subjectSortSubquery('min'), $this->sortDirection)
+                ->orderBy($this->subjectSortSubquery('max'), $this->sortDirection),
             'voice_part' => $query->orderBy('voice_parts.name', $this->sortDirection),
             default => $query->orderBy('users.last_name', $this->sortDirection)->orderBy('users.first_name', $this->sortDirection),
         };
@@ -1798,5 +1879,47 @@ class Index extends Component
         }
 
         return $grades;
+    }
+
+    private function subjectSortSubquery(string $aggregate): QueryBuilder
+    {
+        return StudentTeacher::query()->toBase()
+            ->from('student_teacher as st_sort')
+            ->selectRaw("{$aggregate}(st_sort.subject)")
+            ->whereColumn('st_sort.student_id', 'student_teacher.student_id')
+            ->whereColumn('st_sort.teacher_id', 'student_teacher.teacher_id')
+            ->whereColumn('st_sort.school_id', 'student_teacher.school_id');
+    }
+
+    /**
+     * Each displayed row stands for all of the student's subjects at that
+     * school (see filteredRosterQuery()), so its Subject cell lists them all,
+     * e.g. "Chorus, Orchestra", in Subject enum order.
+     *
+     * @param  Collection<int, StudentTeacher>  $rows
+     * @return array<int, string>
+     */
+    private function subjectsByRowId(Collection $rows): array
+    {
+        $subjectsByKey = StudentTeacher::query()
+            ->where('teacher_id', $this->teacher()->id)
+            ->whereIn('student_id', $rows->pluck('student_id'))
+            ->whereIn('school_id', $rows->pluck('school_id'))
+            ->get()
+            ->groupBy(fn (StudentTeacher $subjectRow) => $subjectRow->student_id.'-'.$subjectRow->school_id)
+            ->map(fn (Collection $subjectRows) => $subjectRows->pluck('subject')->all());
+
+        $labels = [];
+
+        foreach ($rows as $row) {
+            $subjects = $subjectsByKey->get($row->student_id.'-'.$row->school_id, [$row->subject]);
+
+            $labels[$row->id] = collect(Subject::cases())
+                ->filter(fn (Subject $subject) => in_array($subject, $subjects, true))
+                ->map(fn (Subject $subject) => $subject->label())
+                ->implode(', ');
+        }
+
+        return $labels;
     }
 }
