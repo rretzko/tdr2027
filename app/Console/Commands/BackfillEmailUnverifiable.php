@@ -22,7 +22,10 @@ class BackfillEmailUnverifiable extends Command
 
     public function handle(): int
     {
+        // Bulk update below bypasses UserObserver, so exclude teachers here —
+        // teachers must always verify their own email.
         $matches = User::where('email_unverifiable', false)
+            ->whereDoesntHave('teacher')
             ->get(['id', 'name', 'email'])
             ->filter(fn (User $user): bool => EmailVerifiabilityChecker::isLikelyUnverifiable($user->email))
             ->values();

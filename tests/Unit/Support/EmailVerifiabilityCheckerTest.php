@@ -12,6 +12,8 @@ test('emails are likely unverifiable on k12, student, school, and *sd* domains',
     'student@my.student.example.org',
     'student@lincoln.regionalsd.org',
     'student@wmrhsd.org',
+    'student@rocktwp.net',
+    'student@hs.rocktwp.net',
 ]);
 
 test('emails are likely unverifiable on studentfolder.info', function () {
