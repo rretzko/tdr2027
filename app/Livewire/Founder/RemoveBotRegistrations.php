@@ -96,7 +96,9 @@ class RemoveBotRegistrations extends Component
             return [
                 'user_id' => $user->id,
                 'type' => $user->student !== null ? 'Student' : 'Teacher',
-                'name' => trim("{$user->first_name} {$user->last_name}"),
+                // users.name holds the full submitted name (honorific, middle,
+                // suffix), which is what makes a bot's repeated tokens visible.
+                'name' => trim((string) $user->name),
                 'email' => $user->email,
                 'created_at' => $user->created_at->format('M j, Y'),
                 'bot_pattern' => $botPattern,
