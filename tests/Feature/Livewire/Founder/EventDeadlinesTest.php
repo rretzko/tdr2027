@@ -90,6 +90,37 @@ test('the next upcoming deadline is listed before a past deadline', function () 
     expect(strpos($html, 'Postmark Deadline'))->toBeLessThan(strpos($html, 'Teacher Access'));
 });
 
+test('an already-open window ranks by its end, not its passed start', function () {
+    $founder = makeEventDeadlinesFounder();
+    $event = Event::factory()->create(['name' => 'Winter Festival']);
+    $version = Version::factory()->for($event)->create(['status' => EventStatus::Active]);
+
+    // Opened long ago, closes far in the future
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Rehearsal,
+        'start_at' => now()->subDays(40),
+        'end_at' => now()->addDays(70),
+    ]);
+    // Open now, closes soon — this is the real next deadline
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Candidate,
+        'start_at' => now()->subDays(30),
+        'end_at' => now()->addDays(4),
+    ]);
+    // Hasn't started yet
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::PostmarkDeadline,
+        'start_at' => now()->addDays(15),
+    ]);
+
+    Livewire::actingAs($founder)
+        ->test(EventDeadlines::class)
+        ->assertSeeInOrder(['Candidate Access', 'Next', 'Postmark Deadline', 'Rehearsal']);
+});
+
 test('registrant count includes registered and every later status so it holds steady after results', function () {
     $founder = makeEventDeadlinesFounder();
     $version = Version::factory()->create(['name' => 'Counted Version', 'status' => EventStatus::Active]);
