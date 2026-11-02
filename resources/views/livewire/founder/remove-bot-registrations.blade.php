@@ -26,11 +26,12 @@
                 <flux:button size="sm" variant="ghost" wire:click="selectAll">
                     Select All Bot-pattern ({{ collect($this->suspects)->where('bot_pattern', true)->count() }})
                 </flux:button>
-                @if (! empty($selected))
-                    <flux:button size="sm" variant="ghost" wire:click="deselectAll">Deselect All</flux:button>
-                @endif
-                <flux:button size="sm" variant="danger" icon="trash" wire:click="confirmRemoval" :disabled="empty($selected)">
-                    Remove Selected ({{ count($selected) }})
+                {{-- Checkbox wire:model is deferred, so the count/disabled state
+                     is driven client-side from $wire.selected — a .live binding
+                     would re-run the heavy suspects() query on every click. --}}
+                <flux:button size="sm" variant="ghost" wire:click="deselectAll" x-show="$wire.selected.length > 0" x-cloak>Deselect All</flux:button>
+                <flux:button size="sm" variant="danger" icon="trash" wire:click="confirmRemoval" x-bind:disabled="$wire.selected.length === 0">
+                    Remove Selected (<span x-text="$wire.selected.length">{{ count($selected) }}</span>)
                 </flux:button>
             </div>
         </div>
