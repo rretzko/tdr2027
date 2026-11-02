@@ -3,8 +3,10 @@
 namespace App\Providers;
 
 use App\Models\Pivots\SchoolStudent;
+use App\Models\Teacher;
 use App\Models\User;
 use App\Observers\SchoolStudentObserver;
+use App\Observers\TeacherObserver;
 use App\Observers\UserObserver;
 use Carbon\CarbonInterface;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -29,6 +31,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         User::observe(UserObserver::class);
+        Teacher::observe(TeacherObserver::class);
         SchoolStudent::observe(SchoolStudentObserver::class);
 
         // Vendor e-payment webhooks (epayment-integration.md §2.4) — keyed by

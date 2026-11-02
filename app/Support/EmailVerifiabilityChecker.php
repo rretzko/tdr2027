@@ -19,6 +19,11 @@ final class EmailVerifiabilityChecker
         '*.school.*',
         '*.*sd*.*',
         '*sd.*',
+        // District-specific domains whose student addresses can't receive
+        // outside mail. Teachers on these domains are kept verifiable by
+        // the Teacher/User observers, not here.
+        'rocktwp.net',
+        '*.rocktwp.net',
     ];
 
     /**
