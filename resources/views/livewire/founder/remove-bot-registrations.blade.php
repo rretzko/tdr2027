@@ -44,7 +44,8 @@
                         <flux:checkbox wire:model="selected" value="{{ $s['user_id'] }}" />
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-2">
-                                <flux:text class="font-medium">{{ $s['name'] !== '' ? $s['name'] : '(no name)' }}</flux:text>
+                                <flux:text class="tabular-nums text-zinc-500">#{{ $s['user_id'] }}</flux:text>
+                                <flux:text class="min-w-0 font-medium wrap-anywhere">{{ $s['name'] !== '' ? $s['name'] : '(no name)' }}</flux:text>
                                 <flux:badge size="sm">{{ $s['type'] }}</flux:badge>
                                 @if ($s['bot_pattern'])
                                     <flux:badge size="sm" color="red">Bot pattern</flux:badge>
@@ -70,6 +71,7 @@
             <flux:table>
                 <flux:table.columns>
                     <flux:table.column></flux:table.column>
+                    <flux:table.column>ID</flux:table.column>
                     <flux:table.column>Name</flux:table.column>
                     <flux:table.column>Type</flux:table.column>
                     <flux:table.column>Email</flux:table.column>
@@ -82,8 +84,11 @@
                             <flux:table.cell>
                                 <flux:checkbox wire:model="selected" value="{{ $s['user_id'] }}" />
                             </flux:table.cell>
-                            <flux:table.cell class="font-medium whitespace-nowrap">
-                                {{ $s['name'] !== '' ? $s['name'] : '(no name)' }}
+                            <flux:table.cell class="whitespace-nowrap tabular-nums text-zinc-500">{{ $s['user_id'] }}</flux:table.cell>
+                            <flux:table.cell class="font-medium">
+                                {{-- Fixed width + wrap-anywhere: bot names are long unbroken
+                                     strings that would otherwise push the other columns off-page. --}}
+                                <div class="w-64 wrap-anywhere">{{ $s['name'] !== '' ? $s['name'] : '(no name)' }}</div>
                             </flux:table.cell>
                             <flux:table.cell>
                                 <div class="flex flex-wrap gap-1">
@@ -126,7 +131,7 @@
                 @foreach ($toRemove as $s)
                     <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0">
-                            <flux:text class="font-medium">{{ $s['name'] !== '' ? $s['name'] : '(no name)' }}</flux:text>
+                            <flux:text class="font-medium wrap-anywhere">{{ $s['name'] !== '' ? $s['name'] : '(no name)' }}</flux:text>
                             <flux:text size="sm" class="truncate text-zinc-500">{{ $s['email'] }}</flux:text>
                         </div>
                         <flux:badge size="sm" class="shrink-0">{{ $s['type'] }}</flux:badge>
