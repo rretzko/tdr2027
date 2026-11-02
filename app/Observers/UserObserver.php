@@ -19,5 +19,11 @@ class UserObserver
         if (! $user->exists || $user->isDirty(self::NAME_PARTS)) {
             $user->name = NameFormatter::buildDisplayName($user);
         }
+
+        // Teachers must always verify their own email — never let a
+        // student-oriented code path flag a teacher's account as unverifiable.
+        if ($user->exists && $user->email_unverifiable && $user->isDirty('email_unverifiable') && $user->teacher()->exists()) {
+            $user->email_unverifiable = false;
+        }
     }
 }
