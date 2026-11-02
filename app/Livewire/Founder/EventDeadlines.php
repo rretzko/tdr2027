@@ -94,9 +94,14 @@ class EventDeadlines extends Component
     }
 
     /**
-     * Next upcoming deadline first (soonest ascending), then past deadlines
-     * below it, most recent first — so "next" always sits at the top of the
-     * stack, with history kept visible but demoted rather than hidden.
+     * Upcoming dates first, ordered by their next boundary (soonest first),
+     * then past deadlines below, most recent first — so "next" always sits at
+     * the top of the stack, with history kept visible but demoted.
+     *
+     * The next boundary is start_at for a date that hasn't begun yet, and
+     * end_at for a window that's already open — so a long-running open window
+     * (e.g. a Rehearsal span entered months wide) ranks by when it closes, not
+     * by a start that's already passed.
      *
      * @param  Collection<int, VersionDate>  $dates
      * @return Collection<int, VersionDate>
@@ -107,7 +112,16 @@ class EventDeadlines extends Component
             fn (VersionDate $date) => Carbon::parse($date->end_at ?? $date->start_at)->isFuture()
         );
 
-        return $upcoming->sortBy('start_at')->values()
+        return $upcoming->sortBy(fn (VersionDate $date): int => $this->nextBoundary($date)->getTimestamp())->values()
             ->merge($past->sortByDesc('start_at')->values());
+    }
+
+    private function nextBoundary(VersionDate $date): Carbon
+    {
+        $start = Carbon::parse($date->start_at);
+
+        return $start->isFuture() || $date->end_at === null
+            ? $start
+            : Carbon::parse($date->end_at);
     }
 }
