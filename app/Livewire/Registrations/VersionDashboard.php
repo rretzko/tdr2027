@@ -8,6 +8,7 @@ use App\Concerns\GuardsAcceptedObligations;
 use App\Concerns\HasCandidateChecklist;
 use App\Enums\CandidateStatus;
 use App\Enums\FeeType;
+use App\Enums\ObligationDecision;
 use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
 use App\Enums\PaymentType;
@@ -136,9 +137,53 @@ class VersionDashboard extends Component
             ->firstOrFail();
 
         $name = $candidate->program_name;
+
+        if (! CandidateStatus::from((string) $candidate->getRawOriginal('status'))->isActive()) {
+            Flux::toast("{$name} can't be withdrawn from their current status.", variant: 'danger');
+
+            return;
+        }
+
         $candidates->withdraw($candidate);
 
         Flux::toast("{$name} has been withdrawn.");
+    }
+
+    public function unwithdraw(CandidateService $candidates, CoTeacherAccessService $coTeacherAccess, int $candidateId): void
+    {
+        $candidate = $coTeacherAccess->candidateQuery($this->teacher())
+            ->where('id', $candidateId)
+            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts'])
+            ->firstOrFail();
+
+        $name = $candidate->program_name;
+
+        if ($candidate->getRawOriginal('status') !== CandidateStatus::TeacherWithdrawn->value) {
+            Flux::toast("{$name} isn't teacher-withdrawn, so there's nothing to undo.", variant: 'danger');
+
+            return;
+        }
+
+        // A rejected obligation cascade-withdrew every candidate of the
+        // owning teacher; un-withdrawing one at a time would sidestep that
+        // full stop. Checked against the candidate's owning teacher, not the
+        // acting user, since a co-teacher can manage granted candidates.
+        $ownerInvitation = VersionInvitation::where('version_id', $this->version->id)
+            ->where('teacher_id', $candidate->teacher_id)
+            ->with('obligationResponse')
+            ->first();
+
+        if ($ownerInvitation?->obligationResponse?->getRawOriginal('decision') === ObligationDecision::Rejected->value) {
+            Flux::toast("{$name} can't be un-withdrawn while this Version's obligations are rejected. Accept the obligations to reinstate candidates.", variant: 'danger');
+
+            return;
+        }
+
+        $candidates->reinstate($candidate, $this->checklistDefs($this->version));
+
+        $newStatus = CandidateStatus::from((string) $candidate->refresh()->getRawOriginal('status'));
+
+        Flux::toast("{$name} has been un-withdrawn and is now {$newStatus->label()}.");
     }
 
     public function refreshStatus(CandidateService $candidates, CoTeacherAccessService $coTeacherAccess, int $candidateId): void
