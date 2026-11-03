@@ -450,6 +450,138 @@ test('withdraw can target a granted co-teacher\'s candidate', function () {
     expect($candidate->refresh()->status)->toBe(CandidateStatus::TeacherWithdrawn);
 });
 
+test('withdraw leaves a candidate outside the active registration states unchanged', function (CandidateStatus $status) {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => $status,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->call('withdraw', $candidate->id);
+
+    expect($candidate->refresh()->status)->toBe($status);
+})->with([
+    'withdrew' => CandidateStatus::Withdrew,
+    'accepted' => CandidateStatus::Accepted,
+    'adjudicated' => CandidateStatus::Adjudicated,
+]);
+
+test('unwithdraw returns a teacher-withdrawn candidate to an active registration state', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::TeacherWithdrawn,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->call('unwithdraw', $candidate->id);
+
+    expect($candidate->refresh()->getRawOriginal('status'))
+        ->toBeIn(array_map(fn (CandidateStatus $s): string => $s->value, CandidateStatus::registrationStates()));
+});
+
+test('unwithdraw does not reverse a student\'s own withdrawal', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::Withdrew,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->call('unwithdraw', $candidate->id);
+
+    expect($candidate->refresh()->status)->toBe(CandidateStatus::Withdrew);
+});
+
+test('unwithdraw is refused while the owning teacher\'s obligations are rejected', function () {
+    $granting = makeRegistrationTeacher();
+    $coTeacher = makeRegistrationTeacher();
+    $school = School::factory()->create();
+    $version = Version::factory()->create();
+    $invitation = inviteRegistrationTeacher($granting, $version, 'rejected');
+    $obligation = publishObligationForRegistrationTeacher($version);
+
+    actingAs($granting->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $granting->id,
+        'school_id' => $school->id,
+        'status' => CandidateStatus::TeacherWithdrawn,
+    ]);
+
+    VersionObligationResponse::create([
+        'version_invitation_id' => $invitation->id,
+        'version_obligation_id' => $obligation->id,
+        'decision' => ObligationDecision::Rejected->value,
+        'decided_at' => now(),
+        'obligation_snapshot' => $obligation->body,
+    ]);
+
+    // The granting teacher's own dashboard redirects to the obligations
+    // form, so drive the action through a co-teacher who can still reach it.
+    grantRegistrationCoTeacherAccess($school, $granting, $coTeacher);
+
+    Livewire::actingAs($coTeacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->call('unwithdraw', $candidate->id);
+
+    expect($candidate->refresh()->status)->toBe(CandidateStatus::TeacherWithdrawn);
+});
+
+test('unwithdraw cannot target a candidate belonging to another teacher', function () {
+    $teacher = makeRegistrationTeacher();
+    $otherTeacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($otherTeacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $otherTeacher->id,
+        'status' => CandidateStatus::TeacherWithdrawn,
+    ]);
+
+    expect(function () use ($teacher, $version, $candidate) {
+        Livewire::actingAs($teacher->user)
+            ->test(VersionDashboard::class, ['version' => $version])
+            ->call('unwithdraw', $candidate->id);
+    })->toThrow(ModelNotFoundException::class);
+
+    expect($candidate->refresh()->status)->toBe(CandidateStatus::TeacherWithdrawn);
+});
+
+test('the roster shows Un-withdraw instead of Withdraw for a teacher-withdrawn candidate', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'status' => CandidateStatus::TeacherWithdrawn,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->assertSeeHtml("unwithdraw({$candidate->id})")
+        ->assertDontSeeHtml("\"withdraw({$candidate->id})\"");
+});
+
 test('the co-teacher consolidation panel renders for a school with a shared candidate and a grant', function () {
     $granting = makeRegistrationTeacher();
     $coTeacher = makeRegistrationTeacher();

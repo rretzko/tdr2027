@@ -86,7 +86,7 @@
                                                         <flux:menu.item wire:click="remove({{ $candidate->id }}, 'withdrew')" wire:confirm="Mark {{ $candidate->student->user->name }} as withdrew? This cannot be undone.">
                                                             Candidate withdrew
                                                         </flux:menu.item>
-                                                        <flux:menu.item wire:click="remove({{ $candidate->id }}, 'teacher_withdrawn')" wire:confirm="Mark {{ $candidate->student->user->name }} as teacher-withdrawn? This cannot be undone.">
+                                                        <flux:menu.item wire:click="remove({{ $candidate->id }}, 'teacher_withdrawn')" wire:confirm="Mark {{ $candidate->student->user->name }} as teacher-withdrawn? Their teacher can reverse this with Un-withdraw on their Registrations page.">
                                                             Teacher withdrew candidate
                                                         </flux:menu.item>
                                                     </flux:menu>
@@ -152,7 +152,7 @@
                                                     <flux:menu.item wire:click="remove({{ $candidate->id }}, 'withdrew')" wire:confirm="Mark {{ $candidate->student->user->name }} as withdrew? This cannot be undone.">
                                                         Candidate withdrew
                                                     </flux:menu.item>
-                                                    <flux:menu.item wire:click="remove({{ $candidate->id }}, 'teacher_withdrawn')" wire:confirm="Mark {{ $candidate->student->user->name }} as teacher-withdrawn? This cannot be undone.">
+                                                    <flux:menu.item wire:click="remove({{ $candidate->id }}, 'teacher_withdrawn')" wire:confirm="Mark {{ $candidate->student->user->name }} as teacher-withdrawn? Their teacher can reverse this with Un-withdraw on their Registrations page.">
                                                         Teacher withdrew candidate
                                                     </flux:menu.item>
                                                 </flux:menu>
