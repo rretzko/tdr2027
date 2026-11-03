@@ -59,6 +59,25 @@ class CandidateService
     }
 
     /**
+     * Teacher-initiated reversal of withdraw(): reset to Eligible, then
+     * immediately re-run recalculateStatus() so a candidate whose checklist
+     * was already complete lands straight back on Registered (or Pending, if
+     * the school is over its audition cap). Only TeacherWithdrawn is
+     * reversible here — a student's own Withdrew is theirs to own.
+     *
+     * @param  list<array{label: string, check: \Closure(Candidate): bool}>  $checklistDefs
+     */
+    public function reinstate(Candidate $candidate, array $checklistDefs): void
+    {
+        if ($candidate->getRawOriginal('status') !== CandidateStatus::TeacherWithdrawn->value) {
+            return;
+        }
+
+        $candidate->update(['status' => CandidateStatus::Eligible->value]);
+        $this->recalculateStatus($candidate, $checklistDefs);
+    }
+
+    /**
      * Student-initiated withdrawal (studentfolder-module.md §5.4) — distinct
      * status from withdraw()'s TeacherWithdrawn so the two remain
      * distinguishable in reporting/history, even though both are terminal

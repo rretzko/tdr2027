@@ -47,6 +47,44 @@ test('withdraw sets the Candidate status to teacher_withdrawn', function () {
     expect($candidate->refresh()->status)->toBe(CandidateStatus::TeacherWithdrawn);
 });
 
+test('reinstate resets a teacher-withdrawn Candidate to eligible when no checklist items are done', function () {
+    actingAs(User::factory()->create());
+
+    $candidate = Candidate::factory()->create(['status' => CandidateStatus::TeacherWithdrawn]);
+
+    (new CandidateService)->reinstate($candidate, [
+        ['label' => 'Item one', 'check' => fn (Candidate $c): bool => false],
+    ]);
+
+    expect($candidate->refresh()->status)->toBe(CandidateStatus::Eligible);
+});
+
+test('reinstate lands a fully checklisted teacher-withdrawn Candidate straight back on registered', function () {
+    actingAs(User::factory()->create());
+
+    $candidate = Candidate::factory()->create(['status' => CandidateStatus::TeacherWithdrawn]);
+
+    (new CandidateService)->reinstate($candidate, [
+        ['label' => 'Item one', 'check' => fn (Candidate $c): bool => true],
+        ['label' => 'Item two', 'check' => fn (Candidate $c): bool => true],
+    ]);
+
+    expect($candidate->refresh()->status)->toBe(CandidateStatus::Registered);
+});
+
+test('reinstate leaves a Candidate who is not teacher-withdrawn unchanged', function (CandidateStatus $status) {
+    actingAs(User::factory()->create());
+
+    $candidate = Candidate::factory()->create(['status' => $status]);
+
+    (new CandidateService)->reinstate($candidate, []);
+
+    expect($candidate->refresh()->status)->toBe($status);
+})->with([
+    'withdrew' => CandidateStatus::Withdrew,
+    'accepted' => CandidateStatus::Accepted,
+]);
+
 test('recalculateStatus leaves an eligible Candidate eligible when no checklist items are done', function () {
     actingAs(User::factory()->create());
 
