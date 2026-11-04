@@ -2,17 +2,23 @@
 
 declare(strict_types=1);
 
+use App\Enums\CandidateStatus;
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
+use App\Enums\PhoneType;
+use App\Enums\ShirtSize;
 use App\Models\Candidate;
+use App\Models\Instrument;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
+use App\Models\Phone;
 use App\Models\Recording;
 use App\Models\RoomJudge;
 use App\Models\Score;
 use App\Models\ScoreCategory;
 use App\Models\ScoreFactor;
 use App\Models\Student;
+use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionRoom;
@@ -168,4 +174,169 @@ test('a same-version pair with no adjudication data on the loser is not a confli
     studentMergePaidCandidate($loser, $version);
 
     expect(app(StudentMergeService::class)->conflicts($winner, $loser))->toBe([]);
+});
+
+function studentMergeStudentWithCell(?string $cell): Student
+{
+    return Student::factory()->create(['user_id' => User::factory()->create(['cell_phone' => $cell])->id]);
+}
+
+test('the loser account cell phone moves to a winner that has none', function () {
+    $winner = studentMergeStudentWithCell(null);
+    $loser = studentMergeStudentWithCell('2015551234');
+
+    app(StudentMergeService::class)->merge($winner, $loser);
+
+    expect($winner->user->fresh()?->cell_phone)->toBe('2015551234')
+        ->and(User::find($loser->user_id))->toBeNull();
+});
+
+test('the winner keeps its own account cell phone and the loser one is reported as discarded', function () {
+    $winner = studentMergeStudentWithCell('2015550000');
+    $loser = studentMergeStudentWithCell('2015551234');
+    $service = app(StudentMergeService::class);
+
+    expect($service->discardedPhones($winner, $loser))->toBe(['(201) 555-1234']);
+
+    $service->merge($winner, $loser);
+
+    expect($winner->user->fresh()?->cell_phone)->toBe('2015550000');
+});
+
+test('a self-registered phones row moves to the winner when the winner has none of that type', function () {
+    $winner = studentMergeStudentWithCell(null);
+    $loser = studentMergeStudentWithCell(null);
+    $phone = Phone::factory()->create(['user_id' => $loser->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015551234']);
+
+    app(StudentMergeService::class)->merge($winner, $loser);
+
+    expect($phone->fresh()?->user_id)->toBe($winner->user_id);
+});
+
+test('a loser phones row is dropped when the winner already has that type, and only a different number counts as discarded', function () {
+    $winner = studentMergeStudentWithCell(null);
+    $loser = studentMergeStudentWithCell(null);
+    Phone::factory()->create(['user_id' => $winner->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015550000']);
+    Phone::factory()->create(['user_id' => $winner->user_id, 'type' => PhoneType::Home, 'raw_number' => '2015557777']);
+    Phone::factory()->create(['user_id' => $loser->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015551234']);
+    Phone::factory()->create(['user_id' => $loser->user_id, 'type' => PhoneType::Home, 'raw_number' => '2015557777']);
+    $service = app(StudentMergeService::class);
+
+    expect($service->discardedPhones($winner, $loser))->toBe(['(201) 555-1234']);
+
+    $service->merge($winner, $loser);
+
+    expect(Phone::where('user_id', $winner->user_id)->orderBy('type')->pluck('raw_number')->all())->toBe(['2015550000', '2015557777'])
+        ->and(Phone::where('user_id', $loser->user_id)->count())->toBe(0);
+});
+
+test('a loser number the winner holds in the other store is not counted as discarded', function () {
+    $winner = studentMergeStudentWithCell('2015551234');
+    $loser = studentMergeStudentWithCell(null);
+    Phone::factory()->create(['user_id' => $winner->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015550000']);
+    Phone::factory()->create(['user_id' => $loser->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015551234']);
+
+    expect(app(StudentMergeService::class)->discardedPhones($winner, $loser))->toBe([]);
+});
+
+test('phones stay with a loser User that survives because it has a Teacher record', function () {
+    $winner = studentMergeStudentWithCell(null);
+    $loser = studentMergeStudentWithCell('2015551234');
+    Teacher::factory()->create(['user_id' => $loser->user_id]);
+    $phone = Phone::factory()->create(['user_id' => $loser->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015559999']);
+    $service = app(StudentMergeService::class);
+
+    expect($service->discardedPhones($winner, $loser))->toBe([]);
+
+    $service->merge($winner, $loser);
+
+    expect($loser->user->fresh()?->cell_phone)->toBe('2015551234')
+        ->and($phone->fresh()?->user_id)->toBe($loser->user_id)
+        ->and($winner->user->fresh()?->cell_phone)->toBeNull();
+});
+
+function studentMergeProfile(array $attributes): Student
+{
+    return Student::factory()->create($attributes + [
+        'birthday' => null,
+        'height' => null,
+        'instrument_id' => null,
+        'voice_part_id' => null,
+        'shirt_size' => ShirtSize::MED,
+    ]);
+}
+
+test('profileDifferences lists every field both students have set to different values', function () {
+    $soprano = VoicePart::factory()->create(['name' => 'Soprano I']);
+    $alto = VoicePart::factory()->create(['name' => 'Alto II']);
+    $flute = Instrument::factory()->create(['name' => 'Flute']);
+    $oboe = Instrument::factory()->create(['name' => 'Oboe']);
+    $winner = studentMergeProfile(['birthday' => '2010-01-01', 'voice_part_id' => $soprano->id, 'height' => 60, 'instrument_id' => $flute->id, 'shirt_size' => ShirtSize::MED]);
+    $loser = studentMergeProfile(['birthday' => '2010-02-02', 'voice_part_id' => $alto->id, 'height' => 64, 'instrument_id' => $oboe->id, 'shirt_size' => ShirtSize::XL]);
+    $service = app(StudentMergeService::class);
+
+    expect($service->profileDifferences($winner, $loser))->toBe([
+        ['field' => 'Birthday', 'winner' => 'Jan 1, 2010', 'loser' => 'Feb 2, 2010'],
+        ['field' => 'Voice part', 'winner' => 'Soprano I', 'loser' => 'Alto II'],
+        ['field' => 'Height', 'winner' => '60"', 'loser' => '64"'],
+        ['field' => 'Instrument', 'winner' => 'Flute', 'loser' => 'Oboe'],
+        ['field' => 'Shirt size', 'winner' => 'Medium', 'loser' => 'X-Large'],
+    ]);
+
+    $service->merge($winner, $loser);
+
+    $winner->refresh();
+
+    expect($winner->voice_part_id)->toBe($soprano->id)
+        ->and($winner->height)->toBe(60)
+        ->and($winner->instrument_id)->toBe($flute->id)
+        ->and($winner->getRawOriginal('shirt_size'))->toBe(ShirtSize::MED->value);
+});
+
+test('profileDifferences ignores fields that match or that only one student has', function () {
+    $alto = VoicePart::factory()->create(['name' => 'Alto II']);
+    $flute = Instrument::factory()->create(['name' => 'Flute']);
+    $winner = studentMergeProfile(['voice_part_id' => $alto->id, 'height' => 60, 'shirt_size' => ShirtSize::LG]);
+    $loser = studentMergeProfile(['voice_part_id' => $alto->id, 'birthday' => '2010-01-01', 'instrument_id' => $flute->id, 'shirt_size' => ShirtSize::LG]);
+
+    expect(app(StudentMergeService::class)->profileDifferences($winner, $loser))->toBe([]);
+});
+
+test('the merge fills an empty winner instrument from the loser', function () {
+    $flute = Instrument::factory()->create();
+    $winner = studentMergeProfile([]);
+    $loser = studentMergeProfile(['instrument_id' => $flute->id]);
+
+    app(StudentMergeService::class)->merge($winner, $loser);
+
+    expect($winner->fresh()?->instrument_id)->toBe($flute->id);
+});
+
+test('sharedCandidateDifferences lists same-version candidates that differ in voice part or status, and the merge still keeps the winner candidate', function () {
+    $soprano = VoicePart::factory()->create(['name' => 'Soprano I']);
+    $alto = VoicePart::factory()->create(['name' => 'Alto II']);
+    $winner = Student::factory()->create();
+    $loser = Student::factory()->create();
+    $differs = Version::factory()->create(['name' => 'All-State Chorus 2027']);
+    $matches = Version::factory()->create(['name' => 'Region II Chorus 2027']);
+    $winnerCandidate = Candidate::factory()->create(['student_id' => $winner->id, 'version_id' => $differs->id, 'voice_part_id' => $soprano->id, 'status' => CandidateStatus::Eligible]);
+    Candidate::factory()->registered()->create(['student_id' => $loser->id, 'version_id' => $differs->id, 'voice_part_id' => $alto->id]);
+    Candidate::factory()->create(['student_id' => $winner->id, 'version_id' => $matches->id, 'voice_part_id' => $alto->id, 'status' => CandidateStatus::Eligible]);
+    Candidate::factory()->create(['student_id' => $loser->id, 'version_id' => $matches->id, 'voice_part_id' => $alto->id, 'status' => CandidateStatus::Eligible]);
+    $service = app(StudentMergeService::class);
+
+    expect($service->sharedCandidateDifferences($winner, $loser))->toBe([[
+        'version_name' => 'All-State Chorus 2027',
+        'winner_voice_part' => 'Soprano I',
+        'loser_voice_part' => 'Alto II',
+        'winner_status' => 'Eligible',
+        'loser_status' => 'Registered',
+    ]]);
+
+    $service->merge($winner, $loser);
+
+    $winnerCandidate->refresh();
+
+    expect($winnerCandidate->voice_part_id)->toBe($soprano->id)
+        ->and($winnerCandidate->status)->toBe(CandidateStatus::Eligible);
 });

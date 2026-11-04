@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Livewire\Founder;
 
+use App\Enums\PhoneType;
 use App\Models\Student;
 use App\Services\StudentMergeService;
+use App\Support\PhoneNormalizer;
 use Carbon\Carbon;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
@@ -18,7 +20,10 @@ use Livewire\Component;
 /**
  * @property-read ?Student $winner
  * @property-read ?Student $loser
- * @property-read array<int, array{first_name: string, last_name: string, strength: string, winner_id: int, loser_id: int, winner_email: string, loser_email: string, winner_birthday: string|null, loser_birthday: string|null, winner_schools: string, loser_schools: string}> $potentialDuplicates
+ * @property-read list<string> $discardedPhones
+ * @property-read list<array{field: string, winner: string, loser: string}> $profileDifferences
+ * @property-read list<array{version_name: string, winner_voice_part: string, loser_voice_part: string, winner_status: string, loser_status: string}> $sharedCandidateDifferences
+ * @property-read list<array{strength: string, winner_id: int, loser_id: int, winner_name: string, loser_name: string, winner_email: string, loser_email: string, winner_birthday: string|null, loser_birthday: string|null, winner_schools: string, loser_schools: string, shared_phone: string|null}> $potentialDuplicates
  */
 #[Layout('components.layouts.app')]
 class MergeStudents extends Component
@@ -83,7 +88,9 @@ class MergeStudents extends Component
         }
 
         return Student::with([
-            'user',
+            'user.phones',
+            'voicePart',
+            'instrument',
             'schools' => fn ($q) => $q->wherePivot('is_active', true),
             'emergencyContacts',
             'homeAddress',
@@ -98,39 +105,86 @@ class MergeStudents extends Component
         }
 
         return Student::with([
-            'user',
+            'user.phones',
+            'voicePart',
+            'instrument',
             'schools' => fn ($q) => $q->wherePivot('is_active', true),
             'emergencyContacts',
             'homeAddress',
         ])->find($this->loserId);
     }
 
+    /**
+     * Formatted numbers the merge would delete, shown in the confirm modal.
+     *
+     * @return list<string>
+     */
+    #[Computed]
+    public function discardedPhones(): array
+    {
+        if ($this->winner === null || $this->loser === null || $this->winner->id === $this->loser->id) {
+            return [];
+        }
+
+        return app(StudentMergeService::class)->discardedPhones($this->winner, $this->loser);
+    }
+
+    /**
+     * Profile fields both students have set to different values; the winner's are kept.
+     *
+     * @return list<array{field: string, winner: string, loser: string}>
+     */
+    #[Computed]
+    public function profileDifferences(): array
+    {
+        if ($this->winner === null || $this->loser === null || $this->winner->id === $this->loser->id) {
+            return [];
+        }
+
+        return app(StudentMergeService::class)->profileDifferences($this->winner, $this->loser);
+    }
+
+    /**
+     * Same-Version Candidate pairs that differ in voice part or status.
+     *
+     * @return list<array{version_name: string, winner_voice_part: string, loser_voice_part: string, winner_status: string, loser_status: string}>
+     */
+    #[Computed]
+    public function sharedCandidateDifferences(): array
+    {
+        if ($this->winner === null || $this->loser === null || $this->winner->id === $this->loser->id) {
+            return [];
+        }
+
+        return app(StudentMergeService::class)->sharedCandidateDifferences($this->winner, $this->loser);
+    }
+
     public function selectWinner(int $id): void
     {
         $this->winnerId = $id;
         $this->winnerSearch = '';
-        unset($this->winner);
+        unset($this->winner, $this->discardedPhones, $this->profileDifferences, $this->sharedCandidateDifferences);
     }
 
     public function selectLoser(int $id): void
     {
         $this->loserId = $id;
         $this->loserSearch = '';
-        unset($this->loser);
+        unset($this->loser, $this->discardedPhones, $this->profileDifferences, $this->sharedCandidateDifferences);
     }
 
     public function clearWinner(): void
     {
         $this->winnerId = null;
         $this->winnerSearch = '';
-        unset($this->winner);
+        unset($this->winner, $this->discardedPhones, $this->profileDifferences, $this->sharedCandidateDifferences);
     }
 
     public function clearLoser(): void
     {
         $this->loserId = null;
         $this->loserSearch = '';
-        unset($this->loser);
+        unset($this->loser, $this->discardedPhones, $this->profileDifferences, $this->sharedCandidateDifferences);
     }
 
     // -----------------------------------------------------------------------
@@ -172,7 +226,7 @@ class MergeStudents extends Component
         $this->loserId = null;
         $this->winnerSearch = '';
         $this->loserSearch = '';
-        unset($this->winner, $this->loser);
+        unset($this->winner, $this->loser, $this->discardedPhones, $this->profileDifferences, $this->sharedCandidateDifferences);
 
         Flux::toast(variant: 'success', text: "{$loserName} merged and deleted successfully.");
     }
@@ -182,45 +236,64 @@ class MergeStudents extends Component
     // -----------------------------------------------------------------------
 
     /**
-     * @return array<int, array{
-     *     first_name: string,
-     *     last_name: string,
+     * Pairs of students that are probably the same person, strongest first:
+     *  - strong: same first+last name and either the same birthday or the same own cell
+     *  - phone:  different names but the same own cell number (nicknames, typos)
+     *  - weak:   same first+last name only
+     *
+     * "Own cell" is users.cell_phone or a cell-type phones row. Home phones and
+     * emergency-contact numbers are left out because siblings share them.
+     *
+     * @return list<array{
      *     strength: string,
      *     winner_id: int,
      *     loser_id: int,
+     *     winner_name: string,
+     *     loser_name: string,
      *     winner_email: string,
      *     loser_email: string,
      *     winner_birthday: string|null,
      *     loser_birthday: string|null,
      *     winner_schools: string,
      *     loser_schools: string,
+     *     shared_phone: string|null,
      * }>
      */
     #[Computed]
     public function potentialDuplicates(): array
     {
-        $groups = DB::table('students as s')
+        /** @var array<string, array{0: int, 1: int}> $pairIds keyed "winnerId-loserId" */
+        $pairIds = [];
+
+        $nameGroups = DB::table('students as s')
             ->join('users as u', 'u.id', '=', 's.user_id')
-            ->selectRaw('u.first_name, u.last_name, GROUP_CONCAT(s.id ORDER BY s.id) as ids')
+            ->selectRaw('GROUP_CONCAT(s.id ORDER BY s.id) as ids')
             ->groupBy('u.first_name', 'u.last_name')
             ->havingRaw('COUNT(s.id) > 1')
-            ->orderBy('u.last_name')
-            ->orderBy('u.first_name')
             ->get();
 
-        if ($groups->isEmpty()) {
+        foreach ($nameGroups as $group) {
+            $ids = array_map('intval', explode(',', (string) $group->ids));
+            $pairIds["{$ids[0]}-{$ids[1]}"] = [$ids[0], $ids[1]];
+        }
+
+        $sharedPhones = $this->sharedOwnCellPairs();
+
+        foreach (array_keys($sharedPhones) as $key) {
+            [$winnerId, $loserId] = array_map('intval', explode('-', $key));
+            $pairIds[$key] = [$winnerId, $loserId];
+        }
+
+        if ($pairIds === []) {
             return [];
         }
 
-        $allIds = $groups
-            ->flatMap(fn ($g) => explode(',', $g->ids))
-            ->map(fn ($id) => (int) $id)
-            ->all();
+        $allIds = collect($pairIds)->flatten()->unique()->values()->all();
 
         $studentData = DB::table('students as s')
             ->join('users as u', 'u.id', '=', 's.user_id')
             ->whereIn('s.id', $allIds)
-            ->select(['s.id', 's.birthday', 'u.email'])
+            ->select(['s.id', 's.birthday', 'u.email', 'u.first_name', 'u.last_name'])
             ->get()
             ->keyBy('id');
 
@@ -233,17 +306,10 @@ class MergeStudents extends Component
             ->groupBy('student_id')
             ->map(fn ($rows) => $rows->pluck('name')->join(', '));
 
+        $rank = ['strong' => 0, 'phone' => 1, 'weak' => 2];
         $pairs = [];
 
-        foreach ($groups as $group) {
-            $ids = array_map('intval', explode(',', $group->ids));
-            $winnerId = $ids[0];
-            $loserId = $ids[1] ?? null;
-
-            if ($loserId === null) {
-                continue;
-            }
-
+        foreach ($pairIds as $key => [$winnerId, $loserId]) {
             $winner = $studentData->get($winnerId);
             $loser = $studentData->get($loserId);
 
@@ -251,26 +317,72 @@ class MergeStudents extends Component
                 continue;
             }
 
-            $sameBirthday = $winner->birthday !== null
-                && $loser->birthday !== null
-                && $winner->birthday === $loser->birthday;
+            $sameName = $winner->first_name === $loser->first_name && $winner->last_name === $loser->last_name;
+            $sameBirthday = $winner->birthday !== null && $winner->birthday === $loser->birthday;
+            $sharedPhone = $sharedPhones[$key] ?? null;
+
+            $strength = match (true) {
+                $sameName && ($sameBirthday || $sharedPhone !== null) => 'strong',
+                $sharedPhone !== null => 'phone',
+                default => 'weak',
+            };
 
             $pairs[] = [
-                'first_name' => $group->first_name,
-                'last_name' => $group->last_name,
-                'strength' => $sameBirthday ? 'strong' : 'weak',
+                'strength' => $strength,
                 'winner_id' => $winnerId,
                 'loser_id' => $loserId,
-                'winner_email' => $winner->email,
-                'loser_email' => $loser->email,
+                'winner_name' => $winner->first_name.' '.$winner->last_name,
+                'loser_name' => $loser->first_name.' '.$loser->last_name,
+                'winner_email' => (string) $winner->email,
+                'loser_email' => (string) $loser->email,
                 'winner_birthday' => $winner->birthday ? Carbon::parse($winner->birthday)->format('M j, Y') : null,
                 'loser_birthday' => $loser->birthday ? Carbon::parse($loser->birthday)->format('M j, Y') : null,
                 'winner_schools' => $schoolData->get((string) $winnerId) ?? '—',
                 'loser_schools' => $schoolData->get((string) $loserId) ?? '—',
+                'shared_phone' => $sharedPhone !== null ? PhoneNormalizer::format($sharedPhone) : null,
             ];
         }
 
-        usort($pairs, fn ($a, $b): int => strcmp($b['strength'], $a['strength'])); // strong before weak
+        usort($pairs, fn (array $a, array $b): int => [$rank[$a['strength']], $a['winner_name']] <=> [$rank[$b['strength']], $b['winner_name']]);
+
+        return $pairs;
+    }
+
+    /**
+     * Student pairs whose own cell numbers match, as "lowerId-higherId" => number.
+     * users.cell_phone is unique, so a match is either a users.cell_phone
+     * against a phones row, or two phones rows.
+     *
+     * @return array<string, string>
+     */
+    private function sharedOwnCellPairs(): array
+    {
+        $ownCells = DB::table('students as s')
+            ->join('users as u', 'u.id', '=', 's.user_id')
+            ->whereNotNull('u.cell_phone')
+            ->where('u.cell_phone', '!=', '')
+            ->select(['s.id as student_id', 'u.cell_phone as number'])
+            ->unionAll(
+                DB::table('students as s')
+                    ->join('phones as p', 'p.user_id', '=', 's.user_id')
+                    ->where('p.type', PhoneType::Cell->value)
+                    ->where('p.raw_number', '!=', '')
+                    ->select(['s.id as student_id', 'p.raw_number as number'])
+            );
+
+        $groups = DB::query()
+            ->fromSub($ownCells, 'c')
+            ->selectRaw('c.number, GROUP_CONCAT(DISTINCT c.student_id ORDER BY c.student_id) as ids')
+            ->groupBy('c.number')
+            ->havingRaw('COUNT(DISTINCT c.student_id) > 1')
+            ->get();
+
+        $pairs = [];
+
+        foreach ($groups as $group) {
+            $ids = array_map('intval', explode(',', (string) $group->ids));
+            $pairs["{$ids[0]}-{$ids[1]}"] ??= (string) $group->number;
+        }
 
         return $pairs;
     }
@@ -286,7 +398,7 @@ class MergeStudents extends Component
         $this->loserId = $loserId;
         $this->winnerSearch = '';
         $this->loserSearch = '';
-        unset($this->winner, $this->loser);
+        unset($this->winner, $this->loser, $this->discardedPhones, $this->profileDifferences, $this->sharedCandidateDifferences);
         $this->dispatch('pair-preselected');
     }
 

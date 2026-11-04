@@ -130,16 +130,29 @@
         <flux:text class="text-zinc-500">No potential duplicates found.</flux:text>
     @else
 
+        @php
+            $matchBadge = [
+                'strong' => ['color' => 'green', 'label' => 'Strong'],
+                'phone' => ['color' => 'sky', 'label' => 'Same cell'],
+                'weak' => ['color' => 'amber', 'label' => 'Weak'],
+            ];
+        @endphp
+
         {{-- Mobile: card list --}}
         <div class="flex flex-col gap-3 md:hidden">
             @foreach ($this->potentialDuplicates as $pair)
                 <div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
                     <div class="mb-3 flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
-                            <flux:badge color="{{ $pair['strength'] === 'strong' ? 'green' : 'amber' }}" size="sm">
-                                {{ $pair['strength'] === 'strong' ? 'Strong' : 'Weak' }}
+                        <div class="flex min-w-0 items-center gap-2">
+                            <flux:badge color="{{ $matchBadge[$pair['strength']]['color'] }}" size="sm">
+                                {{ $matchBadge[$pair['strength']]['label'] }}
                             </flux:badge>
-                            <flux:text class="font-medium">{{ $pair['first_name'] }} {{ $pair['last_name'] }}</flux:text>
+                            <flux:text class="font-medium">
+                                {{ $pair['winner_name'] }}
+                                @if ($pair['loser_name'] !== $pair['winner_name'])
+                                    / {{ $pair['loser_name'] }}
+                                @endif
+                            </flux:text>
                         </div>
                         <flux:button size="sm" wire:click="preselectPair({{ $pair['winner_id'] }}, {{ $pair['loser_id'] }})">
                             Pre-fill
@@ -157,7 +170,10 @@
                             <flux:text size="sm" class="text-zinc-500">{{ $pair['loser_schools'] }}</flux:text>
                         </div>
                     </div>
-                    @if ($pair['strength'] === 'weak')
+                    @if ($pair['shared_phone'] !== null)
+                        <flux:text size="sm" class="mt-2 text-zinc-500">Same cell: {{ $pair['shared_phone'] }}</flux:text>
+                    @endif
+                    @if ($pair['winner_birthday'] !== $pair['loser_birthday'])
                         <flux:text size="sm" class="mt-2 text-amber-600 dark:text-amber-400">
                             Birthdays differ: {{ $pair['winner_birthday'] ?? '—' }} vs {{ $pair['loser_birthday'] ?? '—' }}
                         </flux:text>
@@ -180,12 +196,18 @@
                     @foreach ($this->potentialDuplicates as $pair)
                         <flux:table.row :key="$pair['winner_id'].'-'.$pair['loser_id']">
                             <flux:table.cell>
-                                <flux:badge color="{{ $pair['strength'] === 'strong' ? 'green' : 'amber' }}" size="sm">
-                                    {{ $pair['strength'] === 'strong' ? 'Strong' : 'Weak' }}
+                                <flux:badge color="{{ $matchBadge[$pair['strength']]['color'] }}" size="sm">
+                                    {{ $matchBadge[$pair['strength']]['label'] }}
                                 </flux:badge>
                             </flux:table.cell>
                             <flux:table.cell class="font-medium whitespace-nowrap">
-                                {{ $pair['first_name'] }} {{ $pair['last_name'] }}
+                                {{ $pair['winner_name'] }}
+                                @if ($pair['loser_name'] !== $pair['winner_name'])
+                                    <flux:text size="sm" class="text-zinc-500">/ {{ $pair['loser_name'] }}</flux:text>
+                                @endif
+                                @if ($pair['shared_phone'] !== null)
+                                    <flux:text size="sm" class="font-normal text-zinc-500">Same cell: {{ $pair['shared_phone'] }}</flux:text>
+                                @endif
                             </flux:table.cell>
                             <flux:table.cell>
                                 <flux:text size="sm" class="text-zinc-400">#{{ $pair['winner_id'] }}</flux:text>
@@ -196,7 +218,7 @@
                                 <flux:text size="sm" class="text-zinc-400">#{{ $pair['loser_id'] }}</flux:text>
                                 <flux:text size="sm">{{ $pair['loser_email'] }}</flux:text>
                                 <flux:text size="sm" class="text-zinc-500">{{ $pair['loser_schools'] }}</flux:text>
-                                @if ($pair['strength'] === 'weak')
+                                @if ($pair['winner_birthday'] !== $pair['loser_birthday'])
                                     <flux:text size="sm" class="text-amber-600 dark:text-amber-400">
                                         Birthday: {{ $pair['loser_birthday'] ?? '—' }} vs {{ $pair['winner_birthday'] ?? '—' }}
                                     </flux:text>
@@ -239,8 +261,53 @@
             </div>
 
             <flux:text size="sm" class="text-zinc-500">
-                The loser's school enrollments, teacher connections, emergency contacts, home address, Candidates and payments will be transferred to the winner. Where both are Candidates in the same Version, the winner's Candidate is kept and the loser's payments move onto it. The loser's student record and user account will be <strong>permanently deleted</strong>.
+                The loser's school enrollments, teacher connections, emergency contacts, home address, Candidates and payments will be transferred to the winner. The loser's phone numbers move to the winner wherever the winner doesn't already have one of that kind. Where both are Candidates in the same Version, the winner's Candidate is kept and the loser's payments move onto it. The loser's student record and user account will be <strong>permanently deleted</strong>.
             </flux:text>
+
+            @if ($this->profileDifferences !== [])
+                <flux:callout variant="warning" icon="exclamation-triangle">
+                    <flux:callout.heading>Profile differences</flux:callout.heading>
+                    <flux:callout.text>
+                        The winner's values are kept and the loser's are discarded:
+                    </flux:callout.text>
+                    <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
+                        @foreach ($this->profileDifferences as $difference)
+                            <li><strong>{{ $difference['field'] }}</strong>: keeps {{ $difference['winner'] }}, not {{ $difference['loser'] }}.</li>
+                        @endforeach
+                    </ul>
+                </flux:callout>
+            @endif
+
+            @if ($this->sharedCandidateDifferences !== [])
+                <flux:callout variant="warning" icon="exclamation-triangle">
+                    <flux:callout.heading>Both are Candidates in the same Version</flux:callout.heading>
+                    <flux:callout.text>
+                        The winner's Candidate is kept and the loser's is deleted. Check these afterwards:
+                    </flux:callout.text>
+                    <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
+                        @foreach ($this->sharedCandidateDifferences as $difference)
+                            @php
+                                $notes = [];
+                                if ($difference['winner_voice_part'] !== $difference['loser_voice_part']) {
+                                    $notes[] = "keeps {$difference['winner_voice_part']}, not {$difference['loser_voice_part']}";
+                                }
+                                if ($difference['winner_status'] !== $difference['loser_status']) {
+                                    $notes[] = "keeps status {$difference['winner_status']}, not {$difference['loser_status']}";
+                                }
+                            @endphp
+                            <li><strong>{{ $difference['version_name'] }}</strong>: {{ implode('; ', $notes) }}.</li>
+                        @endforeach
+                    </ul>
+                </flux:callout>
+            @endif
+
+            @if ($this->discardedPhones !== [])
+                <flux:callout variant="warning" icon="exclamation-triangle">
+                    <flux:callout.text>
+                        The winner already has a different number, so these loser phone numbers will be deleted: {{ implode(', ', $this->discardedPhones) }}.
+                    </flux:callout.text>
+                </flux:callout>
+            @endif
 
             <div class="flex justify-end gap-2">
                 <flux:modal.close>
