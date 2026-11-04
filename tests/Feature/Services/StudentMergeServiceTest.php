@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
+use App\Enums\PhoneType;
 use App\Models\Candidate;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
+use App\Models\Phone;
 use App\Models\Recording;
 use App\Models\RoomJudge;
 use App\Models\Score;
 use App\Models\ScoreCategory;
 use App\Models\ScoreFactor;
 use App\Models\Student;
+use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionRoom;
@@ -168,4 +171,83 @@ test('a same-version pair with no adjudication data on the loser is not a confli
     studentMergePaidCandidate($loser, $version);
 
     expect(app(StudentMergeService::class)->conflicts($winner, $loser))->toBe([]);
+});
+
+function studentMergeStudentWithCell(?string $cell): Student
+{
+    return Student::factory()->create(['user_id' => User::factory()->create(['cell_phone' => $cell])->id]);
+}
+
+test('the loser account cell phone moves to a winner that has none', function () {
+    $winner = studentMergeStudentWithCell(null);
+    $loser = studentMergeStudentWithCell('2015551234');
+
+    app(StudentMergeService::class)->merge($winner, $loser);
+
+    expect($winner->user->fresh()?->cell_phone)->toBe('2015551234')
+        ->and(User::find($loser->user_id))->toBeNull();
+});
+
+test('the winner keeps its own account cell phone and the loser one is reported as discarded', function () {
+    $winner = studentMergeStudentWithCell('2015550000');
+    $loser = studentMergeStudentWithCell('2015551234');
+    $service = app(StudentMergeService::class);
+
+    expect($service->discardedPhones($winner, $loser))->toBe(['(201) 555-1234']);
+
+    $service->merge($winner, $loser);
+
+    expect($winner->user->fresh()?->cell_phone)->toBe('2015550000');
+});
+
+test('a self-registered phones row moves to the winner when the winner has none of that type', function () {
+    $winner = studentMergeStudentWithCell(null);
+    $loser = studentMergeStudentWithCell(null);
+    $phone = Phone::factory()->create(['user_id' => $loser->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015551234']);
+
+    app(StudentMergeService::class)->merge($winner, $loser);
+
+    expect($phone->fresh()?->user_id)->toBe($winner->user_id);
+});
+
+test('a loser phones row is dropped when the winner already has that type, and only a different number counts as discarded', function () {
+    $winner = studentMergeStudentWithCell(null);
+    $loser = studentMergeStudentWithCell(null);
+    Phone::factory()->create(['user_id' => $winner->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015550000']);
+    Phone::factory()->create(['user_id' => $winner->user_id, 'type' => PhoneType::Home, 'raw_number' => '2015557777']);
+    Phone::factory()->create(['user_id' => $loser->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015551234']);
+    Phone::factory()->create(['user_id' => $loser->user_id, 'type' => PhoneType::Home, 'raw_number' => '2015557777']);
+    $service = app(StudentMergeService::class);
+
+    expect($service->discardedPhones($winner, $loser))->toBe(['(201) 555-1234']);
+
+    $service->merge($winner, $loser);
+
+    expect(Phone::where('user_id', $winner->user_id)->orderBy('type')->pluck('raw_number')->all())->toBe(['2015550000', '2015557777'])
+        ->and(Phone::where('user_id', $loser->user_id)->count())->toBe(0);
+});
+
+test('a loser number the winner holds in the other store is not counted as discarded', function () {
+    $winner = studentMergeStudentWithCell('2015551234');
+    $loser = studentMergeStudentWithCell(null);
+    Phone::factory()->create(['user_id' => $winner->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015550000']);
+    Phone::factory()->create(['user_id' => $loser->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015551234']);
+
+    expect(app(StudentMergeService::class)->discardedPhones($winner, $loser))->toBe([]);
+});
+
+test('phones stay with a loser User that survives because it has a Teacher record', function () {
+    $winner = studentMergeStudentWithCell(null);
+    $loser = studentMergeStudentWithCell('2015551234');
+    Teacher::factory()->create(['user_id' => $loser->user_id]);
+    $phone = Phone::factory()->create(['user_id' => $loser->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015559999']);
+    $service = app(StudentMergeService::class);
+
+    expect($service->discardedPhones($winner, $loser))->toBe([]);
+
+    $service->merge($winner, $loser);
+
+    expect($loser->user->fresh()?->cell_phone)->toBe('2015551234')
+        ->and($phone->fresh()?->user_id)->toBe($loser->user_id)
+        ->and($winner->user->fresh()?->cell_phone)->toBeNull();
 });
