@@ -472,7 +472,7 @@ test('withdraw leaves a candidate outside the active registration states unchang
     'adjudicated' => CandidateStatus::Adjudicated,
 ]);
 
-test('unwithdraw returns a teacher-withdrawn candidate to an active registration state', function () {
+test('reinstate returns a teacher-withdrawn candidate to an active registration state', function () {
     $teacher = makeRegistrationTeacher();
     $version = Version::factory()->create();
     actingAs($teacher->user);
@@ -485,13 +485,13 @@ test('unwithdraw returns a teacher-withdrawn candidate to an active registration
 
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
-        ->call('unwithdraw', $candidate->id);
+        ->call('reinstate', $candidate->id);
 
     expect($candidate->refresh()->getRawOriginal('status'))
         ->toBeIn(array_map(fn (CandidateStatus $s): string => $s->value, CandidateStatus::registrationStates()));
 });
 
-test('unwithdraw does not reverse a student\'s own withdrawal', function () {
+test('reinstate does not reverse a student\'s own withdrawal', function () {
     $teacher = makeRegistrationTeacher();
     $version = Version::factory()->create();
     actingAs($teacher->user);
@@ -504,12 +504,12 @@ test('unwithdraw does not reverse a student\'s own withdrawal', function () {
 
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
-        ->call('unwithdraw', $candidate->id);
+        ->call('reinstate', $candidate->id);
 
     expect($candidate->refresh()->status)->toBe(CandidateStatus::Withdrew);
 });
 
-test('unwithdraw is refused while the owning teacher\'s obligations are rejected', function () {
+test('reinstate is refused while the owning teacher\'s obligations are rejected', function () {
     $granting = makeRegistrationTeacher();
     $coTeacher = makeRegistrationTeacher();
     $school = School::factory()->create();
@@ -539,12 +539,12 @@ test('unwithdraw is refused while the owning teacher\'s obligations are rejected
 
     Livewire::actingAs($coTeacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
-        ->call('unwithdraw', $candidate->id);
+        ->call('reinstate', $candidate->id);
 
     expect($candidate->refresh()->status)->toBe(CandidateStatus::TeacherWithdrawn);
 });
 
-test('unwithdraw cannot target a candidate belonging to another teacher', function () {
+test('reinstate cannot target a candidate belonging to another teacher', function () {
     $teacher = makeRegistrationTeacher();
     $otherTeacher = makeRegistrationTeacher();
     $version = Version::factory()->create();
@@ -559,13 +559,13 @@ test('unwithdraw cannot target a candidate belonging to another teacher', functi
     expect(function () use ($teacher, $version, $candidate) {
         Livewire::actingAs($teacher->user)
             ->test(VersionDashboard::class, ['version' => $version])
-            ->call('unwithdraw', $candidate->id);
+            ->call('reinstate', $candidate->id);
     })->toThrow(ModelNotFoundException::class);
 
     expect($candidate->refresh()->status)->toBe(CandidateStatus::TeacherWithdrawn);
 });
 
-test('the roster shows Un-withdraw instead of Withdraw for a teacher-withdrawn candidate', function () {
+test('the roster shows Reinstate instead of Withdraw for a teacher-withdrawn candidate', function () {
     $teacher = makeRegistrationTeacher();
     $version = Version::factory()->create();
     actingAs($teacher->user);
@@ -578,7 +578,7 @@ test('the roster shows Un-withdraw instead of Withdraw for a teacher-withdrawn c
 
     Livewire::actingAs($teacher->user)
         ->test(VersionDashboard::class, ['version' => $version])
-        ->assertSeeHtml("unwithdraw({$candidate->id})")
+        ->assertSeeHtml("reinstate({$candidate->id})")
         ->assertDontSeeHtml("\"withdraw({$candidate->id})\"");
 });
 
