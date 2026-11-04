@@ -13,6 +13,7 @@ use App\Models\Recording;
 use App\Models\Student;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VoicePart;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -172,4 +173,33 @@ test('pairs are ordered strong, then same cell, then weak, and the list shows th
     expect(array_column(mergeStudentsPagePairs($students), 'strength'))->toBe(['strong', 'phone', 'weak']);
 
     Livewire::actingAs(makeFounderUser())->test(MergeStudents::class)->assertSee('Same cell: (201) 555-1234');
+});
+
+test('the founder page shows default voice parts and warns about voice part and same-version candidate differences', function () {
+    $soprano = VoicePart::factory()->create(['name' => 'Soprano I']);
+    $alto = VoicePart::factory()->create(['name' => 'Alto II']);
+    $winner = Student::factory()->create(['voice_part_id' => $soprano->id]);
+    $loser = Student::factory()->create(['voice_part_id' => $alto->id]);
+    $version = Version::factory()->create(['name' => 'All-State Chorus 2027']);
+    Candidate::factory()->create(['student_id' => $winner->id, 'version_id' => $version->id, 'voice_part_id' => $soprano->id]);
+    Candidate::factory()->registered()->create(['student_id' => $loser->id, 'version_id' => $version->id, 'voice_part_id' => $alto->id]);
+
+    Livewire::actingAs(makeFounderUser())
+        ->test(MergeStudents::class)
+        ->call('preselectPair', $winner->id, $loser->id)
+        ->assertSee("the winner's Soprano I is kept and the loser's Alto II is discarded", false)
+        ->assertSee('keeps Soprano I, not Alto II; keeps status Eligible, not Registered.', false);
+});
+
+test('the founder page shows no voice part warnings when nothing differs', function () {
+    $alto = VoicePart::factory()->create(['name' => 'Alto II']);
+    $winner = Student::factory()->create(['voice_part_id' => $alto->id]);
+    $loser = Student::factory()->create(['voice_part_id' => null]);
+
+    Livewire::actingAs(makeFounderUser())
+        ->test(MergeStudents::class)
+        ->call('preselectPair', $winner->id, $loser->id)
+        ->assertSee('Alto II')
+        ->assertDontSee('Default voice part:')
+        ->assertDontSee('Both are Candidates in the same Version');
 });

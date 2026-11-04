@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\CandidateStatus;
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
 use App\Enums\PhoneType;
@@ -250,4 +251,51 @@ test('phones stay with a loser User that survives because it has a Teacher recor
     expect($loser->user->fresh()?->cell_phone)->toBe('2015551234')
         ->and($phone->fresh()?->user_id)->toBe($loser->user_id)
         ->and($winner->user->fresh()?->cell_phone)->toBeNull();
+});
+
+test('voicePartDifference names both default voice parts only when both are set and differ', function () {
+    $soprano = VoicePart::factory()->create(['name' => 'Soprano I']);
+    $alto = VoicePart::factory()->create(['name' => 'Alto II']);
+    $winner = Student::factory()->create(['voice_part_id' => $soprano->id]);
+    $loser = Student::factory()->create(['voice_part_id' => $alto->id]);
+    $sameAsWinner = Student::factory()->create(['voice_part_id' => $soprano->id]);
+    $noPart = Student::factory()->create(['voice_part_id' => null]);
+    $service = app(StudentMergeService::class);
+
+    expect($service->voicePartDifference($winner, $loser))->toBe(['winner' => 'Soprano I', 'loser' => 'Alto II'])
+        ->and($service->voicePartDifference($winner, $sameAsWinner))->toBeNull()
+        ->and($service->voicePartDifference($winner, $noPart))->toBeNull();
+
+    $service->merge($winner, $loser);
+
+    expect($winner->fresh()?->voice_part_id)->toBe($soprano->id);
+});
+
+test('sharedCandidateDifferences lists same-version candidates that differ in voice part or status, and the merge still keeps the winner candidate', function () {
+    $soprano = VoicePart::factory()->create(['name' => 'Soprano I']);
+    $alto = VoicePart::factory()->create(['name' => 'Alto II']);
+    $winner = Student::factory()->create();
+    $loser = Student::factory()->create();
+    $differs = Version::factory()->create(['name' => 'All-State Chorus 2027']);
+    $matches = Version::factory()->create(['name' => 'Region II Chorus 2027']);
+    $winnerCandidate = Candidate::factory()->create(['student_id' => $winner->id, 'version_id' => $differs->id, 'voice_part_id' => $soprano->id, 'status' => CandidateStatus::Eligible]);
+    Candidate::factory()->registered()->create(['student_id' => $loser->id, 'version_id' => $differs->id, 'voice_part_id' => $alto->id]);
+    Candidate::factory()->create(['student_id' => $winner->id, 'version_id' => $matches->id, 'voice_part_id' => $alto->id, 'status' => CandidateStatus::Eligible]);
+    Candidate::factory()->create(['student_id' => $loser->id, 'version_id' => $matches->id, 'voice_part_id' => $alto->id, 'status' => CandidateStatus::Eligible]);
+    $service = app(StudentMergeService::class);
+
+    expect($service->sharedCandidateDifferences($winner, $loser))->toBe([[
+        'version_name' => 'All-State Chorus 2027',
+        'winner_voice_part' => 'Soprano I',
+        'loser_voice_part' => 'Alto II',
+        'winner_status' => 'Eligible',
+        'loser_status' => 'Registered',
+    ]]);
+
+    $service->merge($winner, $loser);
+
+    $winnerCandidate->refresh();
+
+    expect($winnerCandidate->voice_part_id)->toBe($soprano->id)
+        ->and($winnerCandidate->status)->toBe(CandidateStatus::Eligible);
 });
