@@ -443,9 +443,9 @@
                                 </flux:button>
                             @elseif ($rawStatus === 'teacher_withdrawn')
                                 <flux:button id="{{ $loop->first ? 'tour-row-withdraw-mobile' : '' }}" size="sm" variant="ghost" icon="arrow-uturn-left"
-                                    wire:click="unwithdraw({{ $candidate->id }})"
-                                    wire:confirm="Un-withdraw {{ $candidate->program_name }}? Their status will be reset to Eligible and then rechecked against the checklist.">
-                                    Un-withdraw
+                                    wire:click="reinstate({{ $candidate->id }})"
+                                    wire:confirm="Reinstate {{ $candidate->program_name }}? Their status will be reset to Eligible and then rechecked against the checklist.">
+                                    Reinstate
                                 </flux:button>
                             @endif
                         </div>
@@ -559,9 +559,9 @@
                                         </flux:button>
                                     @elseif ($rawStatus === 'teacher_withdrawn')
                                         <flux:button id="{{ $loop->first ? 'tour-row-withdraw' : '' }}" size="sm" variant="ghost" icon="arrow-uturn-left"
-                                            wire:click="unwithdraw({{ $candidate->id }})"
-                                            wire:confirm="Un-withdraw {{ $candidate->program_name }}? Their status will be reset to Eligible and then rechecked against the checklist.">
-                                            Un-withdraw
+                                            wire:click="reinstate({{ $candidate->id }})"
+                                            wire:confirm="Reinstate {{ $candidate->program_name }}? Their status will be reset to Eligible and then rechecked against the checklist.">
+                                            Reinstate
                                         </flux:button>
                                     @endif
                                 </div>
@@ -761,7 +761,7 @@
                     { ids: ['tour-row-paid', 'tour-row-paid-mobile'], title: 'Paid', body: 'How much has actually been allocated to this candidate so far, net of any refunds.' },
                     { ids: ['tour-row-manage', 'tour-row-manage-mobile'], title: 'Manage', body: "Open this candidate's full record to edit details, review their application, or record a payment." },
                     { ids: ['tour-row-refresh', 'tour-row-refresh-mobile'], title: 'Refresh', body: "Recheck this candidate's status against the checklist — handy right after you fix something that was missing." },
-                    { ids: ['tour-row-withdraw', 'tour-row-withdraw-mobile'], title: 'Withdraw / Un-withdraw', body: 'Remove this candidate from the Version — their status becomes Teacher Withdrawn. Changed your mind? Un-withdraw resets them to Eligible and rechecks the checklist.' }
+                    { ids: ['tour-row-withdraw', 'tour-row-withdraw-mobile'], title: 'Withdraw / Reinstate', body: 'Remove this candidate from the Version — their status becomes Teacher Withdrawn. Changed your mind? Reinstate resets them to Eligible and rechecks the checklist.' }
                 ];
 
                 var activeSteps = [];
