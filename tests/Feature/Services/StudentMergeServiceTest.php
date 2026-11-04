@@ -6,7 +6,9 @@ use App\Enums\CandidateStatus;
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
 use App\Enums\PhoneType;
+use App\Enums\ShirtSize;
 use App\Models\Candidate;
+use App\Models\Instrument;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
 use App\Models\Phone;
@@ -253,22 +255,61 @@ test('phones stay with a loser User that survives because it has a Teacher recor
         ->and($winner->user->fresh()?->cell_phone)->toBeNull();
 });
 
-test('voicePartDifference names both default voice parts only when both are set and differ', function () {
+function studentMergeProfile(array $attributes): Student
+{
+    return Student::factory()->create($attributes + [
+        'birthday' => null,
+        'height' => null,
+        'instrument_id' => null,
+        'voice_part_id' => null,
+        'shirt_size' => ShirtSize::MED,
+    ]);
+}
+
+test('profileDifferences lists every field both students have set to different values', function () {
     $soprano = VoicePart::factory()->create(['name' => 'Soprano I']);
     $alto = VoicePart::factory()->create(['name' => 'Alto II']);
-    $winner = Student::factory()->create(['voice_part_id' => $soprano->id]);
-    $loser = Student::factory()->create(['voice_part_id' => $alto->id]);
-    $sameAsWinner = Student::factory()->create(['voice_part_id' => $soprano->id]);
-    $noPart = Student::factory()->create(['voice_part_id' => null]);
+    $flute = Instrument::factory()->create(['name' => 'Flute']);
+    $oboe = Instrument::factory()->create(['name' => 'Oboe']);
+    $winner = studentMergeProfile(['birthday' => '2010-01-01', 'voice_part_id' => $soprano->id, 'height' => 60, 'instrument_id' => $flute->id, 'shirt_size' => ShirtSize::MED]);
+    $loser = studentMergeProfile(['birthday' => '2010-02-02', 'voice_part_id' => $alto->id, 'height' => 64, 'instrument_id' => $oboe->id, 'shirt_size' => ShirtSize::XL]);
     $service = app(StudentMergeService::class);
 
-    expect($service->voicePartDifference($winner, $loser))->toBe(['winner' => 'Soprano I', 'loser' => 'Alto II'])
-        ->and($service->voicePartDifference($winner, $sameAsWinner))->toBeNull()
-        ->and($service->voicePartDifference($winner, $noPart))->toBeNull();
+    expect($service->profileDifferences($winner, $loser))->toBe([
+        ['field' => 'Birthday', 'winner' => 'Jan 1, 2010', 'loser' => 'Feb 2, 2010'],
+        ['field' => 'Voice part', 'winner' => 'Soprano I', 'loser' => 'Alto II'],
+        ['field' => 'Height', 'winner' => '60"', 'loser' => '64"'],
+        ['field' => 'Instrument', 'winner' => 'Flute', 'loser' => 'Oboe'],
+        ['field' => 'Shirt size', 'winner' => 'Medium', 'loser' => 'X-Large'],
+    ]);
 
     $service->merge($winner, $loser);
 
-    expect($winner->fresh()?->voice_part_id)->toBe($soprano->id);
+    $winner->refresh();
+
+    expect($winner->voice_part_id)->toBe($soprano->id)
+        ->and($winner->height)->toBe(60)
+        ->and($winner->instrument_id)->toBe($flute->id)
+        ->and($winner->getRawOriginal('shirt_size'))->toBe(ShirtSize::MED->value);
+});
+
+test('profileDifferences ignores fields that match or that only one student has', function () {
+    $alto = VoicePart::factory()->create(['name' => 'Alto II']);
+    $flute = Instrument::factory()->create(['name' => 'Flute']);
+    $winner = studentMergeProfile(['voice_part_id' => $alto->id, 'height' => 60, 'shirt_size' => ShirtSize::LG]);
+    $loser = studentMergeProfile(['voice_part_id' => $alto->id, 'birthday' => '2010-01-01', 'instrument_id' => $flute->id, 'shirt_size' => ShirtSize::LG]);
+
+    expect(app(StudentMergeService::class)->profileDifferences($winner, $loser))->toBe([]);
+});
+
+test('the merge fills an empty winner instrument from the loser', function () {
+    $flute = Instrument::factory()->create();
+    $winner = studentMergeProfile([]);
+    $loser = studentMergeProfile(['instrument_id' => $flute->id]);
+
+    app(StudentMergeService::class)->merge($winner, $loser);
+
+    expect($winner->fresh()?->instrument_id)->toBe($flute->id);
 });
 
 test('sharedCandidateDifferences lists same-version candidates that differ in voice part or status, and the merge still keeps the winner candidate', function () {

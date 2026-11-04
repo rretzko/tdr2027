@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Enums\CandidateStatus;
+use App\Enums\ShirtSize;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Support\PhoneNormalizer;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -257,27 +259,51 @@ class StudentMergeService
     }
 
     /**
-     * The two students' default voice part names when both are set and
-     * differ. The merge keeps the winner's, so the loser's is lost (the
-     * winner's is only filled from the loser when it's empty).
+     * Student profile fields where both students have a value and the values
+     * differ. The merge keeps the winner's (FILLABLE_BLANKS only fills the
+     * winner's empty fields), so the loser's is lost. shirt_size is NOT NULL
+     * with a 'med' default, so it's never filled and a default Medium can't
+     * be told apart from a real choice: it's only warned about.
      *
-     * @return array{winner: string, loser: string}|null
+     * @return list<array{field: string, winner: string, loser: string}>
      */
-    public function voicePartDifference(Student $winner, Student $loser): ?array
+    public function profileDifferences(Student $winner, Student $loser): array
     {
-        $parts = DB::table('students as s')
-            ->join('voice_parts as vp', 'vp.id', '=', 's.voice_part_id')
+        $rows = DB::table('students as s')
+            ->leftJoin('voice_parts as vp', 'vp.id', '=', 's.voice_part_id')
+            ->leftJoin('instruments as i', 'i.id', '=', 's.instrument_id')
             ->whereIn('s.id', [$winner->id, $loser->id])
-            ->pluck('vp.name', 's.id');
+            ->get(['s.id', 's.birthday', 's.height', 's.shirt_size', 'vp.name as voice_part', 'i.name as instrument'])
+            ->keyBy('id');
 
-        $winnerPart = $parts->get($winner->id);
-        $loserPart = $parts->get($loser->id);
+        $winnerRow = $rows->get($winner->id);
+        $loserRow = $rows->get($loser->id);
 
-        if ($winnerPart === null || $loserPart === null || $winnerPart === $loserPart) {
-            return null;
+        if ($winnerRow === null || $loserRow === null) {
+            return [];
         }
 
-        return ['winner' => (string) $winnerPart, 'loser' => (string) $loserPart];
+        /** @var array<string, callable(object): ?string> $fields */
+        $fields = [
+            'Birthday' => fn (object $row): ?string => $row->birthday !== null ? Carbon::parse($row->birthday)->format('M j, Y') : null,
+            'Voice part' => fn (object $row): ?string => $row->voice_part !== null ? (string) $row->voice_part : null,
+            'Height' => fn (object $row): ?string => $row->height !== null ? $row->height.'"' : null,
+            'Instrument' => fn (object $row): ?string => $row->instrument !== null ? (string) $row->instrument : null,
+            'Shirt size' => fn (object $row): ?string => ShirtSize::tryFrom((string) $row->shirt_size)?->label(),
+        ];
+
+        $differences = [];
+
+        foreach ($fields as $field => $display) {
+            $winnerValue = $display($winnerRow);
+            $loserValue = $display($loserRow);
+
+            if ($winnerValue !== null && $loserValue !== null && $winnerValue !== $loserValue) {
+                $differences[] = ['field' => $field, 'winner' => $winnerValue, 'loser' => $loserValue];
+            }
+        }
+
+        return $differences;
     }
 
     /**
