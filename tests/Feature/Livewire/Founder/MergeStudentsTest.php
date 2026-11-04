@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Enums\PhoneType;
 use App\Livewire\Founder\MergeStudents;
 use App\Models\Candidate;
+use App\Models\EmergencyContact;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
+use App\Models\Phone;
 use App\Models\Recording;
 use App\Models\Student;
 use App\Models\User;
@@ -80,4 +83,93 @@ test('the founder page moves the loser cell phone onto a winner without one', fu
         ->call('merge');
 
     expect($winner->user->fresh()?->cell_phone)->toBe('2015551234');
+});
+
+function mergeStudentsPageStudent(string $first, string $last, ?string $cell = null, ?string $birthday = null): Student
+{
+    $user = User::factory()->create(['first_name' => $first, 'last_name' => $last, 'cell_phone' => $cell]);
+
+    return Student::factory()->create(['user_id' => $user->id, 'birthday' => $birthday]);
+}
+
+/**
+ * The seeder loads local roster data, so keep only pairs made of the given students.
+ *
+ * @param  list<Student>  $students
+ * @return list<array<string, mixed>>
+ */
+function mergeStudentsPagePairs(array $students): array
+{
+    $ids = array_map(fn (Student $student): int => $student->id, $students);
+    $pairs = Livewire::actingAs(makeFounderUser())->test(MergeStudents::class)->get('potentialDuplicates');
+
+    return array_values(array_filter($pairs, fn (array $pair): bool => in_array($pair['winner_id'], $ids, true) && in_array($pair['loser_id'], $ids, true)));
+}
+
+test('students with different names but the same own cell are listed as a same-cell pair', function () {
+    $winner = mergeStudentsPageStudent('Katherine', 'Doyle', '2015551234');
+    $loser = mergeStudentsPageStudent('Katie', 'Doyle');
+    Phone::factory()->create(['user_id' => $loser->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015551234']);
+
+    $pairs = mergeStudentsPagePairs([$winner, $loser]);
+
+    expect($pairs)->toHaveCount(1)
+        ->and($pairs[0])->toMatchArray([
+            'strength' => 'phone',
+            'winner_id' => $winner->id,
+            'loser_id' => $loser->id,
+            'winner_name' => 'Katherine Doyle',
+            'loser_name' => 'Katie Doyle',
+            'shared_phone' => '(201) 555-1234',
+        ]);
+});
+
+test('a same-name pair with different birthdays is strong when they share an own cell', function () {
+    $winner = mergeStudentsPageStudent('Ava', 'Reyes', '2015551234', '2010-01-01');
+    $loser = mergeStudentsPageStudent('Ava', 'Reyes', null, '2010-02-02');
+    Phone::factory()->create(['user_id' => $loser->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015551234']);
+
+    $pairs = mergeStudentsPagePairs([$winner, $loser]);
+
+    expect($pairs)->toHaveCount(1)
+        ->and($pairs[0]['strength'])->toBe('strong')
+        ->and($pairs[0]['shared_phone'])->toBe('(201) 555-1234');
+});
+
+test('a same-name pair with different birthdays and no shared cell stays weak', function () {
+    $winner = mergeStudentsPageStudent('Ava', 'Reyes', null, '2010-01-01');
+    $loser = mergeStudentsPageStudent('Ava', 'Reyes', null, '2010-02-02');
+
+    $pairs = mergeStudentsPagePairs([$winner, $loser]);
+
+    expect($pairs)->toHaveCount(1)
+        ->and($pairs[0]['strength'])->toBe('weak')
+        ->and($pairs[0]['shared_phone'])->toBeNull();
+});
+
+test('shared home phones and emergency contact numbers do not pair students', function () {
+    $a = mergeStudentsPageStudent('Liam', 'Park');
+    $b = mergeStudentsPageStudent('Noah', 'Park');
+    Phone::factory()->create(['user_id' => $a->user_id, 'type' => PhoneType::Home, 'raw_number' => '2015557777']);
+    Phone::factory()->create(['user_id' => $b->user_id, 'type' => PhoneType::Home, 'raw_number' => '2015557777']);
+    EmergencyContact::factory()->create(['student_id' => $a->id, 'cell_phone' => '2015558888']);
+    EmergencyContact::factory()->create(['student_id' => $b->id, 'cell_phone' => '2015558888']);
+
+    expect(mergeStudentsPagePairs([$a, $b]))->toBe([]);
+});
+
+test('pairs are ordered strong, then same cell, then weak, and the list shows the shared number', function () {
+    $students = [
+        mergeStudentsPageStudent('Ann', 'Baker', null, '2010-01-01'),
+        mergeStudentsPageStudent('Ann', 'Baker', null, '2011-01-01'),
+        mergeStudentsPageStudent('Ben', 'Cole', '2015551234'),
+        $benny = mergeStudentsPageStudent('Benny', 'Cole'),
+        mergeStudentsPageStudent('Zoe', 'Adams', null, '2010-01-01'),
+        mergeStudentsPageStudent('Zoe', 'Adams', null, '2010-01-01'),
+    ];
+    Phone::factory()->create(['user_id' => $benny->user_id, 'type' => PhoneType::Cell, 'raw_number' => '2015551234']);
+
+    expect(array_column(mergeStudentsPagePairs($students), 'strength'))->toBe(['strong', 'phone', 'weak']);
+
+    Livewire::actingAs(makeFounderUser())->test(MergeStudents::class)->assertSee('Same cell: (201) 555-1234');
 });
