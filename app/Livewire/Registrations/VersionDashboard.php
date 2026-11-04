@@ -149,7 +149,7 @@ class VersionDashboard extends Component
         Flux::toast("{$name} has been withdrawn.");
     }
 
-    public function unwithdraw(CandidateService $candidates, CoTeacherAccessService $coTeacherAccess, int $candidateId): void
+    public function reinstate(CandidateService $candidates, CoTeacherAccessService $coTeacherAccess, int $candidateId): void
     {
         $candidate = $coTeacherAccess->candidateQuery($this->teacher())
             ->where('id', $candidateId)
@@ -165,7 +165,7 @@ class VersionDashboard extends Component
         }
 
         // A rejected obligation cascade-withdrew every candidate of the
-        // owning teacher; un-withdrawing one at a time would sidestep that
+        // owning teacher; reinstating one at a time would sidestep that
         // full stop. Checked against the candidate's owning teacher, not the
         // acting user, since a co-teacher can manage granted candidates.
         $ownerInvitation = VersionInvitation::where('version_id', $this->version->id)
@@ -174,7 +174,7 @@ class VersionDashboard extends Component
             ->first();
 
         if ($ownerInvitation?->obligationResponse?->getRawOriginal('decision') === ObligationDecision::Rejected->value) {
-            Flux::toast("{$name} can't be un-withdrawn while this Version's obligations are rejected. Accept the obligations to reinstate candidates.", variant: 'danger');
+            Flux::toast("{$name} can't be reinstated while this Version's obligations are rejected. Accept the obligations first.", variant: 'danger');
 
             return;
         }
@@ -183,7 +183,7 @@ class VersionDashboard extends Component
 
         $newStatus = CandidateStatus::from((string) $candidate->refresh()->getRawOriginal('status'));
 
-        Flux::toast("{$name} has been un-withdrawn and is now {$newStatus->label()}.");
+        Flux::toast("{$name} has been reinstated and is now {$newStatus->label()}.");
     }
 
     public function refreshStatus(CandidateService $candidates, CoTeacherAccessService $coTeacherAccess, int $candidateId): void
