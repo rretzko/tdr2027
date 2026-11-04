@@ -21,7 +21,7 @@ use Livewire\Component;
  * @property-read ?Student $winner
  * @property-read ?Student $loser
  * @property-read list<string> $discardedPhones
- * @property-read array{winner: string, loser: string}|null $voicePartDifference
+ * @property-read list<array{field: string, winner: string, loser: string}> $profileDifferences
  * @property-read list<array{version_name: string, winner_voice_part: string, loser_voice_part: string, winner_status: string, loser_status: string}> $sharedCandidateDifferences
  * @property-read list<array{strength: string, winner_id: int, loser_id: int, winner_name: string, loser_name: string, winner_email: string, loser_email: string, winner_birthday: string|null, loser_birthday: string|null, winner_schools: string, loser_schools: string, shared_phone: string|null}> $potentialDuplicates
  */
@@ -90,6 +90,7 @@ class MergeStudents extends Component
         return Student::with([
             'user.phones',
             'voicePart',
+            'instrument',
             'schools' => fn ($q) => $q->wherePivot('is_active', true),
             'emergencyContacts',
             'homeAddress',
@@ -106,6 +107,7 @@ class MergeStudents extends Component
         return Student::with([
             'user.phones',
             'voicePart',
+            'instrument',
             'schools' => fn ($q) => $q->wherePivot('is_active', true),
             'emergencyContacts',
             'homeAddress',
@@ -128,18 +130,18 @@ class MergeStudents extends Component
     }
 
     /**
-     * Both default voice parts when they differ; the winner's is kept.
+     * Profile fields both students have set to different values; the winner's are kept.
      *
-     * @return array{winner: string, loser: string}|null
+     * @return list<array{field: string, winner: string, loser: string}>
      */
     #[Computed]
-    public function voicePartDifference(): ?array
+    public function profileDifferences(): array
     {
         if ($this->winner === null || $this->loser === null || $this->winner->id === $this->loser->id) {
-            return null;
+            return [];
         }
 
-        return app(StudentMergeService::class)->voicePartDifference($this->winner, $this->loser);
+        return app(StudentMergeService::class)->profileDifferences($this->winner, $this->loser);
     }
 
     /**
@@ -161,28 +163,28 @@ class MergeStudents extends Component
     {
         $this->winnerId = $id;
         $this->winnerSearch = '';
-        unset($this->winner, $this->discardedPhones, $this->voicePartDifference, $this->sharedCandidateDifferences);
+        unset($this->winner, $this->discardedPhones, $this->profileDifferences, $this->sharedCandidateDifferences);
     }
 
     public function selectLoser(int $id): void
     {
         $this->loserId = $id;
         $this->loserSearch = '';
-        unset($this->loser, $this->discardedPhones, $this->voicePartDifference, $this->sharedCandidateDifferences);
+        unset($this->loser, $this->discardedPhones, $this->profileDifferences, $this->sharedCandidateDifferences);
     }
 
     public function clearWinner(): void
     {
         $this->winnerId = null;
         $this->winnerSearch = '';
-        unset($this->winner, $this->discardedPhones, $this->voicePartDifference, $this->sharedCandidateDifferences);
+        unset($this->winner, $this->discardedPhones, $this->profileDifferences, $this->sharedCandidateDifferences);
     }
 
     public function clearLoser(): void
     {
         $this->loserId = null;
         $this->loserSearch = '';
-        unset($this->loser, $this->discardedPhones, $this->voicePartDifference, $this->sharedCandidateDifferences);
+        unset($this->loser, $this->discardedPhones, $this->profileDifferences, $this->sharedCandidateDifferences);
     }
 
     // -----------------------------------------------------------------------
@@ -224,7 +226,7 @@ class MergeStudents extends Component
         $this->loserId = null;
         $this->winnerSearch = '';
         $this->loserSearch = '';
-        unset($this->winner, $this->loser, $this->discardedPhones, $this->voicePartDifference, $this->sharedCandidateDifferences);
+        unset($this->winner, $this->loser, $this->discardedPhones, $this->profileDifferences, $this->sharedCandidateDifferences);
 
         Flux::toast(variant: 'success', text: "{$loserName} merged and deleted successfully.");
     }
@@ -396,7 +398,7 @@ class MergeStudents extends Component
         $this->loserId = $loserId;
         $this->winnerSearch = '';
         $this->loserSearch = '';
-        unset($this->winner, $this->loser, $this->discardedPhones, $this->voicePartDifference, $this->sharedCandidateDifferences);
+        unset($this->winner, $this->loser, $this->discardedPhones, $this->profileDifferences, $this->sharedCandidateDifferences);
         $this->dispatch('pair-preselected');
     }
 

@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use App\Enums\PhoneType;
+use App\Enums\ShirtSize;
 use App\Livewire\Founder\MergeStudents;
 use App\Models\Candidate;
 use App\Models\EmergencyContact;
+use App\Models\Instrument;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
 use App\Models\Phone;
@@ -178,8 +180,8 @@ test('pairs are ordered strong, then same cell, then weak, and the list shows th
 test('the founder page shows default voice parts and warns about voice part and same-version candidate differences', function () {
     $soprano = VoicePart::factory()->create(['name' => 'Soprano I']);
     $alto = VoicePart::factory()->create(['name' => 'Alto II']);
-    $winner = Student::factory()->create(['voice_part_id' => $soprano->id]);
-    $loser = Student::factory()->create(['voice_part_id' => $alto->id]);
+    $winner = Student::factory()->create(['voice_part_id' => $soprano->id, 'birthday' => null, 'height' => 60, 'shirt_size' => ShirtSize::MED]);
+    $loser = Student::factory()->create(['voice_part_id' => $alto->id, 'birthday' => null, 'height' => 64, 'shirt_size' => ShirtSize::XL]);
     $version = Version::factory()->create(['name' => 'All-State Chorus 2027']);
     Candidate::factory()->create(['student_id' => $winner->id, 'version_id' => $version->id, 'voice_part_id' => $soprano->id]);
     Candidate::factory()->registered()->create(['student_id' => $loser->id, 'version_id' => $version->id, 'voice_part_id' => $alto->id]);
@@ -187,19 +189,26 @@ test('the founder page shows default voice parts and warns about voice part and 
     Livewire::actingAs(makeFounderUser())
         ->test(MergeStudents::class)
         ->call('preselectPair', $winner->id, $loser->id)
-        ->assertSee("the winner's Soprano I is kept and the loser's Alto II is discarded", false)
+        ->assertSee('Profile differences')
+        ->assertSee('keeps Soprano I, not Alto II.', false)
+        ->assertSee('keeps 60&quot;, not 64&quot;.', false)
+        ->assertSee('keeps Medium, not X-Large.', false)
         ->assertSee('keeps Soprano I, not Alto II; keeps status Eligible, not Registered.', false);
 });
 
-test('the founder page shows no voice part warnings when nothing differs', function () {
+test('the founder page shows profile fields and no warnings when nothing differs', function () {
     $alto = VoicePart::factory()->create(['name' => 'Alto II']);
-    $winner = Student::factory()->create(['voice_part_id' => $alto->id]);
-    $loser = Student::factory()->create(['voice_part_id' => null]);
+    $flute = Instrument::factory()->create(['name' => 'Flute']);
+    $winner = Student::factory()->create(['voice_part_id' => $alto->id, 'instrument_id' => $flute->id, 'birthday' => '2010-01-01', 'height' => 62, 'shirt_size' => ShirtSize::LG]);
+    $loser = Student::factory()->create(['voice_part_id' => null, 'birthday' => null, 'height' => null, 'shirt_size' => ShirtSize::LG]);
 
     Livewire::actingAs(makeFounderUser())
         ->test(MergeStudents::class)
         ->call('preselectPair', $winner->id, $loser->id)
         ->assertSee('Alto II')
-        ->assertDontSee('Default voice part:')
+        ->assertSee('Flute')
+        ->assertSee('62&quot;', false)
+        ->assertSee('Large')
+        ->assertDontSee('Profile differences')
         ->assertDontSee('Both are Candidates in the same Version');
 });

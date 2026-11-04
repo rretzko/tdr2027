@@ -264,11 +264,17 @@
                 The loser's school enrollments, teacher connections, emergency contacts, home address, Candidates and payments will be transferred to the winner. The loser's phone numbers move to the winner wherever the winner doesn't already have one of that kind. Where both are Candidates in the same Version, the winner's Candidate is kept and the loser's payments move onto it. The loser's student record and user account will be <strong>permanently deleted</strong>.
             </flux:text>
 
-            @if ($this->voicePartDifference !== null)
+            @if ($this->profileDifferences !== [])
                 <flux:callout variant="warning" icon="exclamation-triangle">
+                    <flux:callout.heading>Profile differences</flux:callout.heading>
                     <flux:callout.text>
-                        Default voice part: the winner's {{ $this->voicePartDifference['winner'] }} is kept and the loser's {{ $this->voicePartDifference['loser'] }} is discarded.
+                        The winner's values are kept and the loser's are discarded:
                     </flux:callout.text>
+                    <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
+                        @foreach ($this->profileDifferences as $difference)
+                            <li><strong>{{ $difference['field'] }}</strong>: keeps {{ $difference['winner'] }}, not {{ $difference['loser'] }}.</li>
+                        @endforeach
+                    </ul>
                 </flux:callout>
             @endif
 

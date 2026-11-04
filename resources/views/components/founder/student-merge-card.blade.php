@@ -46,6 +46,21 @@
             <flux:text>{{ $student->voicePart?->name ?? '—' }}</flux:text>
         </div>
 
+        <div class="flex justify-between py-1.5">
+            <flux:text class="text-zinc-500">Height</flux:text>
+            <flux:text>{{ $student->height !== null ? $student->height.'"' : '—' }}</flux:text>
+        </div>
+
+        <div class="flex justify-between py-1.5">
+            <flux:text class="text-zinc-500">Instrument</flux:text>
+            <flux:text>{{ $student->instrument?->name ?? '—' }}</flux:text>
+        </div>
+
+        <div class="flex justify-between py-1.5">
+            <flux:text class="text-zinc-500">Shirt size</flux:text>
+            <flux:text>{{ \App\Enums\ShirtSize::tryFrom((string) $student->getRawOriginal('shirt_size'))?->label() ?? '—' }}</flux:text>
+        </div>
+
         @php
             // Account cell (users.cell_phone) plus phones rows (SFDI self-registration).
             $phoneLines = collect([['number' => $student->user->cell_phone, 'label' => 'Cell']])
