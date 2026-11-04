@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Models\Student;
+use App\Models\Teacher;
 use App\Models\User;
+use App\Support\PhoneNormalizer;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -225,6 +227,22 @@ class StudentMergeService
                 $log[] = ["{$table}.{$column} reassigned to winner User", (string) $count];
             }
 
+            $plan = $this->phonePlan($winner->user_id, $loserUserId);
+
+            // users.cell_phone is unique, so clear it on the loser before the winner takes it.
+            if ($plan['account_cell'] !== null) {
+                DB::table('users')->where('id', $loserUserId)->update(['cell_phone' => null]);
+                DB::table('users')->where('id', $winner->user_id)->update(['cell_phone' => $plan['account_cell'], 'updated_at' => now()]);
+            }
+
+            $log[] = ['users.cell_phone moved to winner User', $plan['account_cell'] !== null ? 'yes' : 'no'];
+
+            $moved = $plan['phone_ids_to_move'] === []
+                ? 0
+                : DB::table('phones')->whereIn('id', $plan['phone_ids_to_move'])->update(['user_id' => $winner->user_id, 'updated_at' => now()]);
+            $log[] = ['phones moved to winner User', (string) $moved];
+            $log[] = ['phone numbers discarded (winner has a different one)', $plan['discarded'] === [] ? 'none' : implode(', ', $plan['discarded'])];
+
             $loserUser->pageVisits()->delete();
             $loserUser->phones()->delete();
             $loserUser->socialAccounts()->delete();
@@ -235,6 +253,72 @@ class StudentMergeService
         }
 
         return $log;
+    }
+
+    /**
+     * Formatted phone numbers the merge would delete: the loser has them in a
+     * slot (users.cell_phone, or a phones row of a given type) where the
+     * winner already holds a different number, and the winner has no copy
+     * of the number anywhere. Empty when the loser's User survives the merge
+     * (it has a Teacher record), since its phones then stay with it.
+     *
+     * @return list<string>
+     */
+    public function discardedPhones(Student $winner, Student $loser): array
+    {
+        if (Teacher::where('user_id', $loser->user_id)->exists()) {
+            return [];
+        }
+
+        return array_map(
+            fn (string $number): string => (string) PhoneNormalizer::format($number),
+            $this->phonePlan($winner->user_id, $loser->user_id)['discarded'],
+        );
+    }
+
+    /**
+     * Student cell numbers live in two places: users.cell_phone (set by
+     * teachers on the roster and by event reports) and phones rows (set at
+     * SFDI self-registration). The loser's number in each slot moves to the
+     * winner when the winner's slot is empty; otherwise the winner's wins.
+     *
+     * @return array{account_cell: ?string, phone_ids_to_move: list<int>, discarded: list<string>}
+     */
+    private function phonePlan(int $winnerUserId, int $loserUserId): array
+    {
+        $winnerCell = DB::table('users')->where('id', $winnerUserId)->value('cell_phone');
+        $loserCell = DB::table('users')->where('id', $loserUserId)->value('cell_phone');
+        $winnerPhones = DB::table('phones')->where('user_id', $winnerUserId)->get(['type', 'raw_number']);
+        $loserPhones = DB::table('phones')->where('user_id', $loserUserId)->orderBy('id')->get(['id', 'type', 'raw_number']);
+
+        $winnerNumbers = $winnerPhones->pluck('raw_number')->push($winnerCell)->filter()->map(fn ($n): string => (string) $n)->all();
+        $winnerTypes = $winnerPhones->pluck('type')->map(fn ($t): string => (string) $t)->all();
+
+        $accountCell = null;
+        $toMove = [];
+        $discarded = [];
+
+        if ($loserCell !== null && $loserCell !== '') {
+            if ($winnerCell === null || $winnerCell === '') {
+                $accountCell = (string) $loserCell;
+            } elseif (! in_array((string) $loserCell, $winnerNumbers, true)) {
+                $discarded[] = (string) $loserCell;
+            }
+        }
+
+        foreach ($loserPhones as $phone) {
+            if (! in_array((string) $phone->type, $winnerTypes, true)) {
+                $toMove[] = (int) $phone->id;
+            } elseif (! in_array((string) $phone->raw_number, $winnerNumbers, true)) {
+                $discarded[] = (string) $phone->raw_number;
+            }
+        }
+
+        return [
+            'account_cell' => $accountCell,
+            'phone_ids_to_move' => $toMove,
+            'discarded' => array_values(array_unique($discarded)),
+        ];
     }
 
     /**

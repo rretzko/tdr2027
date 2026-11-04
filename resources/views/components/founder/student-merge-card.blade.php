@@ -41,6 +41,28 @@
             </div>
         </div>
 
+        @php
+            // Account cell (users.cell_phone) plus phones rows (SFDI self-registration).
+            $phoneLines = collect([['number' => $student->user->cell_phone, 'label' => 'Cell']])
+                ->merge($student->user->phones->map(fn ($phone) => [
+                    'number' => $phone->raw_number,
+                    'label' => \App\Enums\PhoneType::tryFrom((string) $phone->getRawOriginal('type'))?->label() ?? 'Phone',
+                ]))
+                ->filter(fn ($line) => filled($line['number']))
+                ->unique(fn ($line) => $line['number'].'|'.$line['label']);
+        @endphp
+
+        <div class="flex justify-between py-1.5">
+            <flux:text class="text-zinc-500">Phones</flux:text>
+            <div class="text-right">
+                @forelse ($phoneLines as $line)
+                    <flux:text>{{ \App\Support\PhoneNormalizer::format($line['number']) }} <span class="text-zinc-400">({{ $line['label'] }})</span></flux:text>
+                @empty
+                    <flux:text class="text-zinc-400">None</flux:text>
+                @endforelse
+            </div>
+        </div>
+
         <div class="flex justify-between py-1.5">
             <flux:text class="text-zinc-500">Emergency contacts</flux:text>
             <flux:text>{{ $student->emergencyContacts->count() }}</flux:text>

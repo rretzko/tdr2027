@@ -18,6 +18,7 @@ use Livewire\Component;
 /**
  * @property-read ?Student $winner
  * @property-read ?Student $loser
+ * @property-read list<string> $discardedPhones
  * @property-read array<int, array{first_name: string, last_name: string, strength: string, winner_id: int, loser_id: int, winner_email: string, loser_email: string, winner_birthday: string|null, loser_birthday: string|null, winner_schools: string, loser_schools: string}> $potentialDuplicates
  */
 #[Layout('components.layouts.app')]
@@ -83,7 +84,7 @@ class MergeStudents extends Component
         }
 
         return Student::with([
-            'user',
+            'user.phones',
             'schools' => fn ($q) => $q->wherePivot('is_active', true),
             'emergencyContacts',
             'homeAddress',
@@ -98,39 +99,54 @@ class MergeStudents extends Component
         }
 
         return Student::with([
-            'user',
+            'user.phones',
             'schools' => fn ($q) => $q->wherePivot('is_active', true),
             'emergencyContacts',
             'homeAddress',
         ])->find($this->loserId);
     }
 
+    /**
+     * Formatted numbers the merge would delete, shown in the confirm modal.
+     *
+     * @return list<string>
+     */
+    #[Computed]
+    public function discardedPhones(): array
+    {
+        if ($this->winner === null || $this->loser === null || $this->winner->id === $this->loser->id) {
+            return [];
+        }
+
+        return app(StudentMergeService::class)->discardedPhones($this->winner, $this->loser);
+    }
+
     public function selectWinner(int $id): void
     {
         $this->winnerId = $id;
         $this->winnerSearch = '';
-        unset($this->winner);
+        unset($this->winner, $this->discardedPhones);
     }
 
     public function selectLoser(int $id): void
     {
         $this->loserId = $id;
         $this->loserSearch = '';
-        unset($this->loser);
+        unset($this->loser, $this->discardedPhones);
     }
 
     public function clearWinner(): void
     {
         $this->winnerId = null;
         $this->winnerSearch = '';
-        unset($this->winner);
+        unset($this->winner, $this->discardedPhones);
     }
 
     public function clearLoser(): void
     {
         $this->loserId = null;
         $this->loserSearch = '';
-        unset($this->loser);
+        unset($this->loser, $this->discardedPhones);
     }
 
     // -----------------------------------------------------------------------
@@ -172,7 +188,7 @@ class MergeStudents extends Component
         $this->loserId = null;
         $this->winnerSearch = '';
         $this->loserSearch = '';
-        unset($this->winner, $this->loser);
+        unset($this->winner, $this->loser, $this->discardedPhones);
 
         Flux::toast(variant: 'success', text: "{$loserName} merged and deleted successfully.");
     }
@@ -286,7 +302,7 @@ class MergeStudents extends Component
         $this->loserId = $loserId;
         $this->winnerSearch = '';
         $this->loserSearch = '';
-        unset($this->winner, $this->loser);
+        unset($this->winner, $this->loser, $this->discardedPhones);
         $this->dispatch('pair-preselected');
     }
 

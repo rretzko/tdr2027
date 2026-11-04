@@ -57,3 +57,27 @@ test('the founder page refuses a merge that would delete adjudication data and k
     expect(Student::find($loser->id))->not->toBeNull()
         ->and($loserCandidate->fresh()?->student_id)->toBe($loser->id);
 });
+
+test('the founder page shows both students phones and warns about a number the merge would delete', function () {
+    $winner = Student::factory()->create(['user_id' => User::factory()->create(['cell_phone' => '2015550000'])->id]);
+    $loser = Student::factory()->create(['user_id' => User::factory()->create(['cell_phone' => '2015551234'])->id]);
+
+    Livewire::actingAs(makeFounderUser())
+        ->test(MergeStudents::class)
+        ->call('preselectPair', $winner->id, $loser->id)
+        ->assertSee('(201) 555-0000')
+        ->assertSee('these loser phone numbers will be deleted: (201) 555-1234', false);
+});
+
+test('the founder page moves the loser cell phone onto a winner without one', function () {
+    $winner = Student::factory()->create(['user_id' => User::factory()->create(['cell_phone' => null])->id]);
+    $loser = Student::factory()->create(['user_id' => User::factory()->create(['cell_phone' => '2015551234'])->id]);
+
+    Livewire::actingAs(makeFounderUser())
+        ->test(MergeStudents::class)
+        ->call('preselectPair', $winner->id, $loser->id)
+        ->assertDontSee('these loser phone numbers will be deleted')
+        ->call('merge');
+
+    expect($winner->user->fresh()?->cell_phone)->toBe('2015551234');
+});
