@@ -41,6 +41,11 @@
             </div>
         </div>
 
+        <div class="flex justify-between py-1.5">
+            <flux:text class="text-zinc-500">Voice part</flux:text>
+            <flux:text>{{ $student->voicePart?->name ?? '—' }}</flux:text>
+        </div>
+
         @php
             // Account cell (users.cell_phone) plus phones rows (SFDI self-registration).
             $phoneLines = collect([['number' => $student->user->cell_phone, 'label' => 'Cell']])

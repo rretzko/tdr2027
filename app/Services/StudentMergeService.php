@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\CandidateStatus;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
@@ -253,6 +254,76 @@ class StudentMergeService
         }
 
         return $log;
+    }
+
+    /**
+     * The two students' default voice part names when both are set and
+     * differ. The merge keeps the winner's, so the loser's is lost (the
+     * winner's is only filled from the loser when it's empty).
+     *
+     * @return array{winner: string, loser: string}|null
+     */
+    public function voicePartDifference(Student $winner, Student $loser): ?array
+    {
+        $parts = DB::table('students as s')
+            ->join('voice_parts as vp', 'vp.id', '=', 's.voice_part_id')
+            ->whereIn('s.id', [$winner->id, $loser->id])
+            ->pluck('vp.name', 's.id');
+
+        $winnerPart = $parts->get($winner->id);
+        $loserPart = $parts->get($loser->id);
+
+        if ($winnerPart === null || $loserPart === null || $winnerPart === $loserPart) {
+            return null;
+        }
+
+        return ['winner' => (string) $winnerPart, 'loser' => (string) $loserPart];
+    }
+
+    /**
+     * Versions where both students are Candidates and the two Candidates
+     * differ in voice part or status. The merge keeps the winner's
+     * Candidate and deletes the loser's, so the loser's values are lost;
+     * the founder is warned and fixes the Candidate afterwards if needed.
+     *
+     * @return list<array{version_name: string, winner_voice_part: string, loser_voice_part: string, winner_status: string, loser_status: string}>
+     */
+    public function sharedCandidateDifferences(Student $winner, Student $loser): array
+    {
+        $rows = DB::table('candidates as lc')
+            ->join('candidates as wc', fn ($join) => $join
+                ->on('wc.version_id', '=', 'lc.version_id')
+                ->where('wc.student_id', '=', $winner->id))
+            ->join('versions as v', 'v.id', '=', 'lc.version_id')
+            ->join('voice_parts as lvp', 'lvp.id', '=', 'lc.voice_part_id')
+            ->join('voice_parts as wvp', 'wvp.id', '=', 'wc.voice_part_id')
+            ->where('lc.student_id', $loser->id)
+            ->orderBy('v.name')
+            ->get([
+                'v.name as version_name',
+                'wvp.name as winner_voice_part',
+                'lvp.name as loser_voice_part',
+                'wc.status as winner_status',
+                'lc.status as loser_status',
+            ]);
+
+        $differences = [];
+
+        foreach ($rows as $row) {
+            if ($row->winner_voice_part === $row->loser_voice_part && $row->winner_status === $row->loser_status) {
+                continue;
+            }
+
+            $differences[] = [
+                'version_name' => (string) $row->version_name,
+                'winner_voice_part' => (string) $row->winner_voice_part,
+                'loser_voice_part' => (string) $row->loser_voice_part,
+                'winner_status' => CandidateStatus::tryFrom((string) $row->winner_status)?->label() ?? (string) $row->winner_status,
+                'loser_status' => CandidateStatus::tryFrom((string) $row->loser_status)?->label() ?? (string) $row->loser_status,
+            ];
+        }
+
+        return $differences;
     }
 
     /**
