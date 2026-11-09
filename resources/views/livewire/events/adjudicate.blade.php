@@ -115,7 +115,7 @@
                             <div wire:key="recording-{{ $recording->id }}">
                                 <flux:text class="font-medium capitalize">{{ $recording->file_type }}</flux:text>
                                 <audio controls preload="metadata" class="w-full">
-                                    <source src="{{ \Illuminate\Support\Facades\Storage::disk('s3')->url($recording->url) }}">
+                                    <source src="{{ \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($recording->url, now()->addHour()) }}">
                                 </audio>
                             </div>
                         @endforeach
