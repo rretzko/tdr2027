@@ -257,7 +257,7 @@ class VersionReadiness
             'event.ensembles.voiceParts',
             'dates', 'fees', 'membershipRequirement', 'counties', 'classOfs',
             'ensembleOrder', 'uploadFiles', 'pitchFiles', 'obligation', 'candidateApplication',
-            'versionEpaymentConfig', 'rooms.roomJudges', 'readinessReviews',
+            'versionEpaymentConfig', 'rooms.roomJudges', 'rooms.scoreCategories.scoreFactors', 'readinessReviews',
         ]);
 
         $versionIds = $versions->modelKeys();

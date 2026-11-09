@@ -725,3 +725,17 @@ test('candidateJudgeBreakdown matches judgeScoreSummaryForCandidate for the same
     expect($unscoredRow['enteredCount'])->toBe(0);
     expect($unscoredRow['total'])->toBe(0);
 });
+
+test('judgeCompletionFor is never true for a room with no rubric', function () {
+    $service = app(AdjudicationService::class);
+    $version = Version::factory()->create();
+    $room = makeAdjudicationRoom($version);
+    $voicePart = VoicePart::factory()->create();
+    $room->voiceParts()->attach($voicePart->id);
+
+    $judge = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $room->id, 'judge_type' => JudgeType::HeadJudge]);
+    $candidate = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+
+    expect($service->judgeCompletionFor($judge, collect([$candidate])->pluck('id'), $service->factorCount($room)))
+        ->toBe([$candidate->id => false]);
+});

@@ -258,3 +258,34 @@ test('nextCandidate skips a candidate this judge has already fully scored', func
     $component->call('nextCandidate')
         ->assertSet('selectedCandidateId', $unscoredCandidate->id);
 });
+
+test('a room with no rubric shows a warning, no checkmarks, and refuses to save', function () {
+    $user = User::factory()->create();
+    actingAs($user);
+    ['version' => $version, 'room' => $room, 'candidate' => $candidate] = makeAdjudicationScenario($user);
+    $room->scoreCategories()->detach();
+
+    $component = Livewire::actingAs($user)
+        ->test(Adjudicate::class, ['version' => $version])
+        ->assertSee('This room has no scoring rubric');
+
+    $component->assertViewHas('judgeCompletion', [$candidate->id => false]);
+
+    $component->call('selectCandidate', $candidate->id)
+        ->assertSee('Scoring is unavailable until this room has a rubric.')
+        ->assertDontSee('Save Scores')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(Score::count())->toBe(0);
+});
+
+test('a room with a rubric shows no rubric warning', function () {
+    $user = User::factory()->create();
+    actingAs($user);
+    ['version' => $version] = makeAdjudicationScenario($user);
+
+    Livewire::actingAs($user)
+        ->test(Adjudicate::class, ['version' => $version])
+        ->assertDontSee('This room has no scoring rubric');
+});
