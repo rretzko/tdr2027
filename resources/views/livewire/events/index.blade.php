@@ -39,9 +39,9 @@
                         @endif
 
                         @if ($adjudicatableVersions[$event->id] ?? null)
-                            <flux:badge :href="route('events.versions.adjudicate', $adjudicatableVersions[$event->id])" wire:navigate color="teal" size="sm">
+                            <flux:button :href="route('events.versions.adjudicate', $adjudicatableVersions[$event->id])" wire:navigate variant="primary" color="teal" size="sm">
                                 Adjudicate
-                            </flux:badge>
+                            </flux:button>
                         @endif
 
                         <div class="flex gap-2">
@@ -103,9 +103,9 @@
                     </flux:table.cell>
                     <flux:table.cell class="whitespace-normal align-top">
                         @if ($adjudicatableVersions[$event->id] ?? null)
-                            <flux:badge :href="route('events.versions.adjudicate', $adjudicatableVersions[$event->id])" wire:navigate color="teal" size="sm">
+                            <flux:button :href="route('events.versions.adjudicate', $adjudicatableVersions[$event->id])" wire:navigate variant="primary" color="teal" size="sm">
                                 Adjudicate
-                            </flux:badge>
+                            </flux:button>
                         @endif
                     </flux:table.cell>
                     <flux:table.cell class="whitespace-normal align-top">

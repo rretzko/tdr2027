@@ -12,6 +12,8 @@ use App\Enums\VersionDateType;
 use App\Enums\VersionInvitationStatus;
 use App\Models\EventEpaymentConfig;
 use App\Models\RoomJudge;
+use App\Models\ScoreCategory;
+use App\Models\ScoreFactor;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
@@ -82,6 +84,7 @@ test('items that do not apply to this event are marked not applicable', function
         ->and(readinessStatus($version, 'version.upload_files'))->toBe(ReadinessStatus::NotApplicable)
         ->and(readinessStatus($version, 'event.epayment.credentials'))->toBe(ReadinessStatus::NotApplicable)
         ->and(readinessStatus($version, 'version.room_judges'))->toBe(ReadinessStatus::NotApplicable)
+        ->and(readinessStatus($version, 'version.room_rubrics'))->toBe(ReadinessStatus::NotApplicable)
         ->and(readinessStatus($version, 'version.roles.mail_to'))->toBe(ReadinessStatus::NotApplicable)
         ->and(readinessStatus($version, 'version.ensemble_order'))->toBe(ReadinessStatus::NotApplicable);
 });
@@ -330,4 +333,32 @@ test('evaluateMany uses a fixed number of queries however many Versions it evalu
     $five = $countQueries([$first->id, ...$more->modelKeys()]);
 
     expect($five)->toBe($one);
+});
+
+test('room rubrics are in progress until every room has a category with at least one factor', function () {
+    $version = readinessVersion();
+    $roomA = VersionRoom::create(['version_id' => $version->id, 'name' => 'A', 'order_by' => 1]);
+    $roomB = VersionRoom::create(['version_id' => $version->id, 'name' => 'B', 'order_by' => 2]);
+    $roomC = VersionRoom::create(['version_id' => $version->id, 'name' => 'C', 'order_by' => 3]);
+
+    $scored = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Solo', 'order_by' => 1]);
+    ScoreFactor::create([
+        'event_id' => $version->event_id, 'version_id' => null, 'score_category_id' => $scored->id,
+        'description' => 'Tone', 'abbreviation' => 'TN', 'best' => 9, 'worst' => 1, 'interval_by' => 1,
+        'multiplier' => 1, 'tolerance' => null, 'order_by' => 1,
+    ]);
+    $empty = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Empty', 'order_by' => 2]);
+
+    $roomA->scoreCategories()->attach($scored->id);
+    $roomB->scoreCategories()->attach($empty->id);
+
+    $result = app(VersionReadiness::class)->evaluate($version)->get('version.room_rubrics');
+
+    expect($result->status)->toBe(ReadinessStatus::InProgress)
+        ->and($result->detail)->toBe('1 of 3 rooms have a scoring rubric');
+
+    $roomB->scoreCategories()->attach($scored->id);
+    $roomC->scoreCategories()->attach($scored->id);
+
+    expect(readinessStatus($version->fresh(), 'version.room_rubrics'))->toBe(ReadinessStatus::Done);
 });

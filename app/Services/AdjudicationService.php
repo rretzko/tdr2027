@@ -307,7 +307,9 @@ final class AdjudicationService
     /**
      * Whether *this judge's own* score count for each candidate equals the
      * room's full factor count — drives the roster checkmark, independent
-     * of the room-wide candidateStatuses() bucket.
+     * of the room-wide candidateStatuses() bucket. A room with no rubric
+     * (zero factors) is never complete — otherwise 0 scores === 0 factors
+     * would checkmark every candidate before anyone has judged.
      *
      * @param  Collection<int, int>  $candidateIds
      * @return array<int, bool>
@@ -316,6 +318,10 @@ final class AdjudicationService
     {
         if ($candidateIds->isEmpty()) {
             return [];
+        }
+
+        if ($factorCount === 0) {
+            return $candidateIds->mapWithKeys(fn (int $candidateId): array => [$candidateId => false])->all();
         }
 
         $counts = Score::where('judge_id', $judge->id)
