@@ -323,15 +323,15 @@ function readinessReviewStatesAfter(Version $version, array $keys, Closure $acti
         ->all();
 }
 
-test('changing rooms on the Rooms page counts as reviewing rooms and judges', function () {
+test('changing rooms on the Rooms page counts as reviewing rooms, judges and rubrics', function () {
     $version = readinessVersion();
     $room = VersionRoom::create(['version_id' => $version->id, 'name' => 'Room A', 'order_by' => 1]);
 
-    $states = readinessReviewStatesAfter($version, ['version.rooms', 'version.room_judges'], fn () => Livewire::actingAs(makeFounder())
+    $states = readinessReviewStatesAfter($version, ['version.rooms', 'version.room_judges', 'version.room_rubrics'], fn () => Livewire::actingAs(makeFounder())
         ->test(VersionRooms::class, ['version' => $version])
         ->call('remove', $room->id));
 
-    expect($states)->toBe(['version.room_judges' => 'acknowledged', 'version.rooms' => 'acknowledged']);
+    expect($states)->toBe(['version.room_judges' => 'acknowledged', 'version.room_rubrics' => 'acknowledged', 'version.rooms' => 'acknowledged']);
 });
 
 test('changing the scoring rubric counts as reviewing it', function () {

@@ -79,6 +79,12 @@ class Adjudicate extends Component
         $factors = $adjudication->roomRubric($this->roomJudge->room)
             ->flatMap(fn (ScoreCategory $category) => $category->scoreFactors);
 
+        if ($factors->isEmpty()) {
+            Flux::toast(text: 'This room has no scoring rubric yet, so there is nothing to save.', variant: 'danger');
+
+            return;
+        }
+
         $rules = [];
         foreach ($factors as $factor) {
             $rules["scores.{$factor->id}"] = ['required', Rule::in($adjudication->optionsForFactor($factor))];
@@ -191,6 +197,7 @@ class Adjudicate extends Component
             'showRecordings' => $showRecordings,
             'recordings' => $recordings,
             'adjudicationWindow' => $adjudicationWindow,
+            'hasRubric' => $factorCount > 0,
         ]);
     }
 }

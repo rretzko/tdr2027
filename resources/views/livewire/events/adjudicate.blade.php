@@ -11,6 +11,12 @@
         <flux:text size="sm" class="text-zinc-500">{{ $version->name }} — {{ $room->name }}</flux:text>
     </div>
 
+    @unless ($hasRubric)
+        <flux:callout variant="warning" icon="exclamation-triangle" class="mb-4" heading="This room has no scoring rubric">
+            <flux:callout.text>No score categories are assigned to {{ $room->name }}, so there is nothing to score and no recordings to show. Please contact your Event Manager.</flux:callout.text>
+        </flux:callout>
+    @endunless
+
     {{-- 1. Judge Bios --}}
     <flux:card class="mb-4" x-data="{ open: true }">
         <div class="flex items-center justify-between" :class="open ? 'mb-2' : ''">
@@ -132,6 +138,9 @@
             <flux:card>
                 <flux:heading size="lg" class="mb-2">Score — Candidate {{ $selectedCandidate->id }}</flux:heading>
 
+                @unless ($hasRubric)
+                    <flux:text size="sm" class="text-zinc-500">Scoring is unavailable until this room has a rubric.</flux:text>
+                @else
                 <form
                     wire:submit="save"
                     x-data="{
@@ -184,6 +193,7 @@
                         <flux:button type="button" variant="ghost" wire:click="nextCandidate">Next candidate</flux:button>
                     </div>
                 </form>
+                @endunless
             </flux:card>
 
             {{-- 5. Room Scoring table --}}

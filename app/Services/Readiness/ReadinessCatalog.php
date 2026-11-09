@@ -508,6 +508,20 @@ final class ReadinessCatalog
                 editor: ReadinessEditor::AuditionEnvironment,
             ),
             new ReadinessItem(
+                key: 'version.room_rubrics',
+                phase: $phase,
+                question: 'Which score categories does each room use?',
+                why: 'A room without a rubric has nothing for judges to score, and its recordings stay hidden from them.',
+                resolve: fn (ReadinessContext $c): ReadinessStatus => self::fraction(self::roomsWithRubric($c), $c->version->rooms->count()),
+                url: fn (Version $v): string => route('events.versions.rooms', $v),
+                applicable: fn (ReadinessContext $c): bool => $c->version->rooms->isNotEmpty(),
+                detail: fn (ReadinessContext $c): string => self::roomsWithRubric($c).' of '.$c->version->rooms->count().' rooms have a scoring rubric',
+                yearSensitive: true,
+                section: 'rooms',
+                covers: ['room_score_categories.score_category_id'],
+                editor: ReadinessEditor::AuditionEnvironment,
+            ),
+            new ReadinessItem(
                 key: 'version.roles.tab_room',
                 phase: $phase,
                 question: 'Who runs the tab room?',
@@ -613,6 +627,17 @@ final class ReadinessCatalog
         $needed = max(1, (int) $c->raw('judge_count'));
 
         return $c->version->rooms->filter(fn (VersionRoom $room): bool => $room->roomJudges->count() >= $needed)->count();
+    }
+
+    /**
+     * Rooms whose assigned categories carry at least one factor — a category
+     * with no factors still leaves judges nothing to score.
+     */
+    private static function roomsWithRubric(ReadinessContext $c): int
+    {
+        return $c->version->rooms
+            ->filter(fn (VersionRoom $room): bool => $room->scoreCategories->sum(fn (ScoreCategory $category): int => $category->scoreFactors->count()) > 0)
+            ->count();
     }
 
     private static function fraction(int $done, int $total): ReadinessStatus
