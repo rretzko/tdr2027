@@ -14,6 +14,22 @@ test('emails are likely unverifiable on k12, student, school, and *sd* domains',
     'student@wmrhsd.org',
     'student@rocktwp.net',
     'student@hs.rocktwp.net',
+    'student@madisonnjps.org',
+    'student@mendhamboroschools.org',
+    'student@msdstudent.org',
+    'student@nplainfield.org',
+    'student@panthers.pequannock.org',
+    'student@somervilleschools.org',
+    'student@westfieldnjk12.org',
+    'student@hs.westfieldnjk12.org',
+]);
+
+test('district domains that were checked and receive mail stay verifiable', function (string $email) {
+    expect(EmailVerifiabilityChecker::isLikelyUnverifiable($email))->toBeFalse();
+})->with([
+    'student@montville.net',
+    'student@htps.us',
+    'staff@pequannock.org',
 ]);
 
 test('emails are likely unverifiable on studentfolder.info', function () {
