@@ -164,5 +164,17 @@ by the existing test suite. Waivers then go in as a small second commit.
    students, but Participation and Housing are charged after close, when
    students are `Accepted`. So once a Version closes, there is currently
    nowhere to waive those fees. Waivers set before close do carry over.
+   **Built (2026-11-10):**
+   - Payment Reconciliation has a per-school "Fee waivers" list (all
+     fee-eligible statuses, Accepted included). It uses the shared
+     `ManagesFeeWaivers` trait and `partials/fee-waiver-modal`, now also used
+     by Participating Candidates.
+   - A Waived column and total appear on both reports, and their PDFs, only
+     once the Version has any waivers. The reconciliation CSV always has
+     Waived, as its last column.
+   - Credits were already shown as "$X overpaid" (never "-$X"), and an
+     Overpayment filter already existed, so neither was changed.
+   - The scorecard and Monday email show a Waived line when non-zero. It
+     isn't stored on `version_scorecard_snapshots`, so no migration.
 7. Student merge carry-over.
 8. Tests and PHPStan throughout. The user does browser verification.

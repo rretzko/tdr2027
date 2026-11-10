@@ -19,6 +19,9 @@
                     <th>Packet</th>
                     <th>Registered</th>
                     <th>Due</th>
+                    @if ($hasWaivers = $rows->sum('waivedCents') > 0)
+                        <th>Waived</th>
+                    @endif
                     <th>Paid</th>
                     <th>Balance</th>
                 </tr>
@@ -34,6 +37,9 @@
                         <td>{{ $row['packet']?->isReceived() ? 'Received' : 'Outstanding' }}</td>
                         <td>{{ $row['count'] }}</td>
                         <td>${{ number_format($row['dueCents'] / 100, 2) }}</td>
+                        @if ($hasWaivers)
+                            <td>{!! $row['waivedCents'] > 0 ? '$'.number_format($row['waivedCents'] / 100, 2).' ('.$row['waivedCount'].')' : '&mdash;' !!}</td>
+                        @endif
                         <td>${{ number_format($row['paidCents'] / 100, 2) }}</td>
                         <td>
                             @if ($row['balanceCents'] > 0)

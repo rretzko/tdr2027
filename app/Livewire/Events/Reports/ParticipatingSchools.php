@@ -206,7 +206,8 @@ class ParticipatingSchools extends Component
 
     public function render(): View
     {
-        $allRows = self::filterAndSort(self::baseRows($this->version, $this->reportCountyIds), $this->search, $this->packetFilter, $this->balanceFilter, $this->sortColumn, $this->sortDirection);
+        $baseRows = self::baseRows($this->version, $this->reportCountyIds);
+        $allRows = self::filterAndSort($baseRows, $this->search, $this->packetFilter, $this->balanceFilter, $this->sortColumn, $this->sortDirection);
 
         $page = $this->getPage();
         $pageRows = $allRows->slice(($page - 1) * self::PER_PAGE, self::PER_PAGE);
@@ -222,6 +223,9 @@ class ParticipatingSchools extends Component
         return view('livewire.events.reports.participating-schools', [
             'rows' => $pageRows,
             'rowsPaginator' => $paginator,
+            // From the unfiltered rows, so the Waived column doesn't come and
+            // go as filters change (docs/plans/student-fee-waivers.md).
+            'hasWaivers' => $baseRows->sum('waivedCents') > 0,
         ]);
     }
 
@@ -255,6 +259,7 @@ class ParticipatingSchools extends Component
         $calculator = app(CandidateFeeCalculator::class);
         $calculator->loadWaivers($candidates);
         $dueForCandidate = fn (Candidate $candidate): int => $calculator->combinedDueCents($version, $candidate);
+        $waivedForCandidate = fn (Candidate $candidate): int => $calculator->combinedWaivedCents($version, $candidate);
 
         $packets = VersionTeacherPacket::where('version_id', $version->id)->get()->keyBy(fn (VersionTeacherPacket $p): string => "{$p->school_id}:{$p->teacher_id}");
 
@@ -286,11 +291,13 @@ class ParticipatingSchools extends Component
         $owes = fn (Candidate $c): bool => in_array($c->getRawOriginal('status'), $owedStatusValues, true);
 
         return $candidates->groupBy(fn (Candidate $c): string => "{$c->school_id}:{$c->teacher_id}")
-            ->map(function (Collection $group, string $key) use ($dueForCandidate, $packets, $candidateIdsByPair, $paidByCandidateId, $owes): array {
+            ->map(function (Collection $group, string $key) use ($dueForCandidate, $waivedForCandidate, $packets, $candidateIdsByPair, $paidByCandidateId, $owes): array {
                 $first = $group->first();
                 $owing = $group->filter($owes);
                 $count = $owing->count();
                 $dueCents = $owing->sum($dueForCandidate);
+                $waivedCents = (int) $owing->sum($waivedForCandidate);
+                $waivedCount = $owing->filter(fn (Candidate $c): bool => $waivedForCandidate($c) > 0)->count();
 
                 $paidCents = 0;
                 foreach ($candidateIdsByPair->get($key, []) as $candidateId) {
@@ -304,6 +311,8 @@ class ParticipatingSchools extends Component
                     'count' => $count,
                     'packet' => $packets->get($key),
                     'dueCents' => $dueCents,
+                    'waivedCents' => $waivedCents,
+                    'waivedCount' => $waivedCount,
                     'paidCents' => $paidCents,
                     'balanceCents' => $dueCents - $paidCents,
                 ];

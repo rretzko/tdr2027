@@ -100,6 +100,7 @@ class VersionScorecardService
             registrationFeesDueCents: $registrationFeesDueCents,
             registrationFeesPaidCents: $registrationFeesPaidCents,
             registrationFeesOutstandingCents: $registrationFeesDueCents - $registrationFeesPaidCents,
+            registrationFeesWaivedCents: $this->feeCalculator->configuredFeeCents($version, FeeType::Registration) * $registeredStudents - $registrationFeesDueCents,
         );
     }
 }

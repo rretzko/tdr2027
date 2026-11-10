@@ -58,6 +58,26 @@ class CandidateFeeCalculator
     }
 
     /**
+     * How much combinedDueCents() is reduced by waivers — what this
+     * Candidate would owe with no waivers, minus what they owe now. Feeds
+     * the reports' "Waived" column.
+     */
+    public function combinedWaivedCents(Version $version, Candidate $candidate): int
+    {
+        $waived = $candidate->hasFeeWaived(FeeType::Registration)
+            ? $this->configuredFeeCents($version, FeeType::Registration)
+            : 0;
+
+        if ($version->participationFeePayable()
+            && $candidate->getRawOriginal('status') === CandidateStatus::Accepted->value
+            && $candidate->hasFeeWaived(FeeType::Participation)) {
+            $waived += $this->configuredFeeCents($version, FeeType::Participation);
+        }
+
+        return $waived;
+    }
+
+    /**
      * Sum of feeCents() for $feeType across $candidates — waiver-aware
      * replacement for "count × configured fee".
      *

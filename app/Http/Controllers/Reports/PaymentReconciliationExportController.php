@@ -35,7 +35,9 @@ class PaymentReconciliationExportController extends Controller
 
             return CsvExport::stream(
                 "payment-reconciliation-{$version->id}.csv",
-                ['School', 'Teacher', 'Email', 'Mobile', 'Registered', 'Due', 'Paid', 'Balance'],
+                // Waived is last (not beside Due) so the existing columns keep
+                // their positions for anyone's saved spreadsheets.
+                ['School', 'Teacher', 'Email', 'Mobile', 'Registered', 'Due', 'Paid', 'Balance', 'Waived'],
                 $schoolRows->map(fn (array $row): array => [
                     $row['school']->name ?? '',
                     $row['teachers']->map(fn (Teacher $t): string => $t->user->name)->implode('; '),
@@ -45,6 +47,7 @@ class PaymentReconciliationExportController extends Controller
                     $dollars($row['dueCents']),
                     $dollars($row['paidCents']),
                     $dollars($row['balanceCents']),
+                    $dollars($row['waivedCents']),
                 ]),
             );
         }

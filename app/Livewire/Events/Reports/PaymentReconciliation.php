@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Events\Reports;
 
+use App\Concerns\ManagesFeeWaivers;
 use App\Concerns\ScopesReports;
 use App\Enums\CandidateStatus;
 use App\Enums\PaymentTransactionStatus;
@@ -39,6 +40,7 @@ use Livewire\Component;
 #[Layout('components.layouts.app')]
 class PaymentReconciliation extends Component
 {
+    use ManagesFeeWaivers;
     use ScopesReports;
 
     public Version $version;
@@ -61,6 +63,15 @@ class PaymentReconciliation extends Component
     #[Locked]
     public bool $canViewPaymentDetails = false;
 
+    /**
+     * School whose fee-eligible students are listed in the "Fee waivers"
+     * modal. Unlike Participating Candidates (Registered only), this list
+     * includes Accepted students, so Participation/Housing can still be
+     * waived after the Version closes (docs/plans/student-fee-waivers.md).
+     */
+    #[Locked]
+    public ?int $feeWaiverSchoolId = null;
+
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
     {
         $this->authorizeReports($version, $roles);
@@ -80,6 +91,53 @@ class PaymentReconciliation extends Component
 
         $this->paymentDetailsSchoolId = $schoolId;
         $this->modal('payment-details')->show();
+    }
+
+    public function showFeeWaivers(int $schoolId, VersionRoleAssignmentService $roles): void
+    {
+        abort_unless($roles->canWaiveFees(Auth::user(), $this->version), 403);
+        abort_unless($this->withinReportScope(School::findOrFail($schoolId)->county_id), 403);
+
+        $this->feeWaiverSchoolId = $schoolId;
+        $this->modal('school-fee-waivers')->show();
+    }
+
+    protected function feeWaiverCandidate(int $candidateId): Candidate
+    {
+        $query = Candidate::where('id', $candidateId)
+            ->where('version_id', $this->version->id)
+            ->whereIn('status', self::feeEligibleStatusValues());
+
+        if ($this->feeWaiverSchoolId !== null) {
+            $query->where('school_id', $this->feeWaiverSchoolId);
+        }
+
+        if ($this->reportCountyIds !== null) {
+            $query->whereHas('school', fn ($q) => $q->whereIn('county_id', $this->reportCountyIds));
+        }
+
+        return $query->firstOrFail();
+    }
+
+    /**
+     * Back to the school's student list after saving one student's waivers.
+     */
+    protected function afterFeeWaiversSaved(): void
+    {
+        if ($this->feeWaiverSchoolId !== null) {
+            $this->modal('school-fee-waivers')->show();
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function feeEligibleStatusValues(): array
+    {
+        return array_map(
+            fn (CandidateStatus $s): string => $s->value,
+            CandidateStatus::registrationFeeEligibleStates(),
+        );
     }
 
     /**
@@ -169,6 +227,18 @@ class PaymentReconciliation extends Component
             'paymentDetailsRow' => $paymentDetailsRow,
             'paymentDetails' => $paymentDetailsRow !== null
                 ? self::paymentDetails($this->version, $this->paymentDetailsSchoolId)
+                : collect(),
+            'canWaiveFees' => $this->canWaiveFees(),
+            'waivableFeeTypes' => $this->waivableFeeTypes(),
+            'feeWaiverSchool' => $this->feeWaiverSchoolId !== null ? School::find($this->feeWaiverSchoolId) : null,
+            'feeWaiverCandidates' => $this->feeWaiverSchoolId !== null && $this->canWaiveFees()
+                ? Candidate::where('version_id', $this->version->id)
+                    ->where('school_id', $this->feeWaiverSchoolId)
+                    ->whereIn('status', self::feeEligibleStatusValues())
+                    ->with(['student.user', 'feeWaivers'])
+                    ->get()
+                    ->sortBy(fn (Candidate $c): string => mb_strtolower($c->student->user->sort_name))
+                    ->values()
                 : collect(),
         ]);
     }
@@ -262,6 +332,7 @@ class PaymentReconciliation extends Component
         $calculator = app(CandidateFeeCalculator::class);
         $calculator->loadWaivers($feeEligibleCandidates);
         $dueForCandidate = fn (Candidate $candidate): int => $calculator->combinedDueCents($version, $candidate);
+        $waivedForCandidate = fn (Candidate $candidate): int => $calculator->combinedWaivedCents($version, $candidate);
 
         $paidByCandidateId = PaymentAllocation::whereIn('candidate_id', $feeEligibleCandidates->pluck('id'))
             ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
@@ -280,10 +351,12 @@ class PaymentReconciliation extends Component
 
         return $feeEligibleCandidates
             ->groupBy('school_id')
-            ->map(function (Collection $group) use ($dueForCandidate, $paidByCandidateId, $owes): array {
+            ->map(function (Collection $group) use ($dueForCandidate, $waivedForCandidate, $paidByCandidateId, $owes): array {
                 $first = $group->first();
                 $owing = $group->filter($owes);
                 $dueCents = $owing->sum($dueForCandidate);
+                $waivedCents = (int) $owing->sum($waivedForCandidate);
+                $waivedCount = $owing->filter(fn (Candidate $c): bool => $waivedForCandidate($c) > 0)->count();
                 $paidCents = $group->sum(fn (Candidate $c): int => $paidByCandidateId->get($c->id, 0));
 
                 return [
@@ -297,6 +370,8 @@ class PaymentReconciliation extends Component
                         ->values(),
                     'count' => $owing->count(),
                     'dueCents' => $dueCents,
+                    'waivedCents' => $waivedCents,
+                    'waivedCount' => $waivedCount,
                     'paidCents' => $paidCents,
                     'balanceCents' => $dueCents - $paidCents,
                 ];
@@ -325,12 +400,13 @@ class PaymentReconciliation extends Component
 
     /**
      * @param  Collection<int, mixed>  $schoolRows
-     * @return array{dueCents: int, paidCents: int, balanceCents: int}
+     * @return array{dueCents: int, waivedCents: int, paidCents: int, balanceCents: int}
      */
     public static function versionTotals(Collection $schoolRows): array
     {
         return [
             'dueCents' => (int) $schoolRows->sum('dueCents'),
+            'waivedCents' => (int) $schoolRows->sum('waivedCents'),
             'paidCents' => (int) $schoolRows->sum('paidCents'),
             'balanceCents' => (int) $schoolRows->sum('balanceCents'),
         ];
