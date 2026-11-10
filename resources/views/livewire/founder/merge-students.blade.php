@@ -26,7 +26,7 @@
             @else
                 <flux:input
                     wire:model.live.debounce.300ms="winnerSearch"
-                    placeholder="Search by first or last name…"
+                    placeholder="Search by name, email, or student/user ID…"
                     icon="magnifying-glass"
                     autofocus
                 />
@@ -36,10 +36,17 @@
                 @endif
 
                 <div class="mt-2 flex flex-col gap-2">
+                    @if ($winnerResultCount > $winnerResults->count())
+                        <flux:text size="sm" class="text-zinc-500">Showing best {{ $winnerResults->count() }} of {{ $winnerResultCount }} matches — add a first or last name to narrow it down.</flux:text>
+                    @endif
+
                     @foreach ($winnerResults as $student)
                         <div class="flex items-center justify-between gap-3 rounded-md border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-800">
                             <div class="min-w-0">
-                                <flux:text class="font-medium">{{ $student->user->first_name }} {{ $student->user->last_name }}</flux:text>
+                                <flux:text class="font-medium">
+                                    {{ $student->user->first_name }} {{ $student->user->middle_name }} {{ $student->user->last_name }}
+                                    <span class="font-normal text-zinc-500">&middot; student #{{ $student->id }} &middot; user #{{ $student->user_id }}</span>
+                                </flux:text>
                                 <flux:text size="sm" class="truncate text-zinc-500">
                                     {{ $student->user->email }}
                                     @if ($student->schools->isNotEmpty())
@@ -68,7 +75,7 @@
             @else
                 <flux:input
                     wire:model.live.debounce.300ms="loserSearch"
-                    placeholder="Search by first or last name…"
+                    placeholder="Search by name, email, or student/user ID…"
                     icon="magnifying-glass"
                 />
 
@@ -77,10 +84,17 @@
                 @endif
 
                 <div class="mt-2 flex flex-col gap-2">
+                    @if ($loserResultCount > $loserResults->count())
+                        <flux:text size="sm" class="text-zinc-500">Showing best {{ $loserResults->count() }} of {{ $loserResultCount }} matches — add a first or last name to narrow it down.</flux:text>
+                    @endif
+
                     @foreach ($loserResults as $student)
                         <div class="flex items-center justify-between gap-3 rounded-md border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-800">
                             <div class="min-w-0">
-                                <flux:text class="font-medium">{{ $student->user->first_name }} {{ $student->user->last_name }}</flux:text>
+                                <flux:text class="font-medium">
+                                    {{ $student->user->first_name }} {{ $student->user->middle_name }} {{ $student->user->last_name }}
+                                    <span class="font-normal text-zinc-500">&middot; student #{{ $student->id }} &middot; user #{{ $student->user_id }}</span>
+                                </flux:text>
                                 <flux:text size="sm" class="truncate text-zinc-500">
                                     {{ $student->user->email }}
                                     @if ($student->schools->isNotEmpty())
