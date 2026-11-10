@@ -26,6 +26,7 @@ class ParticipatingCandidatesPdfController extends Controller
             (string) $request->query('schoolFilter', ''),
             (string) $request->query('gradeFilter', ''),
             (string) $request->query('voicePartFilter', ''),
+            (string) $request->query('waiverFilter', ''),
         );
 
         return Pdf::loadView('pdf.reports.participating-candidates', [

@@ -13,6 +13,7 @@ use App\Enums\VersionDateType;
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\VersionDashboard;
 use App\Models\Candidate;
+use App\Models\CandidateFeeWaiver;
 use App\Models\CoTeacherGrant;
 use App\Models\Ensemble;
 use App\Models\Event;
@@ -1659,4 +1660,43 @@ test('the candidate list shows each student\'s email under their name', function
         ->assertSee('real.student@example.com')
         ->assertSee('No email address')
         ->assertDontSee('@studentfolder.info');
+});
+
+test('payForSelected leaves candidates with the requested fee waived out of the checkout', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    makeReadyForGroupPayment($version);
+
+    $charged = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    $waived = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $waived->id]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->set('selectedCandidateIds', [$charged->id, $waived->id])
+        ->call('payForSelected', 'registration')
+        ->assertRedirect('https://fake.example/checkout');
+
+    expect(FakeSquareGateway::$lastCandidates->pluck('id')->all())->toBe([$charged->id]);
+});
+
+test('payForSelected does not start a checkout when every selected candidate has the fee waived', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    makeReadyForGroupPayment($version);
+
+    $waived = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $waived->id]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->set('selectedCandidateIds', [$waived->id])
+        ->call('payForSelected', 'registration')
+        ->assertNoRedirect();
+
+    expect(PaymentTransaction::count())->toBe(0);
 });

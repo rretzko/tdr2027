@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 use App\Models\Candidate;
+use App\Models\CandidateFeeWaiver;
 use App\Models\EmergencyContact;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionFee;
 use App\Support\CandidateApplicationData;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -87,4 +89,24 @@ test('tokenDescriptions is sorted by token name', function () {
     sort($sorted);
 
     expect($keys)->toEqual($sorted);
+});
+
+test('fromCandidate shows a waived fee as 0.00 in tokens and flags it as waived', function () {
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000, 'on_site_registration' => 2500, 'participation' => 500]);
+
+    actingAs(User::factory()->create());
+    $candidate = Candidate::factory()->create(['version_id' => $version->id]);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $candidate->id]);
+
+    $data = CandidateApplicationData::fromCandidate($candidate->load([
+        'student.user', 'student.emergencyContacts', 'teacher.user', 'school', 'voicePart', 'version.fees', 'version.dates', 'version.event.organization', 'feeWaivers',
+    ]));
+
+    expect($data->registrationFeeWaived)->toBeTrue()
+        ->and($data->registrationFee)->toBe('0.00')
+        ->and($data->onSiteRegistrationFee)->toBe('0.00')
+        ->and($data->participationFeeWaived)->toBeFalse()
+        ->and($data->participationFee)->toBe('5.00')
+        ->and($data->toTokenMap()['registrationFee'])->toBe('0.00');
 });

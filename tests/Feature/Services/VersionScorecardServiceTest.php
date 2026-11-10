@@ -9,6 +9,7 @@ use App\Enums\PaymentTransactionStatus;
 use App\Enums\VersionInvitationStatus;
 use App\Enums\VersionObligationStatus;
 use App\Models\Candidate;
+use App\Models\CandidateFeeWaiver;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
 use App\Models\School;
@@ -208,4 +209,16 @@ test('metricsFor computes registration fees due, paid, and outstanding without d
     expect($metrics->registrationFeesDueCents)->toBe(6000)
         ->and($metrics->registrationFeesPaidCents)->toBe(2500)
         ->and($metrics->registrationFeesOutstandingCents)->toBe(3500);
+});
+
+test('metricsFor reports waived registration fees separately and excludes them from due', function () {
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    $candidates = Candidate::factory()->registered()->count(3)->create(['version_id' => $version->id]);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $candidates->first()->id]);
+
+    $metrics = app(VersionScorecardService::class)->metricsFor($version);
+
+    expect($metrics->registrationFeesDueCents)->toBe(4000)
+        ->and($metrics->registrationFeesWaivedCents)->toBe(2000);
 });

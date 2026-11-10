@@ -10,6 +10,9 @@
 
     <p>
         Total due: ${{ number_format($versionTotals['dueCents'] / 100, 2) }} &mdash;
+        @if (($versionTotals['waivedCents'] ?? 0) > 0)
+            Total waived: ${{ number_format($versionTotals['waivedCents'] / 100, 2) }} &mdash;
+        @endif
         Total paid: ${{ number_format($versionTotals['paidCents'] / 100, 2) }} &mdash;
         Balance:
         @if ($versionTotals['balanceCents'] > 0)
@@ -31,6 +34,9 @@
                     <th>Teacher</th>
                     <th>Registered</th>
                     <th>Due</th>
+                    @if ($hasWaivers = ($versionTotals['waivedCents'] ?? 0) > 0)
+                        <th>Waived</th>
+                    @endif
                     <th>Paid</th>
                     <th>Balance</th>
                 </tr>
@@ -57,6 +63,9 @@
                         </td>
                         <td>{{ $row['count'] }}</td>
                         <td>${{ number_format($row['dueCents'] / 100, 2) }}</td>
+                        @if ($hasWaivers)
+                            <td>{!! $row['waivedCents'] > 0 ? '$'.number_format($row['waivedCents'] / 100, 2).' ('.$row['waivedCount'].')' : '&mdash;' !!}</td>
+                        @endif
                         <td>${{ number_format($row['paidCents'] / 100, 2) }}</td>
                         <td>
                             @if ($row['balanceCents'] > 0)

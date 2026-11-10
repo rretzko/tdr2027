@@ -24,6 +24,7 @@ use App\Models\VersionInvitation;
 use App\Models\VersionPitchFile;
 use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VersionUploadFile;
+use App\Services\CandidateFeeCalculator;
 use App\Services\CandidateService;
 use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\RecordingReviewService;
@@ -319,6 +320,10 @@ class Show extends Component
         // return (cataloged PHPStan-quirks memory).
         $candidateStatus = CandidateStatus::from((string) $this->candidate->getRawOriginal('status'));
         abort_unless(in_array($candidateStatus, $eligibleStates, true), 422);
+
+        // A waived fee is never charged (docs/plans/student-fee-waivers.md) —
+        // paymentView() already hides the button; this is the server-side guard.
+        abort_if($this->candidate->hasFeeWaived($feeType), 422, 'This fee has been waived by the event.');
 
         $gateway = $factory->make($this->version);
         $session = $gateway->createCheckoutSession($this->version, collect([$this->candidate]), $this->candidate->student, $feeType);
@@ -696,7 +701,7 @@ class Show extends Component
      * drift no differently than any other Livewire-component duplication in
      * this codebase (e.g. isLocked()'s own status-cast comment).
      *
-     * @return array{registrationFeeDue: bool, participationFeeDue: bool, housingFeeDue: bool, overpaymentCents: int, candidatePayments: Collection<int, PaymentTransaction>}
+     * @return array{registrationFeeDue: bool, participationFeeDue: bool, housingFeeDue: bool, overpaymentCents: int, waivedFeeLabels: list<string>, candidatePayments: Collection<int, PaymentTransaction>}
      */
     private function paymentView(): array
     {
@@ -706,11 +711,9 @@ class Show extends Component
 
         $candidateStatus = CandidateStatus::from((string) $this->candidate->getRawOriginal('status'));
 
-        $fees = $this->version->fees()->first();
-        $dueCents = (int) ($fees->registration ?? 0);
-        if ($this->version->participationFeePayable() && $candidateStatus === CandidateStatus::Accepted) {
-            $dueCents += (int) ($fees->participation ?? 0);
-        }
+        // Net of per-student fee waivers — see CandidateFeeCalculator.
+        $feeCalculator = app(CandidateFeeCalculator::class);
+        $dueCents = $feeCalculator->combinedDueCents($this->version, $this->candidate);
         $paidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
             ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
             ->sum('amount');
@@ -730,7 +733,7 @@ class Show extends Component
         // Housing stays outside the combined balance above — same
         // independent due/paid pair CandidateDetail::render() computes, see
         // that method's own comment for the full reasoning.
-        $housingCents = (int) ($fees->housing ?? 0);
+        $housingCents = $feeCalculator->feeCents($this->version, $this->candidate, FeeType::Housing);
         $housingPaidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
             ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value)
                 ->where('fee_type', FeeType::Housing->value))
@@ -747,6 +750,16 @@ class Show extends Component
             'participationFeeDue' => $participationFeeDue,
             'housingFeeDue' => $housingFeeDue,
             'overpaymentCents' => $overpaymentCents,
+            // Waived fees the Version actually charges — shown in place of a
+            // Pay button. The waiver reason is EM/RM-only, never shown here.
+            'waivedFeeLabels' => array_values(array_map(
+                fn (FeeType $type): string => $type->label(),
+                array_filter(
+                    FeeType::cases(),
+                    fn (FeeType $type): bool => $this->candidate->hasFeeWaived($type)
+                        && $feeCalculator->configuredFeeCents($this->version, $type) > 0,
+                ),
+            )),
             'candidatePayments' => PaymentTransaction::whereHas(
                 'allocations',
                 fn ($q) => $q->where('candidate_id', $this->candidate->id),

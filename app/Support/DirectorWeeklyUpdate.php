@@ -34,6 +34,9 @@ final readonly class DirectorWeeklyUpdate
         public int $paidCents,
         public array $pendingRoster,
         public array $registeredRoster,
+        // Registered students whose Registration fee the Event Manager
+        // waived — excluded from $dueCents (docs/plans/student-fee-waivers.md).
+        public int $registrationWaivedStudents = 0,
     ) {}
 
     public function balanceDueCents(): int

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\Candidate;
+use App\Models\CandidateFeeWaiver;
 use App\Models\School;
 use App\Models\Student;
 use App\Models\Teacher;
@@ -122,4 +123,29 @@ test('max_registrants alone still truncates when max_upper_voice_registrants is 
 
     expect($data->candidates->pluck('student.user.last_name')->all())->toBe(['Adams']);
     expect($data->truncated)->toBeTrue();
+});
+
+test('a registration waiver adds nothing to the running fee total or subtotal', function () {
+    ['teacher' => $teacher, 'version' => $version, 'school' => $school] = makeEstimateFormDataScenario();
+    $voiceParts = makeEstimateFormVoicePartIds();
+
+    // Unique surnames — the per-test seed data already has common ones.
+    makeEstimateFormCandidate($version, $school, $teacher, $voiceParts['lower'], 'Waivertest-A');
+    makeEstimateFormCandidate($version, $school, $teacher, $voiceParts['lower'], 'Waivertest-B');
+    makeEstimateFormCandidate($version, $school, $teacher, $voiceParts['lower'], 'Waivertest-C');
+
+    $waivedCandidate = Candidate::whereHas('student.user', fn ($q) => $q->where('last_name', 'Waivertest-B'))->sole();
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $waivedCandidate->id]);
+
+    $data = EstimateFormData::build($version, $school, $teacher, app(MailToAddressResolver::class));
+
+    $rows = $data->candidates->map(fn (Candidate $c): array => $data->feeRows[$c->id])->all();
+
+    expect($rows)->toBe([
+        ['waived' => false, 'runningCents' => 3000],
+        ['waived' => true, 'runningCents' => 3000],
+        ['waived' => false, 'runningCents' => 6000],
+    ])
+        ->and($data->feeSubtotalCents)->toBe(6000)
+        ->and($data->balanceDueCents)->toBe(6000);
 });

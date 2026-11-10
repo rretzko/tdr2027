@@ -77,7 +77,12 @@
                         <flux:badge color="{{ $badge['color'] }}" size="sm">{{ $badge['label'] }}</flux:badge>
                     </div>
                     <div class="space-y-1 text-sm mb-3">
-                        <div class="text-zinc-500">{{ $row['count'] }} registered — due ${{ number_format($row['dueCents'] / 100, 2) }}, paid ${{ number_format($row['paidCents'] / 100, 2) }}</div>
+                        <div class="text-zinc-500">
+                            {{ $row['count'] }} registered — due ${{ number_format($row['dueCents'] / 100, 2) }}, paid ${{ number_format($row['paidCents'] / 100, 2) }}
+                            @if ($row['waivedCents'] > 0)
+                                , waived ${{ number_format($row['waivedCents'] / 100, 2) }} ({{ $row['waivedCount'] }} {{ \Illuminate\Support\Str::plural('student', $row['waivedCount']) }})
+                            @endif
+                        </div>
                     </div>
                     <div class="flex items-center gap-3">
                         <flux:checkbox
@@ -104,6 +109,9 @@
                     <flux:table.column>Packet</flux:table.column>
                     <flux:table.column sortable :sorted="$sortColumn === 'count'" :direction="$sortDirection" wire:click="sortBy('count')">Registered</flux:table.column>
                     <flux:table.column sortable :sorted="$sortColumn === 'due'" :direction="$sortDirection" wire:click="sortBy('due')">Due</flux:table.column>
+                    @if ($hasWaivers)
+                        <flux:table.column>Waived</flux:table.column>
+                    @endif
                     <flux:table.column>Paid</flux:table.column>
                     <flux:table.column sortable :sorted="$sortColumn === 'balance'" :direction="$sortDirection" wire:click="sortBy('balance')">Balance</flux:table.column>
                     <flux:table.column></flux:table.column>
@@ -126,6 +134,16 @@
                             </flux:table.cell>
                             <flux:table.cell>{{ $row['count'] }}</flux:table.cell>
                             <flux:table.cell>${{ number_format($row['dueCents'] / 100, 2) }}</flux:table.cell>
+                            @if ($hasWaivers)
+                                <flux:table.cell>
+                                    @if ($row['waivedCents'] > 0)
+                                        ${{ number_format($row['waivedCents'] / 100, 2) }}
+                                        <div class="text-xs text-zinc-500 dark:text-zinc-400">{{ $row['waivedCount'] }} {{ \Illuminate\Support\Str::plural('student', $row['waivedCount']) }}</div>
+                                    @else
+                                        —
+                                    @endif
+                                </flux:table.cell>
+                            @endif
                             <flux:table.cell>${{ number_format($row['paidCents'] / 100, 2) }}</flux:table.cell>
                             <flux:table.cell>
                                 <flux:badge color="{{ $badge['color'] }}" size="sm">{{ $badge['label'] }}</flux:badge>

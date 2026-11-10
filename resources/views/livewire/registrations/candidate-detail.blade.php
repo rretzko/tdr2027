@@ -294,6 +294,13 @@
         <flux:card>
             <flux:heading size="sm" class="mb-1">Payment</flux:heading>
 
+            @foreach ($waivedFeeLabels as $waivedFeeLabel)
+                <div class="flex items-center gap-2 mb-2 text-sm text-zinc-600 dark:text-zinc-300">
+                    <flux:badge color="amber" size="sm" icon="receipt-percent">Waived</flux:badge>
+                    {{ $waivedFeeLabel }}: waived by the event, nothing to pay.
+                </div>
+            @endforeach
+
             @if ($overpaymentCents > 0)
                 <div class="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40 px-3 py-2 mb-2 text-sm text-amber-800 dark:text-amber-300">
                     <flux:icon.exclamation-triangle variant="micro" class="shrink-0" />

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use App\Enums\FeeType;
 use App\Enums\VersionDateType;
 use App\Models\Candidate;
 use App\Models\Version;
@@ -38,6 +39,13 @@ final class CandidateApplicationData
         public readonly string $housingFee,
         public readonly string $applicationDeadline,
         public readonly string $generatedAt,
+        // Per-student fee waivers (docs/plans/student-fee-waivers.md). A
+        // waived fee's string above is '0.00', never the word "Waived": EM-
+        // authored templates put their own "$" before {{registrationFee}}.
+        // These flags let the application's own fee line say "Waived".
+        public readonly bool $registrationFeeWaived = false,
+        public readonly bool $participationFeeWaived = false,
+        public readonly bool $housingFeeWaived = false,
     ) {}
 
     public static function fromCandidate(Candidate $candidate): self
@@ -48,6 +56,12 @@ final class CandidateApplicationData
         $studentUser = $candidate->student->user;
         $emergencyContact = $candidate->emergencyContact ?? $candidate->student->emergencyContacts->first();
         $programNameParts = explode(' ', $candidate->program_name, 2);
+
+        // On-site registration is the same Registration fee collected at the
+        // door, so a Registration waiver covers it too.
+        $registrationWaived = $candidate->hasFeeWaived(FeeType::Registration);
+        $participationWaived = $candidate->hasFeeWaived(FeeType::Participation);
+        $housingWaived = $candidate->hasFeeWaived(FeeType::Housing);
 
         return new self(
             versionShortName: $version->short_name ?? $version->name,
@@ -68,13 +82,16 @@ final class CandidateApplicationData
             studentCellPhone: PhoneNormalizer::format($studentUser->cell_phone) ?? '—',
             emergencyContactName: $emergencyContact !== null ? $emergencyContact->name : '—',
             emergencyContactPhone: PhoneNormalizer::format($emergencyContact?->preferred_phone) ?? '—',
-            registrationFee: self::formatFee($version->fees?->registration),
-            onSiteRegistrationFee: self::formatFee($version->fees?->on_site_registration),
-            participationFee: self::formatFee($version->fees?->participation),
+            registrationFee: self::formatFee($registrationWaived ? 0 : $version->fees?->registration),
+            onSiteRegistrationFee: self::formatFee($registrationWaived ? 0 : $version->fees?->on_site_registration),
+            participationFee: self::formatFee($participationWaived ? 0 : $version->fees?->participation),
             epaymentSurchargeFee: self::formatFee($version->fees?->epayment_surcharge),
-            housingFee: self::formatFee($version->fees?->housing),
+            housingFee: self::formatFee($housingWaived ? 0 : $version->fees?->housing),
             applicationDeadline: self::formatDeadline($version),
             generatedAt: now()->format('M j, Y g:ia'),
+            registrationFeeWaived: $registrationWaived,
+            participationFeeWaived: $participationWaived,
+            housingFeeWaived: $housingWaived,
         );
     }
 

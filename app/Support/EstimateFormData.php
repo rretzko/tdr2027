@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support;
 
 use App\Enums\CandidateStatus;
+use App\Enums\FeeType;
 use App\Enums\PaymentTransactionStatus;
 use App\Models\Candidate;
 use App\Models\Membership;
@@ -14,6 +15,7 @@ use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionMailToAddress;
 use App\Models\VoicePart;
+use App\Services\CandidateFeeCalculator;
 use App\Services\CoTeacherAccessService;
 use App\Services\MailToAddressResolver;
 use Illuminate\Support\Collection;
@@ -53,6 +55,8 @@ final class EstimateFormData
         public readonly ?string $organizationLogoUrl,
         public readonly ?string $organizationLogoAlt,
         public readonly string $generatedAt,
+        /** @var array<int, array{waived: bool, runningCents: int}> keyed by candidate id */
+        public readonly array $feeRows = [],
     ) {}
 
     public static function build(Version $version, School $school, Teacher $teacher, MailToAddressResolver $mailToResolver): self
@@ -95,7 +99,21 @@ final class EstimateFormData
             ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
             ->sum('amount');
 
-        $feeSubtotalCents = $candidates->count() * $registrationCents;
+        // Net of per-student fee waivers — see CandidateFeeCalculator. The
+        // Fee column is a running total (as on the legacy paper form), so a
+        // waived row adds $0 and the last row always equals the subtotal.
+        $calculator = app(CandidateFeeCalculator::class);
+        $calculator->loadWaivers($candidates);
+        $feeRows = [];
+        $runningCents = 0;
+        foreach ($candidates as $candidate) {
+            $runningCents += $calculator->feeCents($version, $candidate, FeeType::Registration);
+            $feeRows[$candidate->id] = [
+                'waived' => $candidate->hasFeeWaived(FeeType::Registration),
+                'runningCents' => $runningCents,
+            ];
+        }
+        $feeSubtotalCents = $runningCents;
 
         $membershipStatus = self::membershipCardStatus($version, $teacher);
 
@@ -120,6 +138,7 @@ final class EstimateFormData
             // America/New_York per §0.3 — ordinal day, matching the source
             // doc's "Downloaded on: Saturday, August 15th, 2026 @ 06:59:26 am".
             generatedAt: now()->timezone('America/New_York')->format('l, F jS, Y \@ h:i:s a'),
+            feeRows: $feeRows,
         );
     }
 

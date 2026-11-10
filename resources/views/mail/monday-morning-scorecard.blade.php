@@ -34,6 +34,9 @@ This email is automatically sent to {{ $version->name }} Event Managers every Mo
 | Registration Fees Due | ${{ number_format($metrics->registrationFeesDueInDollars(), 2) }} |
 | Registration Fees Paid | ${{ number_format($metrics->registrationFeesPaidInDollars(), 2) }} |
 | Registration Fees Outstanding | ${{ number_format($metrics->registrationFeesOutstandingInDollars(), 2) }} |
+@if ($metrics->registrationFeesWaivedCents > 0)
+| Registration Fees Waived | ${{ number_format($metrics->registrationFeesWaivedInDollars(), 2) }} |
+@endif
 
 <x-mail::button :url="route('events.versions.scorecard', $version)">
 View weekly trends

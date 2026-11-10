@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 use App\Enums\CandidateStatus;
 use App\Enums\EventStatus;
+use App\Enums\FeeType;
 use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
 use App\Livewire\Events\Reports\PaymentReconciliation;
 use App\Models\Candidate;
+use App\Models\CandidateFeeWaiver;
 use App\Models\CoRegistrationManagerCounty;
 use App\Models\County;
 use App\Models\PaymentAllocation;
@@ -525,8 +527,8 @@ test('CSV export lists each school with its teachers\' contact details and dolla
     $response->assertOk()->assertHeader('Content-Type', 'text/csv; charset=utf-8');
     $lines = array_values(array_filter(explode("\n", $response->streamedContent())));
 
-    expect(str_getcsv($lines[0]))->toBe(['School', 'Teacher', 'Email', 'Mobile', 'Registered', 'Due', 'Paid', 'Balance'])
-        ->and(str_getcsv($lines[1]))->toBe([$school->name, $teacher->user->name, $teacher->user->email, '(609) 555-0188', '1', '20.00', '15.00', '5.00']);
+    expect(str_getcsv($lines[0]))->toBe(['School', 'Teacher', 'Email', 'Mobile', 'Registered', 'Due', 'Paid', 'Balance', 'Waived'])
+        ->and(str_getcsv($lines[1]))->toBe([$school->name, $teacher->user->name, $teacher->user->email, '(609) 555-0188', '1', '20.00', '15.00', '5.00', '0.00']);
 });
 
 test('CSV export honors the search filter', function () {
@@ -551,4 +553,98 @@ test('CSV export aborts with 403 for a user with no relevant role', function () 
 
     get(route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'csv']))
         ->assertForbidden();
+});
+
+/*
+|--------------------------------------------------------------------------
+| Fee waivers (docs/plans/student-fee-waivers.md)
+|--------------------------------------------------------------------------
+*/
+
+test('baseRows and versionTotals report waived fees separately from due', function () {
+    actingAs(makeFounder());
+    $version = Version::factory()->create(['status' => EventStatus::Closed]);
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000, 'participation' => 500]);
+    ['candidate' => $candidate] = makeReconciliationCandidate($version);
+    $candidate->update(['status' => CandidateStatus::Accepted]);
+    CandidateFeeWaiver::factory()->forFeeType(FeeType::Participation)->create(['candidate_id' => $candidate->id]);
+
+    $rows = PaymentReconciliation::baseRows($version, null);
+    $totals = PaymentReconciliation::versionTotals($rows);
+
+    expect($rows->first()['dueCents'])->toBe(2000)
+        ->and($rows->first()['waivedCents'])->toBe(500)
+        ->and($rows->first()['waivedCount'])->toBe(1)
+        ->and($totals['waivedCents'])->toBe(500);
+});
+
+test('an Event Manager can waive participation for an Accepted student after the Version closes', function () {
+    $version = Version::factory()->create(['status' => EventStatus::Closed]);
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000, 'participation' => 500]);
+    actingAs(makeFounder());
+    ['school' => $school, 'candidate' => $candidate] = makeReconciliationCandidate($version);
+    $candidate->update(['status' => CandidateStatus::Accepted]);
+
+    $eventManager = User::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    Livewire::actingAs($eventManager)
+        ->test(PaymentReconciliation::class, ['version' => $version])
+        ->call('showFeeWaivers', $school->id)
+        ->assertSee($candidate->student->user->name)
+        ->assertSee('Accepted')
+        ->call('openWaivers', $candidate->id)
+        ->set('waive_fee_types', [FeeType::Participation->value])
+        ->set('waive_reason', 'Scholarship')
+        ->call('saveWaivers')
+        ->assertHasNoErrors()
+        ->assertSee('Total Waived');
+
+    expect(CandidateFeeWaiver::sole()->getRawOriginal('fee_type'))->toBe(FeeType::Participation->value);
+});
+
+test('the fee waiver list only resolves students at the selected school', function () {
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    actingAs(makeFounder());
+    ['school' => $school] = makeReconciliationCandidate($version);
+    ['candidate' => $otherSchoolCandidate] = makeReconciliationCandidate($version);
+
+    $founder = makeFounder();
+
+    expect(function () use ($founder, $version, $school, $otherSchoolCandidate) {
+        Livewire::actingAs($founder)
+            ->test(PaymentReconciliation::class, ['version' => $version])
+            ->call('showFeeWaivers', $school->id)
+            ->call('openWaivers', $otherSchoolCandidate->id);
+    })->toThrow(ModelNotFoundException::class);
+});
+
+test('a Registration Manager cannot open the fee waiver list', function () {
+    $version = Version::factory()->create();
+    actingAs(makeFounder());
+    ['school' => $school] = makeReconciliationCandidate($version);
+
+    $registrationManager = User::factory()->create();
+    grantVersionRole($registrationManager, $version, 'Registration Manager');
+
+    Livewire::actingAs($registrationManager)
+        ->test(PaymentReconciliation::class, ['version' => $version])
+        ->assertDontSee('Fee waivers')
+        ->call('showFeeWaivers', $school->id)
+        ->assertForbidden();
+});
+
+test('CSV export includes the waived amount as the last column', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    ['candidate' => $candidate] = makeReconciliationCandidate($version);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $candidate->id]);
+
+    $lines = array_values(array_filter(explode("\n", get(route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'csv']))->streamedContent())));
+
+    expect(str_getcsv($lines[1])[5])->toBe('0.00')
+        ->and(str_getcsv($lines[1])[8])->toBe('20.00');
 });
