@@ -23,10 +23,12 @@ use App\Models\Pivots\StudentTeacher;
 use App\Models\Pronoun;
 use App\Models\School;
 use App\Models\Student;
+use App\Models\StudentSignupDismissal;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\VoicePart;
 use App\Services\AbandonedStudentCleanupService;
+use App\Services\UnjoinedSignupFinder;
 use App\Support\ClassOfCalculator;
 use App\Support\SchoolMatcher;
 use App\Support\StudentMatcher;
@@ -1415,6 +1417,37 @@ class Index extends Component
         Auth::user()->update(['dismissed_students_orientation_at' => now()]);
     }
 
+    /**
+     * Opens the Add-student modal straight into the claim step for a
+     * self-registered student from the "signed up but haven't joined" list.
+     * They have no active teacher, so submitStudentClaim() attaches them and
+     * enrolls them at the school immediately.
+     */
+    public function addSignup(int $studentId): void
+    {
+        $match = app(UnjoinedSignupFinder::class)->matchFor($this->teacher(), $studentId);
+
+        if ($match === null) {
+            $this->modal('edit-student')->close();
+            Flux::toast(text: 'That student is no longer waiting to join a school.', variant: 'warning');
+
+            return;
+        }
+
+        $this->add();
+        $this->add_school_id = (string) $match['school']->id;
+        $this->selectStudentClaim($studentId);
+    }
+
+    public function dismissSignup(int $studentId): void
+    {
+        if (app(UnjoinedSignupFinder::class)->matchFor($this->teacher(), $studentId) === null) {
+            return;
+        }
+
+        StudentSignupDismissal::firstOrCreate(['teacher_id' => $this->teacher()->id, 'student_id' => $studentId]);
+    }
+
     public function render(): View
     {
         $hasAlumni = $this->hasAlumni();
@@ -1439,6 +1472,7 @@ class Index extends Component
             'addSchoolOptions' => $activeSchools,
             'filterSchools' => $activeSchools,
             'hasAlumni' => $hasAlumni,
+            'unjoinedSignups' => app(UnjoinedSignupFinder::class)->forTeacher($this->teacher()),
             'geostates' => Geostate::orderBy('name')->get(),
             'homeSchoolCounties' => $this->edit_home_school_geostate_id !== ''
                 ? County::where('geostate_id', $this->edit_home_school_geostate_id)->orderBy('name')->get()
