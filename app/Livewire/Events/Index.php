@@ -201,6 +201,22 @@ class Index extends Component
             Flux::toast("{$event->name} has been created.");
         } else {
             $event = Event::findOrFail($this->editingEventId);
+
+            // The inverse of VersionObserver's auto-promote: an Event can't
+            // drop below Active while one of its Versions is still Active.
+            if ($data['status'] !== EventStatus::Active->value) {
+                $activeVersions = $event->versions()
+                    ->where('status', EventStatus::Active->value)
+                    ->pluck('name');
+
+                if ($activeVersions->isNotEmpty()) {
+                    $this->addError('edit_status', 'This Event must stay Active while it has an Active Version ('
+                        .$activeVersions->implode(', ').'). Change the Version status first.');
+
+                    return;
+                }
+            }
+
             $event->update($data);
             Flux::toast("{$event->name} has been updated.");
         }
