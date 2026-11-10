@@ -26,6 +26,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\VoicePart;
+use App\Services\AbandonedStudentCleanupService;
 use App\Support\ClassOfCalculator;
 use App\Support\SchoolMatcher;
 use App\Support\StudentMatcher;
@@ -257,9 +258,30 @@ class Index extends Component
         $this->subjectRowsFor($rowId)?->update(['is_active' => false]);
     }
 
+    /**
+     * Also deletes the student outright when this was their last roster row
+     * and the record was never used (see AbandonedStudentCleanupService) —
+     * otherwise a removed duplicate lingers as an invisible active student.
+     */
     public function remove(int $rowId): void
     {
-        $this->subjectRowsFor($rowId)?->delete();
+        $row = $this->teacherRow($rowId)->with('student.user')->first();
+        $rows = $this->subjectRowsFor($rowId);
+
+        if ($row === null || $rows === null) {
+            return;
+        }
+
+        $rows->delete();
+
+        $student = $row->student;
+
+        if ($student !== null && app(AbandonedStudentCleanupService::class)->deleteIfAbandoned($student)) {
+            Flux::toast(
+                text: "{$student->user->name} removed. They weren't on any other roster and had never signed in, so their record was deleted too.",
+                variant: 'success',
+            );
+        }
     }
 
     /**

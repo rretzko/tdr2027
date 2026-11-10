@@ -643,7 +643,45 @@ test('remove deletes the student_teacher row', function () {
         ->test(Index::class)
         ->call('remove', $row->id);
 
-    expect(StudentTeacher::find($row->id))->toBeNull();
+    expect(StudentTeacher::find($row->id))->toBeNull()
+        ->and(Student::find($row->student_id))->not->toBeNull();
+});
+
+test('remove also deletes a never-used student record that is on no other roster', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Dupli', 'Cate');
+    $studentUser = $row->student->user;
+    $studentUser->forceFill(['password' => null, 'email_verified_at' => null])->save();
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('remove', $row->id);
+
+    expect(Student::find($row->student_id))->toBeNull()
+        ->and(User::find($studentUser->id))->toBeNull();
+});
+
+test('remove keeps a never-used student who is still on another teacher roster', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Shared', 'Kid');
+    $row->student->user->forceFill(['password' => null, 'email_verified_at' => null])->save();
+    StudentTeacher::create([
+        'student_id' => $row->student_id,
+        'teacher_id' => makeStudentsIndexTeacherUser()->teacher->id,
+        'school_id' => $school->id,
+        'subject' => 'band',
+        'role' => 'primary',
+        'is_active' => true,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('remove', $row->id);
+
+    expect(StudentTeacher::find($row->id))->toBeNull()
+        ->and(Student::find($row->student_id))->not->toBeNull();
 });
 
 test('edit populates the form with the row\'s subject and role', function () {
