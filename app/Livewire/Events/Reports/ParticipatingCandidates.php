@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Events\Reports;
 
+use App\Concerns\ManagesFeeWaivers;
 use App\Concerns\ScopesReports;
 use App\Enums\CandidateStatus;
 use App\Enums\PhoneType;
@@ -26,6 +27,7 @@ use Livewire\WithPagination;
 #[Layout('components.layouts.app')]
 class ParticipatingCandidates extends Component
 {
+    use ManagesFeeWaivers;
     use ScopesReports;
     use WithPagination;
 
@@ -72,6 +74,10 @@ class ParticipatingCandidates extends Component
     /** @var list<array{id: int, name: string}> */
     public array $editEmergencyContactOptions = [];
 
+    /** '' = all candidates, 'waived' = only candidates with any fee waived. */
+    #[Url]
+    public string $waiverFilter = '';
+
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
     {
         $this->authorizeReports($version, $roles);
@@ -108,6 +114,16 @@ class ParticipatingCandidates extends Component
     public function updatedVoicePartFilter(): void
     {
         $this->resetPage();
+    }
+
+    public function updatedWaiverFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    protected function feeWaiverCandidate(int $candidateId): Candidate
+    {
+        return $this->scopedCandidate($candidateId);
     }
 
     public function edit(int $candidateId): void
@@ -189,7 +205,7 @@ class ParticipatingCandidates extends Component
     public function render(): View
     {
         $allRows = self::baseRows($this->version, $this->reportCountyIds);
-        $filteredRows = self::filterRows($allRows, $this->search, $this->schoolFilter, $this->gradeFilter, $this->voicePartFilter);
+        $filteredRows = self::filterRows($allRows, $this->search, $this->schoolFilter, $this->gradeFilter, $this->voicePartFilter, $this->waiverFilter);
         $orderedRows = self::flattenGroups(self::groupRows($filteredRows, $this->sortDirection));
 
         $page = $this->getPage();
@@ -209,6 +225,8 @@ class ParticipatingCandidates extends Component
             'schoolOptions' => $allRows->pluck('candidate.school.name')->filter()->unique()->sort()->values(),
             'gradeOptions' => $allRows->pluck('grade')->filter(fn ($g) => $g !== null)->unique()->sort()->values(),
             'availableVoiceParts' => $this->version->availableVoiceParts(),
+            'canWaiveFees' => $this->canWaiveFees(),
+            'waivableFeeTypes' => $this->waivableFeeTypes(),
         ]);
     }
 
@@ -238,7 +256,7 @@ class ParticipatingCandidates extends Component
     {
         $query = Candidate::where('version_id', $version->id)
             ->where('status', CandidateStatus::Registered->value)
-            ->with(['student.user', 'student.schools', 'teacher.user.phones', 'school', 'voicePart']);
+            ->with(['student.user', 'student.schools', 'teacher.user.phones', 'school', 'voicePart', 'feeWaivers']);
 
         if ($countyIds !== null) {
             $query->whereHas('school', fn ($q) => $q->whereIn('county_id', $countyIds));
@@ -254,8 +272,12 @@ class ParticipatingCandidates extends Component
      * @param  Collection<int, mixed>  $rows
      * @return Collection<int, mixed>
      */
-    public static function filterRows(Collection $rows, string $search, string $schoolFilter, string $gradeFilter, string $voicePartFilter): Collection
+    public static function filterRows(Collection $rows, string $search, string $schoolFilter, string $gradeFilter, string $voicePartFilter, string $waiverFilter = ''): Collection
     {
+        if ($waiverFilter === 'waived') {
+            $rows = $rows->filter(fn (array $row): bool => $row['candidate']->feeWaivers->isNotEmpty());
+        }
+
         $search = mb_strtolower(trim($search));
 
         if ($search !== '') {

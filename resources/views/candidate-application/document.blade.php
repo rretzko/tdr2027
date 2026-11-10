@@ -173,7 +173,10 @@
 
     {{-- FEES --}}
     <section style="text-align: right; font-weight: bold; margin-bottom: 0.5rem;">
-        <div>Registration Fee: ${{ $data->registrationFee }} &nbsp; Participation Fee: ${{ $data->participationFee }}</div>
+        <div>
+            Registration Fee: {{ $data->registrationFeeWaived ? 'Waived' : '$'.$data->registrationFee }}
+            &nbsp; Participation Fee: {{ $data->participationFeeWaived ? 'Waived' : '$'.$data->participationFee }}
+        </div>
     </section>
 
     {{-- SCHEDULE (optional) --}}

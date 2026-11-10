@@ -16,6 +16,7 @@ use App\Models\PaymentTransaction;
 use App\Models\School;
 use App\Models\Version;
 use App\Models\VersionTeacherPacket;
+use App\Services\CandidateFeeCalculator;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -205,7 +206,8 @@ class ParticipatingSchools extends Component
 
     public function render(): View
     {
-        $allRows = self::filterAndSort(self::baseRows($this->version, $this->reportCountyIds), $this->search, $this->packetFilter, $this->balanceFilter, $this->sortColumn, $this->sortDirection);
+        $baseRows = self::baseRows($this->version, $this->reportCountyIds);
+        $allRows = self::filterAndSort($baseRows, $this->search, $this->packetFilter, $this->balanceFilter, $this->sortColumn, $this->sortDirection);
 
         $page = $this->getPage();
         $pageRows = $allRows->slice(($page - 1) * self::PER_PAGE, self::PER_PAGE);
@@ -221,6 +223,9 @@ class ParticipatingSchools extends Component
         return view('livewire.events.reports.participating-schools', [
             'rows' => $pageRows,
             'rowsPaginator' => $paginator,
+            // From the unfiltered rows, so the Waived column doesn't come and
+            // go as filters change (docs/plans/student-fee-waivers.md).
+            'hasWaivers' => $baseRows->sum('waivedCents') > 0,
         ]);
     }
 
@@ -249,30 +254,12 @@ class ParticipatingSchools extends Component
 
         $candidates = $query->get();
 
-        // A brand-new (non-cloned) Version has no version_fees row yet
-        // (VersionCloningService only creates one when cloning from a prior
-        // Version) — optional() avoids a Larastan false positive that treats
-        // fees()->first() as never-null (see feedback_phpstan_quirks).
-        // Registration and participation are never combined into one figure
-        // — see FeeType. Participation is only added once the Version is
-        // closed, and only for a Candidate who was actually Accepted.
-        $fees = optional($version->fees()->first());
-        $registrationCents = (int) ($fees->registration ?? 0);
-        $participationCents = (int) ($fees->participation ?? 0);
-        $participationPayable = $version->participationFeePayable();
-
-        $dueForCandidate = function (Candidate $candidate) use ($registrationCents, $participationCents, $participationPayable): int {
-            $due = $registrationCents;
-
-            // getRawOriginal(), not the magic-cast property — Larastan can't
-            // infer the enum cast through this method-based casts() return
-            // here (cataloged Larastan quirk; see PHPStan-quirks memory).
-            if ($participationPayable && $candidate->getRawOriginal('status') === CandidateStatus::Accepted->value) {
-                $due += $participationCents;
-            }
-
-            return $due;
-        };
+        // Registration (+ participation once closed, Accepted only), net of
+        // per-student fee waivers — see CandidateFeeCalculator.
+        $calculator = app(CandidateFeeCalculator::class);
+        $calculator->loadWaivers($candidates);
+        $dueForCandidate = fn (Candidate $candidate): int => $calculator->combinedDueCents($version, $candidate);
+        $waivedForCandidate = fn (Candidate $candidate): int => $calculator->combinedWaivedCents($version, $candidate);
 
         $packets = VersionTeacherPacket::where('version_id', $version->id)->get()->keyBy(fn (VersionTeacherPacket $p): string => "{$p->school_id}:{$p->teacher_id}");
 
@@ -304,11 +291,13 @@ class ParticipatingSchools extends Component
         $owes = fn (Candidate $c): bool => in_array($c->getRawOriginal('status'), $owedStatusValues, true);
 
         return $candidates->groupBy(fn (Candidate $c): string => "{$c->school_id}:{$c->teacher_id}")
-            ->map(function (Collection $group, string $key) use ($dueForCandidate, $packets, $candidateIdsByPair, $paidByCandidateId, $owes): array {
+            ->map(function (Collection $group, string $key) use ($dueForCandidate, $waivedForCandidate, $packets, $candidateIdsByPair, $paidByCandidateId, $owes): array {
                 $first = $group->first();
                 $owing = $group->filter($owes);
                 $count = $owing->count();
                 $dueCents = $owing->sum($dueForCandidate);
+                $waivedCents = (int) $owing->sum($waivedForCandidate);
+                $waivedCount = $owing->filter(fn (Candidate $c): bool => $waivedForCandidate($c) > 0)->count();
 
                 $paidCents = 0;
                 foreach ($candidateIdsByPair->get($key, []) as $candidateId) {
@@ -322,6 +311,8 @@ class ParticipatingSchools extends Component
                     'count' => $count,
                     'packet' => $packets->get($key),
                     'dueCents' => $dueCents,
+                    'waivedCents' => $waivedCents,
+                    'waivedCount' => $waivedCount,
                     'paidCents' => $paidCents,
                     'balanceCents' => $dueCents - $paidCents,
                 ];

@@ -237,6 +237,19 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Who may waive a student's fees (docs/plans/student-fee-waivers.md):
+     * Founder or Event-wide Event Manager only. Deliberately narrower than
+     * canManageReports() — Registration/Co-Registration Managers can see a
+     * waiver on the reports but not create or remove one. Resolves
+     * identically to canManageEvent() today; kept as its own named method so
+     * the rule can change without touching call sites.
+     */
+    public function canWaiveFees(User $user, Version $version): bool
+    {
+        return $this->canManageEvent($user, $version->event);
+    }
+
+    /**
      * Access to the Tab Room Module (Add/Edit Scores, Adjudication Tracking,
      * Ensemble Cut-offs, Reports, Close Audition — Tab Room Module.docx):
      * Founder or Event-wide Event Manager, or "Tab Room Manager" held

@@ -14,7 +14,7 @@
             <flux:text size="sm" class="text-zinc-500">{{ $version->name }} — registered candidates</flux:text>
         </div>
 
-        <flux:button size="sm" variant="outline" icon="arrow-down-tray" :href="route('events.versions.reports.participating-candidates.pdf', ['version' => $version, 'search' => $search, 'schoolFilter' => $schoolFilter, 'gradeFilter' => $gradeFilter, 'voicePartFilter' => $voicePartFilter])" target="_blank">
+        <flux:button size="sm" variant="outline" icon="arrow-down-tray" :href="route('events.versions.reports.participating-candidates.pdf', ['version' => $version, 'search' => $search, 'schoolFilter' => $schoolFilter, 'gradeFilter' => $gradeFilter, 'voicePartFilter' => $voicePartFilter, 'waiverFilter' => $waiverFilter])" target="_blank">
             Export PDF
         </flux:button>
     </div>
@@ -39,12 +39,16 @@
                 <flux:select.option value="{{ $voicePart->id }}">{{ $voicePart->name }}</flux:select.option>
             @endforeach
         </flux:select>
+        <flux:select wire:model.live="waiverFilter" class="sm:max-w-2xs">
+            <flux:select.option value="">All fee statuses</flux:select.option>
+            <flux:select.option value="waived">Fee waived only</flux:select.option>
+        </flux:select>
     </div>
 
     @if ($schoolGroups->isEmpty())
         <flux:callout variant="info" icon="magnifying-glass">
             <flux:callout.text>
-                @if ($search !== '' || $schoolFilter !== '' || $gradeFilter !== '' || $voicePartFilter !== '')
+                @if ($search !== '' || $schoolFilter !== '' || $gradeFilter !== '' || $voicePartFilter !== '' || $waiverFilter !== '')
                     No candidates match your search or filter.
                 @else
                     No candidates are registered for this Version yet.
@@ -76,9 +80,15 @@
                                                 <flux:heading size="base">{{ $candidate->student->user->name }}</flux:heading>
                                                 <flux:badge color="zinc" size="sm">{{ $candidate->voicePart->name }}</flux:badge>
                                             </div>
-                                            <div class="text-sm text-zinc-500 mb-3">Grade {{ $row['grade'] ?? '—' }}</div>
+                                            <div class="flex flex-wrap items-center gap-2 text-sm text-zinc-500 mb-3">
+                                                <span>Grade {{ $row['grade'] ?? '—' }}</span>
+                                                <x-reports.fee-waiver-badge :candidate="$candidate" />
+                                            </div>
                                             <div class="flex items-center gap-2">
                                                 <flux:button size="sm" variant="outline" wire:click="edit({{ $candidate->id }})">Edit</flux:button>
+                                                @if ($canWaiveFees)
+                                                    <flux:button size="sm" variant="outline" icon="receipt-percent" wire:click="openWaivers({{ $candidate->id }})">Waive fees</flux:button>
+                                                @endif
                                                 <flux:spacer />
                                                 <flux:dropdown>
                                                     <flux:button size="sm" variant="danger">Remove</flux:button>
@@ -139,13 +149,19 @@
                                 @php $candidate = $row['candidate']; @endphp
                                 <flux:table.row :key="$candidate->id">
                                     <flux:table.cell>
-                                        <div class="pl-10 font-medium">{{ $candidate->student->user->name }}</div>
+                                        <div class="pl-10 flex items-center gap-2">
+                                            <span class="font-medium">{{ $candidate->student->user->name }}</span>
+                                            <x-reports.fee-waiver-badge :candidate="$candidate" />
+                                        </div>
                                     </flux:table.cell>
                                     <flux:table.cell>{{ $row['grade'] ?? '—' }}</flux:table.cell>
                                     <flux:table.cell><flux:badge color="zinc" size="sm">{{ $candidate->voicePart->name }}</flux:badge></flux:table.cell>
                                     <flux:table.cell>
                                         <div class="flex items-center gap-2">
                                             <flux:button size="sm" variant="outline" wire:click="edit({{ $candidate->id }})">Edit</flux:button>
+                                            @if ($canWaiveFees)
+                                                <flux:button size="sm" variant="outline" icon="receipt-percent" wire:click="openWaivers({{ $candidate->id }})">Waive fees</flux:button>
+                                            @endif
                                             <flux:dropdown>
                                                 <flux:button size="sm" variant="danger">Remove</flux:button>
                                                 <flux:menu>
@@ -214,4 +230,8 @@
             </div>
         </form>
     </flux:modal>
+
+    @if ($canWaiveFees)
+        @include('livewire.events.reports.partials.fee-waiver-modal')
+    @endif
 </div>

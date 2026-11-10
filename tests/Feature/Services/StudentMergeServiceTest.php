@@ -3,11 +3,13 @@
 declare(strict_types=1);
 
 use App\Enums\CandidateStatus;
+use App\Enums\FeeType;
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
 use App\Enums\PhoneType;
 use App\Enums\ShirtSize;
 use App\Models\Candidate;
+use App\Models\CandidateFeeWaiver;
 use App\Models\Instrument;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
@@ -339,4 +341,41 @@ test('sharedCandidateDifferences lists same-version candidates that differ in vo
 
     expect($winnerCandidate->voice_part_id)->toBe($soprano->id)
         ->and($winnerCandidate->status)->toBe(CandidateStatus::Eligible);
+});
+
+test('when both are candidates in the same version the loser fee waivers move to the winner, keeping the winner waiver for a shared fee type', function () {
+    $winner = Student::factory()->create();
+    $loser = Student::factory()->create();
+    $version = Version::factory()->create();
+    $winnerCandidate = Candidate::factory()->create(['student_id' => $winner->id, 'version_id' => $version->id]);
+    $loserCandidate = Candidate::factory()->create(['student_id' => $loser->id, 'version_id' => $version->id]);
+
+    CandidateFeeWaiver::factory()->forFeeType(FeeType::Housing)->create(['candidate_id' => $winnerCandidate->id, 'reason' => 'Winner reason']);
+    CandidateFeeWaiver::factory()->forFeeType(FeeType::Housing)->create(['candidate_id' => $loserCandidate->id, 'reason' => 'Loser reason']);
+    CandidateFeeWaiver::factory()->forFeeType(FeeType::Registration)->create(['candidate_id' => $loserCandidate->id, 'reason' => 'Hardship']);
+
+    $log = app(StudentMergeService::class)->merge($winner, $loser);
+
+    $waivers = CandidateFeeWaiver::where('candidate_id', $winnerCandidate->id)->get()
+        ->mapWithKeys(fn (CandidateFeeWaiver $w): array => [(string) $w->getRawOriginal('fee_type') => $w->reason]);
+
+    expect($waivers->all())->toEqual([
+        FeeType::Housing->value => 'Winner reason',
+        FeeType::Registration->value => 'Hardship',
+    ])
+        ->and(CandidateFeeWaiver::count())->toBe(2)
+        ->and($log)->toContain(['candidate_fee_waivers moved to winner candidate', '1']);
+});
+
+test('a loser candidate that moves whole to the winner keeps its fee waiver', function () {
+    $winner = Student::factory()->create();
+    $loser = Student::factory()->create();
+    $version = Version::factory()->create();
+    $candidate = Candidate::factory()->create(['student_id' => $loser->id, 'version_id' => $version->id]);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $candidate->id]);
+
+    app(StudentMergeService::class)->merge($winner, $loser);
+
+    expect($candidate->refresh()->student_id)->toBe($winner->id)
+        ->and($candidate->hasFeeWaived(FeeType::Registration))->toBeTrue();
 });

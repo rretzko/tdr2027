@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use App\Enums\CandidateStatus;
+use App\Enums\FeeType;
 use App\Enums\PhoneType;
 use App\Livewire\Events\Reports\ParticipatingCandidates;
 use App\Models\Candidate;
+use App\Models\CandidateFeeWaiver;
 use App\Models\CandidateStatusHistory;
 use App\Models\CoRegistrationManagerCounty;
 use App\Models\County;
@@ -16,7 +18,9 @@ use App\Models\School;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionFee;
 use App\Models\VoicePart;
+use App\Services\CandidateFeeWaiverService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -336,4 +340,148 @@ test('PDF export aborts with 403 for a user with no relevant role', function () 
 
     get(route('events.versions.reports.participating-candidates.pdf', $version))
         ->assertForbidden();
+});
+
+/*
+|--------------------------------------------------------------------------
+| Fee waivers (docs/plans/student-fee-waivers.md)
+|--------------------------------------------------------------------------
+*/
+
+function makeFeeWaiverEventManager(Version $version): User
+{
+    $eventManager = User::factory()->create();
+    grantVersionRole($eventManager, $version, 'Event Manager');
+
+    return $eventManager;
+}
+
+test('an Event Manager can waive a fee for a candidate with a reason', function () {
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000, 'housing' => 7500]);
+    $candidate = makeParticipatingCandidate($version);
+    $eventManager = makeFeeWaiverEventManager($version);
+
+    Livewire::actingAs($eventManager)
+        ->test(ParticipatingCandidates::class, ['version' => $version])
+        ->assertSee('Waive fees')
+        ->call('openWaivers', $candidate->id)
+        ->assertSet('waivingCandidateName', $candidate->student->user->name)
+        ->set('waive_fee_types', [FeeType::Registration->value])
+        ->set('waive_reason', 'Financial hardship')
+        ->call('saveWaivers')
+        ->assertHasNoErrors()
+        ->assertSee('Fee waived');
+
+    $waiver = CandidateFeeWaiver::sole();
+    expect($waiver->candidate_id)->toBe($candidate->id)
+        ->and($waiver->getRawOriginal('fee_type'))->toBe(FeeType::Registration->value)
+        ->and($waiver->reason)->toBe('Financial hardship')
+        ->and($waiver->waived_by_user_id)->toBe($eventManager->id);
+});
+
+test('waiving a fee requires a reason', function () {
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    $candidate = makeParticipatingCandidate($version);
+
+    Livewire::actingAs(makeFeeWaiverEventManager($version))
+        ->test(ParticipatingCandidates::class, ['version' => $version])
+        ->call('openWaivers', $candidate->id)
+        ->set('waive_fee_types', [FeeType::Registration->value])
+        ->set('waive_reason', '')
+        ->call('saveWaivers')
+        ->assertHasErrors(['waive_reason' => 'required']);
+
+    expect(CandidateFeeWaiver::count())->toBe(0);
+});
+
+test('opening the modal prefills existing waivers and unchecking removes them', function () {
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    $candidate = makeParticipatingCandidate($version);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $candidate->id, 'reason' => 'Scholarship']);
+
+    Livewire::actingAs(makeFeeWaiverEventManager($version))
+        ->test(ParticipatingCandidates::class, ['version' => $version])
+        ->call('openWaivers', $candidate->id)
+        ->assertSet('waive_fee_types', [FeeType::Registration->value])
+        ->assertSet('waive_reason', 'Scholarship')
+        ->set('waive_fee_types', [])
+        ->call('saveWaivers')
+        ->assertHasNoErrors();
+
+    expect(CandidateFeeWaiver::count())->toBe(0);
+});
+
+test('a fee type the Version charges nothing for cannot be waived', function () {
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000, 'housing' => 0]);
+    $candidate = makeParticipatingCandidate($version);
+
+    Livewire::actingAs(makeFeeWaiverEventManager($version))
+        ->test(ParticipatingCandidates::class, ['version' => $version])
+        ->call('openWaivers', $candidate->id)
+        ->set('waive_fee_types', [FeeType::Housing->value])
+        ->set('waive_reason', 'Lives nearby')
+        ->call('saveWaivers')
+        ->assertHasErrors(['waive_fee_types.0']);
+
+    expect(CandidateFeeWaiver::count())->toBe(0);
+});
+
+test('a Registration Manager sees the waiver badge but cannot open or save waivers', function () {
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    $candidate = makeParticipatingCandidate($version);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $candidate->id]);
+
+    $registrationManager = User::factory()->create();
+    grantVersionRole($registrationManager, $version, 'Registration Manager');
+
+    Livewire::actingAs($registrationManager)
+        ->test(ParticipatingCandidates::class, ['version' => $version])
+        ->assertSee('Fee waived')
+        ->assertDontSee('Waive fees')
+        ->call('openWaivers', $candidate->id)
+        ->assertForbidden();
+
+    Livewire::actingAs($registrationManager)
+        ->test(ParticipatingCandidates::class, ['version' => $version])
+        ->call('saveWaivers')
+        ->assertForbidden();
+
+    expect(CandidateFeeWaiver::count())->toBe(1);
+});
+
+test('the waiver filter shows only candidates with a fee waived', function () {
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    $waived = makeParticipatingCandidate($version);
+    $charged = makeParticipatingCandidate($version);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $waived->id]);
+
+    Livewire::actingAs(makeFeeWaiverEventManager($version))
+        ->test(ParticipatingCandidates::class, ['version' => $version])
+        ->set('waiverFilter', 'waived')
+        ->assertSee($waived->student->user->name)
+        ->assertDontSee($charged->student->user->name);
+});
+
+test('syncing waivers leaves fee types outside the manageable set untouched', function () {
+    $version = Version::factory()->create();
+    $candidate = makeParticipatingCandidate($version);
+    CandidateFeeWaiver::factory()->forFeeType(FeeType::Housing)->create(['candidate_id' => $candidate->id]);
+
+    $result = app(CandidateFeeWaiverService::class)->sync(
+        $candidate,
+        [FeeType::Registration],
+        [FeeType::Registration, FeeType::Participation],
+        'Hardship',
+        User::factory()->create(),
+    );
+
+    expect($result['added'])->toBe([FeeType::Registration])
+        ->and($result['removed'])->toBe([])
+        ->and(CandidateFeeWaiver::where('candidate_id', $candidate->id)->count())->toBe(2);
 });

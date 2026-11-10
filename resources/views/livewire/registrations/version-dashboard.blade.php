@@ -366,11 +366,15 @@
                     <flux:card size="sm">
                         <div class="flex items-start justify-between gap-3 mb-3">
                             <div class="flex items-start gap-2">
-                                @if ($activeFeeTypes->isNotEmpty() && in_array($candidate->status, $feeEligibleStatuses, true))
+                                {{-- No checkbox when every currently active fee is waived (docs/plans/student-fee-waivers.md). --}}
+                                @if ($activeFeeTypes->isNotEmpty() && in_array($candidate->status, $feeEligibleStatuses, true) && ! $activeFeeTypes->every(fn ($t) => $candidate->hasFeeWaived($t)))
                                     <flux:checkbox wire:model.live="selectedCandidateIds" value="{{ $candidate->id }}" class="mt-1" />
                                 @endif
                                 <div>
-                                    <flux:heading size="base">{{ $displayName }}</flux:heading>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <flux:heading size="base">{{ $displayName }}</flux:heading>
+                                        <x-reports.fee-waiver-badge :candidate="$candidate" :show-reason="false" />
+                                    </div>
                                     @if ($this->hasRealEmail($studentUser->email))
                                         <flux:text size="sm" class="ms-3 text-zinc-500">{{ $studentUser->email }}</flux:text>
                                     @else
@@ -480,13 +484,17 @@
                         <flux:table.row>
                             @if ($activeFeeTypes->isNotEmpty())
                                 <flux:table.cell>
-                                    @if (in_array($candidate->status, $feeEligibleStatuses, true))
+                                    {{-- No checkbox when every currently active fee is waived (docs/plans/student-fee-waivers.md). --}}
+                                    @if (in_array($candidate->status, $feeEligibleStatuses, true) && ! $activeFeeTypes->every(fn ($t) => $candidate->hasFeeWaived($t)))
                                         <flux:checkbox wire:model.live="selectedCandidateIds" value="{{ $candidate->id }}" />
                                     @endif
                                 </flux:table.cell>
                             @endif
                             <flux:table.cell>
-                                <div class="font-medium">{{ $displayName }}</div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="font-medium">{{ $displayName }}</span>
+                                    <x-reports.fee-waiver-badge :candidate="$candidate" :show-reason="false" />
+                                </div>
 
                                 <div class="mt-0.5 ms-3">
                                     @if ($this->hasRealEmail($studentUser->email))

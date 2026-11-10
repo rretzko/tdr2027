@@ -24,7 +24,16 @@ final readonly class VersionScorecardMetrics
         public int $registrationFeesDueCents,
         public int $registrationFeesPaidCents,
         public int $registrationFeesOutstandingCents,
+        // Registration fees the Event Manager waived for registered students,
+        // already excluded from Due (docs/plans/student-fee-waivers.md). Live
+        // only; not stored on VersionScorecardSnapshot.
+        public int $registrationFeesWaivedCents = 0,
     ) {}
+
+    public function registrationFeesWaivedInDollars(): float
+    {
+        return $this->registrationFeesWaivedCents / 100;
+    }
 
     public function registrationFeesDueInDollars(): float
     {

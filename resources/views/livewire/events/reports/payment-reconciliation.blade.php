@@ -36,12 +36,22 @@
         };
     @endphp
 
+    {{-- Waived column/card only once this Version has any waivers
+         (docs/plans/student-fee-waivers.md), so other Versions look unchanged. --}}
+    @php $hasWaivers = $versionTotals['waivedCents'] > 0; @endphp
+
     {{-- Version-level rollup --}}
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+    <div @class(['grid grid-cols-1 gap-4 mb-8', 'sm:grid-cols-3' => ! $hasWaivers, 'sm:grid-cols-2 lg:grid-cols-4' => $hasWaivers])>
         <flux:card size="sm">
             <flux:text size="sm" class="text-zinc-500">Total Due</flux:text>
             <flux:heading size="lg">${{ number_format($versionTotals['dueCents'] / 100, 2) }}</flux:heading>
         </flux:card>
+        @if ($hasWaivers)
+            <flux:card size="sm">
+                <flux:text size="sm" class="text-zinc-500">Total Waived</flux:text>
+                <flux:heading size="lg">${{ number_format($versionTotals['waivedCents'] / 100, 2) }}</flux:heading>
+            </flux:card>
+        @endif
         <flux:card size="sm">
             <flux:text size="sm" class="text-zinc-500">Total Paid</flux:text>
             <flux:heading size="lg">${{ number_format($versionTotals['paidCents'] / 100, 2) }}</flux:heading>
@@ -132,10 +142,18 @@
                         @endforeach
                         <div class="text-sm text-zinc-500">
                             {{ $row['count'] }} registered — due ${{ number_format($row['dueCents'] / 100, 2) }}, paid ${{ number_format($row['paidCents'] / 100, 2) }}
+                            @if ($row['waivedCents'] > 0)
+                                , waived ${{ number_format($row['waivedCents'] / 100, 2) }} ({{ $row['waivedCount'] }} {{ \Illuminate\Support\Str::plural('student', $row['waivedCount']) }})
+                            @endif
                         </div>
-                        @if ($canViewPaymentDetails && $row['paidCents'] !== 0 && $row['school'])
-                            <div class="mt-3">
-                                <flux:button size="sm" variant="outline" icon="eye" wire:click="showPaymentDetails({{ $row['school']->id }})">Details</flux:button>
+                        @if ($row['school'] && (($canViewPaymentDetails && $row['paidCents'] !== 0) || $canWaiveFees))
+                            <div class="mt-3 flex flex-wrap gap-2">
+                                @if ($canViewPaymentDetails && $row['paidCents'] !== 0)
+                                    <flux:button size="sm" variant="outline" icon="eye" wire:click="showPaymentDetails({{ $row['school']->id }})">Details</flux:button>
+                                @endif
+                                @if ($canWaiveFees)
+                                    <flux:button size="sm" variant="outline" icon="receipt-percent" wire:click="showFeeWaivers({{ $row['school']->id }})">Fee waivers</flux:button>
+                                @endif
                             </div>
                         @endif
                     </flux:card>
@@ -148,9 +166,12 @@
                     <flux:table.column>Teacher</flux:table.column>
                     <flux:table.column>Registered</flux:table.column>
                     <flux:table.column>Due</flux:table.column>
+                    @if ($hasWaivers)
+                        <flux:table.column>Waived</flux:table.column>
+                    @endif
                     <flux:table.column>Paid</flux:table.column>
                     <flux:table.column>Balance</flux:table.column>
-                    @if ($canViewPaymentDetails)
+                    @if ($canViewPaymentDetails || $canWaiveFees)
                         <flux:table.column></flux:table.column>
                     @endif
                 </flux:table.columns>
@@ -177,15 +198,30 @@
                             </flux:table.cell>
                             <flux:table.cell>{{ $row['count'] }}</flux:table.cell>
                             <flux:table.cell>${{ number_format($row['dueCents'] / 100, 2) }}</flux:table.cell>
+                            @if ($hasWaivers)
+                                <flux:table.cell>
+                                    @if ($row['waivedCents'] > 0)
+                                        ${{ number_format($row['waivedCents'] / 100, 2) }}
+                                        <div class="text-xs text-zinc-500 dark:text-zinc-400">{{ $row['waivedCount'] }} {{ \Illuminate\Support\Str::plural('student', $row['waivedCount']) }}</div>
+                                    @else
+                                        —
+                                    @endif
+                                </flux:table.cell>
+                            @endif
                             <flux:table.cell>${{ number_format($row['paidCents'] / 100, 2) }}</flux:table.cell>
                             <flux:table.cell>
                                 <flux:badge color="{{ $badge['color'] }}" size="sm">{{ $badge['label'] }}</flux:badge>
                             </flux:table.cell>
-                            @if ($canViewPaymentDetails)
+                            @if ($canViewPaymentDetails || $canWaiveFees)
                                 <flux:table.cell align="end">
-                                    @if ($row['paidCents'] !== 0 && $row['school'])
-                                        <flux:button size="sm" variant="outline" icon="eye" wire:click="showPaymentDetails({{ $row['school']->id }})">Details</flux:button>
-                                    @endif
+                                    <div class="flex justify-end gap-2">
+                                        @if ($canViewPaymentDetails && $row['paidCents'] !== 0 && $row['school'])
+                                            <flux:button size="sm" variant="outline" icon="eye" wire:click="showPaymentDetails({{ $row['school']->id }})">Details</flux:button>
+                                        @endif
+                                        @if ($canWaiveFees && $row['school'])
+                                            <flux:button size="sm" variant="outline" icon="receipt-percent" wire:click="showFeeWaivers({{ $row['school']->id }})">Fee waivers</flux:button>
+                                        @endif
+                                    </div>
                                 </flux:table.cell>
                             @endif
                         </flux:table.row>
@@ -338,4 +374,45 @@
             </div>
         </div>
     </flux:modal>
+
+    {{-- Fee waivers: one school's fee-eligible students, Accepted included,
+         so fees can still be waived after close (Event Manager / Founder only). --}}
+    @if ($canWaiveFees)
+        <flux:modal name="school-fee-waivers" class="w-full max-w-lg">
+            <div class="space-y-4">
+                <div>
+                    <flux:heading size="lg">Fee waivers</flux:heading>
+                    <flux:text size="sm" class="text-zinc-500">{{ $feeWaiverSchool->name ?? '—' }}</flux:text>
+                </div>
+
+                @forelse ($feeWaiverCandidates as $candidate)
+                    <div class="flex items-center justify-between gap-3 border-b border-zinc-200 pb-2 last:border-b-0 dark:border-zinc-700">
+                        <div class="min-w-0">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="font-medium">{{ $candidate->student->user->name }}</span>
+                                <x-reports.fee-waiver-badge :candidate="$candidate" />
+                            </div>
+                            <div class="text-xs text-zinc-500 dark:text-zinc-400">{{ \Illuminate\Support\Str::headline((string) $candidate->getRawOriginal('status')) }}</div>
+                        </div>
+                        <flux:button size="sm" variant="outline" icon="receipt-percent"
+                            x-on:click="$flux.modal('school-fee-waivers').close()"
+                            wire:click="openWaivers({{ $candidate->id }})">
+                            Waive fees
+                        </flux:button>
+                    </div>
+                @empty
+                    <flux:text class="text-zinc-500">No registered students at this school.</flux:text>
+                @endforelse
+
+                <div class="flex">
+                    <flux:spacer />
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Close</flux:button>
+                    </flux:modal.close>
+                </div>
+            </div>
+        </flux:modal>
+
+        @include('livewire.events.reports.partials.fee-waiver-modal')
+    @endif
 </div>

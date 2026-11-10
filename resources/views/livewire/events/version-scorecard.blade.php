@@ -21,6 +21,10 @@
             ['Outstanding', '$'.number_format($metrics->registrationFeesOutstandingInDollars(), 2)],
         ],
     ];
+    // Only once this Version has any waivers (docs/plans/student-fee-waivers.md).
+    if ($metrics->registrationFeesWaivedCents > 0) {
+        $groups['Registration Fees'][] = ['Waived', '$'.number_format($metrics->registrationFeesWaivedInDollars(), 2)];
+    }
     $firstSnapshotOn = $rows === [] ? null : \Illuminate\Support\Carbon::parse($rows[0]['date']);
 @endphp
 

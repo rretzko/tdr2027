@@ -8,6 +8,7 @@ use App\Enums\PaymentTransactionStatus;
 use App\Livewire\Events\Reports\ParticipatingSchools;
 use App\Mail\PacketReceivedMail;
 use App\Models\Candidate;
+use App\Models\CandidateFeeWaiver;
 use App\Models\CoRegistrationManagerCounty;
 use App\Models\County;
 use App\Models\PaymentAllocation;
@@ -353,4 +354,23 @@ test('PDF export aborts with 403 for a user with no relevant role', function () 
 
     get(route('events.versions.reports.participating-schools.pdf', $version))
         ->assertForbidden();
+});
+
+test('a Waived column appears once the Version has a fee waiver', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+    $candidate = Candidate::factory()->registered()->create(['version_id' => $version->id]);
+
+    Livewire::actingAs($founder)
+        ->test(ParticipatingSchools::class, ['version' => $version])
+        ->assertDontSee('Waived');
+
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $candidate->id]);
+
+    Livewire::actingAs($founder)
+        ->test(ParticipatingSchools::class, ['version' => $version])
+        ->assertSee('Waived')
+        ->assertSee('waived $20.00');
 });
