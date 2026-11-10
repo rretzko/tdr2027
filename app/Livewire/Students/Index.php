@@ -136,6 +136,8 @@ class Index extends Component
 
     public bool $claimWillAutoApprove = false;
 
+    public bool $claimingStudentHasSchool = false;
+
     // Teacher relationship — a teacher can claim a student under several subjects
     // at once (school_teacher_subject is many-to-one against school_teacher, and
     // student_teacher is the same shape: one row per student/teacher/school/subject).
@@ -549,6 +551,39 @@ class Index extends Component
             ->exists();
     }
 
+    /**
+     * Whether nobody currently has an active roster claim on a matched
+     * student — submitStudentClaim() then attaches immediately, so the match
+     * card offers "This is my student" rather than "Request to add", which
+     * read like a slow approval process and steered teachers toward creating
+     * a duplicate instead (the Nov 2026 self-registered "Ian Lee").
+     */
+    public function studentMatchHasNoActiveTeacher(Student $student): bool
+    {
+        return $this->activeTeachersFor($student->id)->isEmpty();
+    }
+
+    /**
+     * Just the domain of a matched student's real email ("@htps.us") — enough
+     * for a teacher to recognise their district's student accounts without
+     * revealing the student's full address. Null for a placeholder address.
+     */
+    public function studentMatchEmailDomain(Student $student): ?string
+    {
+        $email = $student->user->email;
+
+        if (! $this->hasRealEmail($email) || ! str_contains((string) $email, '@')) {
+            return null;
+        }
+
+        return '@'.mb_strtolower(substr((string) $email, strrpos((string) $email, '@') + 1));
+    }
+
+    public function studentMatchHasCurrentSchool(Student $student): bool
+    {
+        return $student->schools()->wherePivot('is_active', true)->exists();
+    }
+
     public function studentMatchCurrentSchoolName(Student $student): string
     {
         $school = $student->schools()->wherePivot('is_active', true)->first();
@@ -696,6 +731,7 @@ class Index extends Component
         $this->claim_grade = $this->add_grade;
         $this->edit_subject = count($schoolSubjects) === 1 ? $schoolSubjects : [];
         $this->claimWillAutoApprove = $this->activeTeachersFor($studentId)->isEmpty();
+        $this->claimingStudentHasSchool = $this->studentMatchHasCurrentSchool($student);
     }
 
     public function cancelStudentClaim(): void
@@ -1462,6 +1498,7 @@ class Index extends Component
         $this->claimingStudentSchoolName = '';
         $this->claim_grade = '';
         $this->claimWillAutoApprove = false;
+        $this->claimingStudentHasSchool = false;
     }
 
     /**
