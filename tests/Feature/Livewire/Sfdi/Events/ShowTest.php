@@ -17,6 +17,7 @@ use App\Enums\VersionDateType;
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Sfdi\Events\Show;
 use App\Models\Candidate;
+use App\Models\CandidateFeeWaiver;
 use App\Models\CandidateUploadFile;
 use App\Models\Ensemble;
 use App\Models\Event;
@@ -1561,4 +1562,47 @@ test('payNow aborts with 403 for registration once Final Teacher Changes has pas
         ->assertDontSee('Pay Registration Fee')
         ->call('payNow', 'registration')
         ->assertStatus(403);
+});
+
+test('payNow aborts with 422 when the requested fee is waived for the candidate', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    app()->bind(SquarePaymentGateway::class, fn () => new FakeSfdiSquareGateway);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+    ]);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $candidate->id]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->call('payNow', 'registration')
+        ->assertStatus(422);
+
+    expect(PaymentTransaction::count())->toBe(0);
+});
+
+test('a waived fee shows as waived instead of a Pay button', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    VersionFee::updateOrCreate(['version_id' => $version->id], ['registration' => 2000]);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create([
+        'student_id' => $user->student->id,
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+    ]);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $candidate->id, 'reason' => 'Private reason text']);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertSee('Registration Fee: waived by the event')
+        ->assertDontSee('Pay Registration Fee')
+        ->assertDontSee('Private reason text');
 });

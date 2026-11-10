@@ -15,6 +15,7 @@ use App\Enums\VersionApplicationStatus;
 use App\Enums\VersionObligationStatus;
 use App\Livewire\Registrations\CandidateDetail;
 use App\Models\Candidate;
+use App\Models\CandidateFeeWaiver;
 use App\Models\CandidateUploadFile;
 use App\Models\CoTeacherGrant;
 use App\Models\EmergencyContact;
@@ -1856,4 +1857,28 @@ test('the payment history list shows previously recorded payments with their sta
         ->assertSee('$50.00')
         ->assertSee('REF-99')
         ->assertSee('Completed');
+});
+
+test('payNow aborts with 422 when the requested fee is waived for the candidate', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create();
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $candidate->id]);
+
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => false, 'epayment_teacher' => true]);
+    EventEpaymentConfig::create([
+        'event_id' => $version->event_id,
+        'vendor' => Vendor::Square,
+        'vendor_account_id' => 'loc-123',
+        'secret' => 'token-123',
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->call('payNow', 'registration')
+        ->assertStatus(422);
+
+    expect(PaymentTransaction::count())->toBe(0);
 });

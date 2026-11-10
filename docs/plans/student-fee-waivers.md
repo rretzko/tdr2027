@@ -156,5 +156,11 @@ by the existing test suite. Waivers then go in as a small second commit.
 4. Checkout exclusions (teacher + student).
 5. Teacher-facing displays (dashboard, CandidateDetail, estimate PDF, application PDF, weekly email).
 6. EM/RM reports (schools, reconciliation, scorecard + email), with credit display.
+   **Also (added 2026-11-10):** put the "Waive fees" action on Payment
+   Reconciliation's per-school detail, reusing `CandidateFeeWaiverService` and
+   `canWaiveFees()`. Participating Candidates lists only `Registered`
+   students, but Participation and Housing are charged after close, when
+   students are `Accepted`. So once a Version closes, there is currently
+   nowhere to waive those fees. Waivers set before close do carry over.
 7. Student merge carry-over.
 8. Tests and PHPStan throughout. The user does browser verification.

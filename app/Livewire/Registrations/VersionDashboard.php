@@ -232,6 +232,7 @@ class VersionDashboard extends Component
         $candidates = $coTeacherAccess->candidateQuery($this->teacher())
             ->whereIn('id', $this->selectedCandidateIds)
             ->where('version_id', $this->version->id)
+            ->with('feeWaivers')
             ->get()
             // getRawOriginal(), not the magic-cast property — Larastan can't
             // infer the enum cast through this method-based casts() return
@@ -244,6 +245,20 @@ class VersionDashboard extends Component
             ->values();
 
         abort_if($candidates->isEmpty(), 422);
+
+        // A waived fee is never charged (docs/plans/student-fee-waivers.md).
+        // Dropping waived candidates here (not just hiding their checkbox)
+        // also keeps amountForCheckout()'s count × fee correct — a candidate
+        // can still be selectable with one active fee waived and another not.
+        $candidates = $candidates
+            ->reject(fn (Candidate $candidate): bool => $candidate->hasFeeWaived($feeType))
+            ->values();
+
+        if ($candidates->isEmpty()) {
+            Flux::toast("The {$feeType->label()} is waived for every selected student, so there's nothing to pay.", variant: 'warning');
+
+            return;
+        }
 
         $gateway = $factory->make($this->version);
         $session = $gateway->createCheckoutSession($this->version, $candidates, $this->teacher(), $feeType);
@@ -497,7 +512,7 @@ class VersionDashboard extends Component
         // they're all now equally theirs to manage.
         $myCandidates = $coTeacherAccess->candidateQuery($teacher)
             ->where('version_id', $this->version->id)
-            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'voicePart', 'school'])
+            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'voicePart', 'school', 'feeWaivers'])
             ->get()
             ->sortBy(fn (Candidate $candidate): string => mb_strtolower($candidate->student->user->sort_name));
 

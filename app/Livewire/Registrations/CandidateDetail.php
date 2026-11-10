@@ -594,6 +594,10 @@ class CandidateDetail extends Component
         $candidateStatus = CandidateStatus::from((string) $this->candidate->getRawOriginal('status'));
         abort_unless(in_array($candidateStatus, $eligibleStates, true), 422);
 
+        // A waived fee is never charged (docs/plans/student-fee-waivers.md) —
+        // render() already hides the button; this is the server-side guard.
+        abort_if($this->candidate->hasFeeWaived($feeType), 422, 'This fee has been waived by the event.');
+
         $gateway = $factory->make($this->version);
         $session = $gateway->createCheckoutSession($this->version, collect([$this->candidate]), $this->teacher(), $feeType);
 
