@@ -212,3 +212,74 @@ test('the founder page shows profile fields and no warnings when nothing differs
         ->assertDontSee('Profile differences')
         ->assertDontSee('Both are Candidates in the same Version');
 });
+
+test('merge search ranks exact last-name matches ahead of names that merely contain the term', function () {
+    // Twelve "contains" matches that sort alphabetically ahead of the exact one —
+    // the old alphabetical limit(10) never reached the real Quolee.
+    foreach (range(1, 12) as $i) {
+        mergeStudentsPageStudent('Aquolee'.$i, 'Abbott');
+    }
+    $exact = mergeStudentsPageStudent('Zian', 'Quolee');
+
+    $results = Livewire::actingAs(makeFounderUser())
+        ->test(MergeStudents::class)
+        ->set('winnerSearch', 'quolee')
+        ->viewData('winnerResults');
+
+    expect($results)->toHaveCount(10)
+        ->and($results->first()->id)->toBe($exact->id);
+});
+
+test('merge search says how many matches were left out', function () {
+    foreach (range(1, 12) as $i) {
+        mergeStudentsPageStudent('Xyvren'.$i, 'Abbott');
+    }
+
+    Livewire::actingAs(makeFounderUser())
+        ->test(MergeStudents::class)
+        ->set('winnerSearch', 'xyvren')
+        ->assertSee('Showing best 10 of 12 matches');
+});
+
+test('merge search requires every term to match, so a full name narrows to that student', function () {
+    $ian = mergeStudentsPageStudent('Zianth', 'Quolee');
+    $other = mergeStudentsPageStudent('Zianth', 'Morrow');
+    $sibling = mergeStudentsPageStudent('Brev', 'Quolee');
+
+    $ids = Livewire::actingAs(makeFounderUser())
+        ->test(MergeStudents::class)
+        ->set('winnerSearch', 'Zianth Quolee')
+        ->viewData('winnerResults')
+        ->pluck('id')
+        ->all();
+
+    expect($ids)->toBe([$ian->id]);
+});
+
+test('merge search matches a middle name and an email fragment', function () {
+    $student = mergeStudentsPageStudent('Zianth', 'Quolee');
+    $student->user->update(['middle_name' => 'Jorvik', 'email' => 'zq.unique@htps-example.us']);
+
+    $component = Livewire::actingAs(makeFounderUser())->test(MergeStudents::class);
+
+    expect($component->set('winnerSearch', 'Zianth Jorvik')->viewData('winnerResults')->pluck('id')->all())->toBe([$student->id])
+        ->and($component->set('winnerSearch', 'htps-example')->viewData('winnerResults')->pluck('id')->all())->toBe([$student->id]);
+});
+
+test('merge search finds a student by student id or user id', function () {
+    $student = mergeStudentsPageStudent('Zianth', 'Quolee');
+
+    $component = Livewire::actingAs(makeFounderUser())->test(MergeStudents::class);
+
+    expect($component->set('winnerSearch', (string) $student->id)->viewData('winnerResults')->pluck('id')->all())->toContain($student->id)
+        ->and($component->set('winnerSearch', (string) $student->user_id)->viewData('winnerResults')->pluck('id')->all())->toContain($student->id);
+});
+
+test('merge search treats percent and underscore literally', function () {
+    mergeStudentsPageStudent('Zianth', 'Quolee');
+
+    Livewire::actingAs(makeFounderUser())
+        ->test(MergeStudents::class)
+        ->set('winnerSearch', '%_')
+        ->assertViewHas('winnerResults', fn ($results) => $results->isEmpty());
+});
