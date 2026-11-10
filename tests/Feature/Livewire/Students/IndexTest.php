@@ -16,6 +16,7 @@ use App\Models\Pivots\StudentTeacher;
 use App\Models\Pronoun;
 use App\Models\School;
 use App\Models\Student;
+use App\Models\StudentSignupDismissal;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\VoicePart;
@@ -2177,4 +2178,72 @@ test('choosing a no-school self-registered match explains it will be added direc
         ->assertSet('claimingStudentHasSchool', false)
         ->assertSee("hasn't joined a school or been added by a teacher yet", false)
         ->assertSee('Add to my roster');
+});
+
+/** A teacher verified at a school with a district school email, plus one unjoined self-registered student on that domain. */
+function unjoinedSignupScenario(): array
+{
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'school_email' => 'director@district-y.org', 'verified_at' => now()]);
+    $signupUser = User::factory()->create(['first_name' => 'Wendel', 'last_name' => 'Quoxbury', 'email' => 'quoxburyw@district-y.org', 'email_unverifiable' => false, 'email_verified_at' => null]);
+    $signup = Student::factory()->create(['user_id' => $signupUser->id]);
+
+    return [$user, $school, $signup];
+}
+
+test('the students page lists unjoined sign-ups from the teacher school domain without the full email', function () {
+    [$user] = unjoinedSignupScenario();
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee("Signed up, but haven't joined a school", false)
+        ->assertSee('Quoxbury')
+        ->assertSee('@district-y.org email')
+        ->assertSee('email not verified')
+        ->assertDontSee('quoxburyw@');
+});
+
+test('addSignup opens the claim step at the matched school and submitting adds and enrolls the student', function () {
+    [$user, $school, $signup] = unjoinedSignupScenario();
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('addSignup', $signup->id)
+        ->assertSet('isAdding', true)
+        ->assertSet('add_school_id', (string) $school->id)
+        ->assertSet('claimingStudentId', $signup->id)
+        ->assertSet('claimWillAutoApprove', true)
+        ->set('claim_grade', '8')
+        ->set('edit_subject', ['chorus'])
+        ->call('submitStudentClaim')
+        ->assertHasNoErrors()
+        ->assertDontSee("Signed up, but haven't joined a school", false);
+
+    expect(StudentTeacher::where('student_id', $signup->id)->where('teacher_id', $user->teacher->id)->where('is_active', true)->exists())->toBeTrue()
+        ->and(SchoolStudent::where('student_id', $signup->id)->where('school_id', $school->id)->where('is_active', true)->exists())->toBeTrue();
+});
+
+test('dismissSignup hides the sign-up for this teacher', function () {
+    [$user, , $signup] = unjoinedSignupScenario();
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('dismissSignup', $signup->id)
+        ->assertDontSee("Signed up, but haven't joined a school", false);
+
+    expect(StudentSignupDismissal::where('teacher_id', $user->teacher->id)->where('student_id', $signup->id)->exists())->toBeTrue();
+});
+
+test('addSignup and dismissSignup refuse a student who is not on the teacher list', function () {
+    [$user] = unjoinedSignupScenario();
+    $stranger = Student::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('addSignup', $stranger->id)
+        ->assertSet('claimingStudentId', null)
+        ->call('dismissSignup', $stranger->id);
+
+    expect(StudentSignupDismissal::count())->toBe(0);
 });
