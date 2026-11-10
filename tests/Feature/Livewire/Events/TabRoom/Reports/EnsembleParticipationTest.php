@@ -77,5 +77,30 @@ test('adds a column for each requirement flag enabled on the Version, and none f
         ->assertSee('Shirt Size')
         ->assertSee('X-Large')
         ->assertDontSee('Height')
-        ->assertDontSee('70"', false);
+        // Escaped (the default), matching how the cell renders it: Blade
+        // outputs 70&quot;. Unescaped, '70"' matched any attribute ending
+        // in 70 (a wire:id, value="170"), so this failed at random, and it
+        // could never have matched the real cell text anyway.
+        ->assertDontSee('70"');
+});
+
+test('shows the height column with its inch mark when the Version requires height', function () {
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active', 'height' => true]);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    $ensemble = Ensemble::factory()->create(['event_id' => $event->id]);
+    $voicePart = VoicePart::factory()->create();
+    $candidate = Candidate::factory()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'status' => CandidateStatus::Accepted, 'accepted_ensemble_id' => $ensemble->id]);
+    $candidate->student->update(['height' => 70]);
+
+    // Guards the escaped-match assertion in the test above: proves the
+    // rendered height really is the escaped 70&quot; that it looks for.
+    Livewire::actingAs($manager)
+        ->test(EnsembleParticipation::class, ['version' => $version])
+        ->set('ensembleId', $ensemble->id)
+        ->assertSee('Height')
+        ->assertSee('70"');
 });
