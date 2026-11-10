@@ -162,6 +162,12 @@ class StudentMergeService
         $count = DB::table('emergency_contacts')->where('student_id', $loser->id)->update(['student_id' => $winner->id]);
         $log[] = ['emergency_contacts reassigned', (string) $count];
 
+        // student_signup_dismissals — unique per (teacher, student); keep the winner's where both exist
+        $winnerDismissalTeacherIds = DB::table('student_signup_dismissals')->where('student_id', $winner->id)->pluck('teacher_id');
+        DB::table('student_signup_dismissals')->where('student_id', $loser->id)->whereIn('teacher_id', $winnerDismissalTeacherIds)->delete();
+        $count = DB::table('student_signup_dismissals')->where('student_id', $loser->id)->update(['student_id' => $winner->id]);
+        $log[] = ['student_signup_dismissals reassigned', (string) $count];
+
         // home_address — HasOne, keep winner's if it already exists
         if ($winner->homeAddress()->exists()) {
             DB::table('home_addresses')->where('student_id', $loser->id)->delete();

@@ -46,6 +46,44 @@
         </div>
     </div>
 
+    @if ($unjoinedSignups->isNotEmpty())
+        <div class="mb-6 flex flex-col gap-3 rounded-lg border border-sky-200 bg-sky-50 p-4 dark:border-sky-900 dark:bg-sky-950/40">
+            <div>
+                <flux:heading size="base">Signed up, but haven't joined a school</flux:heading>
+                <flux:text size="sm" class="mt-1">
+                    These students created a StudentFolder account with your school's email domain but never finished joining a school — often because their school email blocked our verification message. If one is yours, add them here instead of creating a new record.
+                </flux:text>
+            </div>
+
+            <div class="flex flex-col gap-2">
+                @foreach ($unjoinedSignups as $signup)
+                    <div wire:key="unjoined-signup-{{ $signup['student']->id }}" class="flex flex-col gap-2 rounded-md border border-zinc-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-700 dark:bg-zinc-800">
+                        <div class="min-w-0">
+                            <flux:text class="font-medium">{{ $this->studentDisplayName($signup['student']->user) }}</flux:text>
+                            <flux:text size="sm" class="text-zinc-500">
+                                {{ $signup['domain'] }} email
+                                &middot; signed up {{ $signup['student']->user->created_at?->format('M j, Y') }}
+                                @if (! $signup['student']->user->hasVerifiedEmail())
+                                    &middot; email not verified
+                                @endif
+                                @if ($addSchoolOptions->count() > 1)
+                                    &middot; {{ $signup['school']->name }}
+                                @endif
+                            </flux:text>
+                        </div>
+
+                        <div class="flex shrink-0 items-center gap-2">
+                            <flux:modal.trigger name="edit-student">
+                                <flux:button size="sm" wire:click="addSignup({{ $signup['student']->id }})">Add to my roster</flux:button>
+                            </flux:modal.trigger>
+                            <flux:button size="sm" variant="ghost" wire:click="dismissSignup({{ $signup['student']->id }})">Not my student</flux:button>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    @endif
+
     {{-- Cards below lg:, full table at lg: and up. This table has 9 columns —
          md: doesn't leave enough room once the persistent sidebar appears. --}}
     <div id="tour-roster-mobile" class="lg:hidden space-y-3">
