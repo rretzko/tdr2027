@@ -333,7 +333,7 @@
             var steps = [
                 { ids: ['tour-add-event'], title: 'Add Event', body: 'Start a new Event — the stable definition of a program (name, sponsoring Organization, how often it runs). Founder only.' },
                 { ids: ['tour-events-list-desktop', 'tour-events-list-mobile'], title: 'Your Events', body: 'Every Event you have a role on, across every Organization.' },
-                { ids: ['tour-status-badge', 'tour-status-badge-mobile'], title: 'Status', body: 'Sandbox Events are for testing and preview — nothing here is visible to real Teachers until an Event goes Active.' },
+                { ids: ['tour-status-badge', 'tour-status-badge-mobile'], title: 'Status', body: 'Sandbox Events are for testing and preview. An Event goes Active automatically when one of its Versions is activated, and stays Active while any Version is.' },
                 { ids: ['tour-versions-btn', 'tour-versions-btn-mobile'], title: 'Versions', body: "Open this Event to manage its Versions (each year's actual run) and Ensembles (the choirs it produces)." }
             ];
 
