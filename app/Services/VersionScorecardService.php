@@ -28,6 +28,7 @@ class VersionScorecardService
     public function __construct(
         private readonly VersionInvitationEligibilityService $invitationEligibility,
         private readonly EligibilityService $eligibility,
+        private readonly CandidateFeeCalculator $feeCalculator,
     ) {}
 
     public function metricsFor(Version $version): VersionScorecardMetrics
@@ -69,9 +70,8 @@ class VersionScorecardService
 
         $registeredStudents = $registeredCandidates->count();
 
-        $fees = $version->fees;
-        $registrationFeeCents = $fees !== null ? $fees->registration : 0;
-        $registrationFeesDueCents = $registrationFeeCents * $registeredStudents;
+        // Net of per-student fee waivers — see CandidateFeeCalculator.
+        $registrationFeesDueCents = $this->feeCalculator->sumFeeCents($version, $registeredCandidates, FeeType::Registration);
 
         // payment_allocations.amount is already each candidate's settled
         // portion of its parent transaction (never a running total to add

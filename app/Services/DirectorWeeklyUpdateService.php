@@ -34,6 +34,7 @@ class DirectorWeeklyUpdateService
     public function __construct(
         private readonly CoTeacherAccessService $coTeacherAccess,
         private readonly EligibilityService $eligibility,
+        private readonly CandidateFeeCalculator $feeCalculator,
     ) {}
 
     public function updateFor(VersionInvitation $invitation): DirectorWeeklyUpdate
@@ -116,7 +117,8 @@ class DirectorWeeklyUpdateService
             registeredStudents: $registered->count(),
             registrationFeeCents: $registrationFeeCents,
             participationFeeCents: $participationFeeCents,
-            dueCents: $registered->count() * $registrationFeeCents,
+            // Net of per-student fee waivers — see CandidateFeeCalculator.
+            dueCents: $this->feeCalculator->sumFeeCents($version, $registered, FeeType::Registration),
             paidCents: $paidCents,
             pendingRoster: $pendingRoster,
             registeredRoster: $registeredRoster,

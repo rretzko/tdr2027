@@ -24,6 +24,7 @@ use App\Models\VersionInvitation;
 use App\Models\VersionPitchFile;
 use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VersionUploadFile;
+use App\Services\CandidateFeeCalculator;
 use App\Services\CandidateService;
 use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\RecordingReviewService;
@@ -706,11 +707,9 @@ class Show extends Component
 
         $candidateStatus = CandidateStatus::from((string) $this->candidate->getRawOriginal('status'));
 
-        $fees = $this->version->fees()->first();
-        $dueCents = (int) ($fees->registration ?? 0);
-        if ($this->version->participationFeePayable() && $candidateStatus === CandidateStatus::Accepted) {
-            $dueCents += (int) ($fees->participation ?? 0);
-        }
+        // Net of per-student fee waivers — see CandidateFeeCalculator.
+        $feeCalculator = app(CandidateFeeCalculator::class);
+        $dueCents = $feeCalculator->combinedDueCents($this->version, $this->candidate);
         $paidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
             ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
             ->sum('amount');
@@ -730,7 +729,7 @@ class Show extends Component
         // Housing stays outside the combined balance above — same
         // independent due/paid pair CandidateDetail::render() computes, see
         // that method's own comment for the full reasoning.
-        $housingCents = (int) ($fees->housing ?? 0);
+        $housingCents = $feeCalculator->feeCents($this->version, $this->candidate, FeeType::Housing);
         $housingPaidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
             ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value)
                 ->where('fee_type', FeeType::Housing->value))

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support;
 
 use App\Enums\CandidateStatus;
+use App\Enums\FeeType;
 use App\Enums\PaymentTransactionStatus;
 use App\Models\Candidate;
 use App\Models\Membership;
@@ -14,6 +15,7 @@ use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionMailToAddress;
 use App\Models\VoicePart;
+use App\Services\CandidateFeeCalculator;
 use App\Services\CoTeacherAccessService;
 use App\Services\MailToAddressResolver;
 use Illuminate\Support\Collection;
@@ -95,7 +97,8 @@ final class EstimateFormData
             ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
             ->sum('amount');
 
-        $feeSubtotalCents = $candidates->count() * $registrationCents;
+        // Net of per-student fee waivers — see CandidateFeeCalculator.
+        $feeSubtotalCents = app(CandidateFeeCalculator::class)->sumFeeCents($version, $candidates, FeeType::Registration);
 
         $membershipStatus = self::membershipCardStatus($version, $teacher);
 

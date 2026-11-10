@@ -28,6 +28,7 @@ use App\Models\VersionApplication;
 use App\Models\VersionInvitation;
 use App\Models\VersionUploadFile;
 use App\Services\AuditionCapService;
+use App\Services\CandidateFeeCalculator;
 use App\Services\CandidateService;
 use App\Services\CoTeacherAccessService;
 use App\Services\Payments\PaymentGatewayFactory;
@@ -712,11 +713,9 @@ class CandidateDetail extends Component
         // fee it satisfied (registration/participation are never both
         // payable at once — see FeeType). A zero or negative balance
         // (fully paid, or an overpayment) suppresses the button.
-        $fees = $this->version->fees()->first();
-        $dueCents = (int) ($fees->registration ?? 0);
-        if ($this->version->participationFeePayable() && $candidateStatus === CandidateStatus::Accepted) {
-            $dueCents += (int) ($fees->participation ?? 0);
-        }
+        // Net of per-student fee waivers — see CandidateFeeCalculator.
+        $feeCalculator = app(CandidateFeeCalculator::class);
+        $dueCents = $feeCalculator->combinedDueCents($this->version, $this->candidate);
         $paidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
             ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
             ->sum('amount');
@@ -742,7 +741,7 @@ class CandidateDetail extends Component
         // electronic gateways at checkout; a manually recorded payment
         // isn't attributable to a specific fee type, so it can't satisfy
         // this balance — flag if that gap needs closing later).
-        $housingCents = (int) ($fees->housing ?? 0);
+        $housingCents = $feeCalculator->feeCents($this->version, $this->candidate, FeeType::Housing);
         $housingPaidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
             ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value)
                 ->where('fee_type', FeeType::Housing->value))

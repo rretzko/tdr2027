@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Enums\ApplicationType;
 use App\Enums\CandidateStatus;
+use App\Enums\FeeType;
 use App\Observers\CandidateObserver;
 use Database\Factories\CandidateFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -119,6 +120,28 @@ class Candidate extends Model
     public function paymentAllocations(): HasMany
     {
         return $this->hasMany(PaymentAllocation::class);
+    }
+
+    /**
+     * @return HasMany<CandidateFeeWaiver, $this>
+     */
+    public function feeWaivers(): HasMany
+    {
+        return $this->hasMany(CandidateFeeWaiver::class);
+    }
+
+    /**
+     * Reads the (ideally eager-loaded) feeWaivers relation — callers over
+     * many candidates should go through CandidateFeeCalculator, which
+     * loadMissing()s it once for the whole collection.
+     */
+    public function hasFeeWaived(FeeType $feeType): bool
+    {
+        // getRawOriginal(), not the magic-cast property — cataloged Larastan
+        // enum-cast quirk (see PHPStan-quirks memory).
+        return $this->feeWaivers->contains(
+            fn (CandidateFeeWaiver $waiver): bool => $waiver->getRawOriginal('fee_type') === $feeType->value,
+        );
     }
 
     /**
