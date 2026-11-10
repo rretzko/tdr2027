@@ -279,7 +279,11 @@
                         {{ $attachingStudentName }} is already in the system — you'll be added as a teacher for them, not creating a new student record.
                     @elseif ($claimingStudentId !== null)
                         @if ($claimWillAutoApprove)
-                            {{ $claimingStudentName }} is in the system at {{ $claimingStudentSchoolName }} but has no active teacher — they'll be added directly to your roster.
+                            @if ($claimingStudentHasSchool)
+                                {{ $claimingStudentName }} is in the system at {{ $claimingStudentSchoolName }} but has no active teacher — they'll be added directly to your roster.
+                            @else
+                                {{ $claimingStudentName }} already has an account but hasn't joined a school or been added by a teacher yet — they'll be added directly to your roster.
+                            @endif
                         @else
                             {{ $claimingStudentName }} is already a student of another teacher at {{ $claimingStudentSchoolName }}. They'll need to approve this before you're added.
                         @endif
@@ -327,7 +331,7 @@
                 </div>
             @elseif ($claimingStudentId !== null)
                 <flux:input value="{{ $claimingStudentName }}" label="Student" disabled />
-                <flux:input value="{{ $claimingStudentSchoolName }}" label="Currently at" disabled />
+                <flux:input value="{{ $claimingStudentHasSchool ? $claimingStudentSchoolName : 'Not at any school yet' }}" label="Currently at" disabled />
 
                 <flux:select wire:model="claim_grade" label="Grade" placeholder="Select a grade..." required>
                     @foreach ($this->addGradeOptions() as $option)
@@ -561,9 +565,16 @@
                             <div>
                                 <flux:text class="font-medium">{{ $match['student']->user->name }}</flux:text>
                                 <flux:text size="sm" class="text-zinc-500">
-                                    Currently at {{ $this->studentMatchCurrentSchoolName($match['student']) }}
+                                    @if ($this->studentMatchHasCurrentSchool($match['student']))
+                                        Currently at {{ $this->studentMatchCurrentSchoolName($match['student']) }}
+                                    @else
+                                        Not at any school yet
+                                    @endif
                                     @if ($this->studentMatchGradePhrase($match['student']) !== null)
                                         &middot; {{ $this->studentMatchGradePhrase($match['student']) }}
+                                    @endif
+                                    @if ($this->studentMatchEmailDomain($match['student']) !== null)
+                                        &middot; signed up with an {{ $this->studentMatchEmailDomain($match['student']) }} email
                                     @endif
                                 </flux:text>
                             </div>
@@ -571,6 +582,8 @@
                             <div class="flex items-center gap-2">
                                 @if ($this->studentMatchIsSameSchool($match['student']))
                                     <flux:button size="sm" wire:click="selectStudentMatch({{ $match['student']->id }})">This is my student</flux:button>
+                                @elseif ($this->studentMatchHasNoActiveTeacher($match['student']))
+                                    <flux:button size="sm" wire:click="selectStudentClaim({{ $match['student']->id }})">This is my student</flux:button>
                                 @else
                                     <flux:button size="sm" wire:click="selectStudentClaim({{ $match['student']->id }})">Request to add</flux:button>
                                 @endif

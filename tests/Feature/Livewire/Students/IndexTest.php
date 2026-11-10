@@ -2123,3 +2123,58 @@ test('sorting by subject orders combined subject labels', function () {
     expect($component->viewData('rows')->getCollection()->map(fn (StudentTeacher $r) => $r->student->user->first_name)->all())
         ->toBe(['Band', 'Both', 'Strings']);
 });
+
+test('a matched self-registered student with no school and no teacher offers "This is my student"', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
+    $selfRegistered = Student::factory()->create();
+    $selfRegistered->user->update(['first_name' => 'Wendel', 'last_name' => 'Quoxbury', 'email' => 'quoxburyw@HTPS.us']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_last_name', 'Quoxbury')
+        ->assertSee('This is my student')
+        ->assertDontSee('Request to add')
+        ->assertSee('Not at any school yet')
+        ->assertDontSee('no current school on file')
+        ->assertSee('signed up with an @htps.us email')
+        ->assertDontSee('quoxburyw');
+});
+
+test('a placeholder email is never shown as a signed-up domain', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
+    $student = Student::factory()->create();
+    $student->user->update(['first_name' => 'Wendel', 'last_name' => 'Quoxbury', 'email' => Str::uuid().'@studentfolder.info']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_last_name', 'Quoxbury')
+        ->assertSee('This may already be one of your students')
+        ->assertDontSee('signed up with an');
+});
+
+test('choosing a no-school self-registered match explains it will be added directly', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $user->teacher->schools()->attach($school, ['role' => 'primary', 'is_active' => true, 'verified_at' => now()]);
+    $selfRegistered = Student::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->call('selectStudentClaim', $selfRegistered->id)
+        ->assertSet('claimWillAutoApprove', true)
+        ->assertSet('claimingStudentHasSchool', false)
+        ->assertSee("hasn't joined a school or been added by a teacher yet", false)
+        ->assertSee('Add to my roster');
+});
