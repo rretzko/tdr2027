@@ -1659,7 +1659,84 @@ test('a student already on the teacher own roster at that school is not suggeste
         ->set('add_school_id', (string) $school->id)
         ->set('edit_first_name', 'Wendel')
         ->set('edit_last_name', 'Quoxbury')
-        ->assertDontSee('This may already be one of your students');
+        ->assertDontSee('This may already be one of your students')
+        ->assertSee('Already on your roster')
+        ->assertSee('Open existing record');
+});
+
+test('saveAdd blocks re-adding a student already on the teacher own roster until dismissed', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    claimStudentForTeacher($user->teacher, $school, 'Wendel', 'Quoxbury', subject: 'chorus');
+    $studentCount = Student::count();
+
+    $component = Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('add_grade', '9')
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_last_name', 'Quoxbury')
+        ->set('edit_pronoun_id', (string) Pronoun::factory()->create()->id)
+        ->set('edit_subject', ['chorus'])
+        ->call('saveAdd')
+        ->assertHasErrors('edit_first_name');
+
+    expect(Student::count())->toBe($studentCount);
+
+    $existingId = StudentTeacher::where('teacher_id', $user->teacher->id)->value('student_id');
+
+    $component->call('dismissStudentMatch', $existingId)
+        ->assertDontSee('Already on your roster')
+        ->call('saveAdd')
+        ->assertHasNoErrors();
+
+    expect(Student::count())->toBe($studentCount + 1);
+});
+
+test('the own-roster warning catches a middle-initial variant of the same name', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    claimStudentForTeacher($user->teacher, $school, 'Wendel', 'Quoxbury', subject: 'chorus');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_middle_name', 'J')
+        ->set('edit_last_name', 'Quoxbury')
+        ->assertSee('Already on your roster');
+});
+
+test('openOwnRosterMatch switches the add modal to editing the existing roster record', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Wendel', 'Quoxbury', subject: 'chorus');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->set('add_school_id', (string) $school->id)
+        ->set('edit_first_name', 'Wendel')
+        ->set('edit_last_name', 'Quoxbury')
+        ->call('openOwnRosterMatch', $row->id)
+        ->assertSet('isAdding', false)
+        ->assertSet('editingRowId', $row->id)
+        ->assertDontSee('Already on your roster');
+});
+
+test('openOwnRosterMatch ignores a roster row belonging to another teacher', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $otherRow = claimStudentForTeacher(makeStudentsIndexTeacherUser()->teacher, $school, 'Wendel', 'Quoxbury');
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->call('add')
+        ->call('openOwnRosterMatch', $otherRow->id)
+        ->assertSet('isAdding', true)
+        ->assertSet('editingRowId', null);
 });
 
 test('attachExistingStudent does not error when the teacher already claims that subject (regression)', function () {

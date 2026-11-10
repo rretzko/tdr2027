@@ -519,6 +519,39 @@
             <flux:input wire:model.live.debounce.300ms="edit_last_name" label="Last name" />
             <flux:input wire:model="edit_suffix_name" label="Suffix (optional)" />
 
+            @if ($isAdding && $this->ownRosterMatches()->isNotEmpty())
+                <div class="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
+                    <flux:text size="sm" class="font-medium">Already on your roster:</flux:text>
+
+                    @foreach ($this->ownRosterMatches() as $match)
+                        <div wire:key="own-roster-match-{{ $match['student']->id }}" class="flex flex-col gap-2 rounded-md border border-zinc-200 bg-white p-2 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-700 dark:bg-zinc-800">
+                            <div>
+                                <flux:text class="font-medium">{{ $match['student']->user->name }}</flux:text>
+                                <flux:text size="sm" class="text-zinc-500">
+                                    @if ($this->studentMatchGradePhrase($match['student']) !== null)
+                                        {{ $this->studentMatchGradePhrase($match['student']) }} &middot;
+                                    @endif
+                                    @if ($match['row']->isPending())
+                                        request pending approval
+                                    @elseif (! $match['row']->is_active)
+                                        inactive on your roster
+                                    @else
+                                        added {{ $match['row']->created_at?->diffForHumans() }}
+                                    @endif
+                                </flux:text>
+                            </div>
+
+                            <div class="flex items-center gap-2">
+                                @unless ($match['row']->isPending())
+                                    <flux:button size="sm" wire:click="openOwnRosterMatch({{ $match['row']->id }})">Open existing record</flux:button>
+                                @endunless
+                                <flux:button size="sm" variant="ghost" wire:click="dismissStudentMatch({{ $match['student']->id }})">Add as a new student</flux:button>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
             @if ($isAdding && $this->unresolvedStudentMatches()->isNotEmpty())
                 <div class="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
                     <flux:text size="sm" class="font-medium">This may already be one of your students:</flux:text>
