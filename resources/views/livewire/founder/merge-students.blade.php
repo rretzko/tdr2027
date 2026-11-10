@@ -31,7 +31,7 @@
                     autofocus
                 />
 
-                @if (mb_strlen(trim($winnerSearch)) >= 2 && $winnerResults->isEmpty())
+                @if (trim($winnerSearch) !== '' && (mb_strlen(trim($winnerSearch)) >= 2 || ctype_digit(trim($winnerSearch))) && $winnerResults->isEmpty())
                     <flux:text class="mt-2 text-zinc-500">No students match "{{ $winnerSearch }}".</flux:text>
                 @endif
 
@@ -79,7 +79,7 @@
                     icon="magnifying-glass"
                 />
 
-                @if (mb_strlen(trim($loserSearch)) >= 2 && $loserResults->isEmpty())
+                @if (trim($loserSearch) !== '' && (mb_strlen(trim($loserSearch)) >= 2 || ctype_digit(trim($loserSearch))) && $loserResults->isEmpty())
                     <flux:text class="mt-2 text-zinc-500">No students match "{{ $loserSearch }}".</flux:text>
                 @endif
 

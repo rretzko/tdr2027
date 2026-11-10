@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Models\Version;
 use App\Models\VoicePart;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -282,4 +283,14 @@ test('merge search treats percent and underscore literally', function () {
         ->test(MergeStudents::class)
         ->set('winnerSearch', '%_')
         ->assertViewHas('winnerResults', fn ($results) => $results->isEmpty());
+});
+
+test('merge search finds a single-digit student id but still ignores a single letter', function () {
+    $student = mergeStudentsPageStudent('Zianth', 'Quolee');
+    DB::table('students')->where('id', $student->id)->update(['id' => 7]);
+
+    $component = Livewire::actingAs(makeFounderUser())->test(MergeStudents::class);
+
+    expect($component->set('winnerSearch', '7')->viewData('winnerResults')->pluck('id')->all())->toBe([7])
+        ->and($component->set('winnerSearch', 'Z')->viewData('winnerResults')->all())->toBe([]);
 });
