@@ -10,6 +10,7 @@ use App\Services\StudentMergeService;
 use App\Support\PhoneNormalizer;
 use Carbon\Carbon;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
@@ -28,6 +29,8 @@ use Livewire\Component;
 #[Layout('components.layouts.app')]
 class MergeStudents extends Component
 {
+    private const SEARCH_LIMIT = 10;
+
     public string $winnerSearch = '';
 
     public string $loserSearch = '';
@@ -52,28 +55,100 @@ class MergeStudents extends Component
         return $this->searchStudents($this->loserSearch, $this->winnerId);
     }
 
+    public function winnerResultCount(): int
+    {
+        return $this->searchQuery($this->winnerSearch, $this->loserId)?->count() ?? 0;
+    }
+
+    public function loserResultCount(): int
+    {
+        return $this->searchQuery($this->loserSearch, $this->winnerId)?->count() ?? 0;
+    }
+
     /** @return Collection<int, Student> */
     private function searchStudents(string $raw, ?int $excludeId): Collection
     {
-        $search = trim($raw);
+        $query = $this->searchQuery($raw, $excludeId);
 
-        if (mb_strlen($search) < 2) {
+        if ($query === null) {
             return new Collection;
         }
 
-        return Student::query()
-            ->join('users', 'users.id', '=', 'students.user_id')
-            ->when($excludeId !== null, fn ($q) => $q->where('students.id', '!=', $excludeId))
-            ->where(fn ($q) => $q
-                ->where('users.first_name', 'like', "%{$search}%")
-                ->orWhere('users.last_name', 'like', "%{$search}%")
-            )
+        $terms = $this->searchTerms($raw);
+
+        // Rank each term: exact first/last name (0), starts-with (1), contains
+        // anywhere (2). Summed across terms, so "lee" lists the Lees ahead of
+        // Kaylee/Jasleen instead of the alphabetical first ten crowding them out.
+        foreach ($terms as $term) {
+            $query->orderByRaw(
+                'case when users.first_name = ? or users.last_name = ? then 0 when users.first_name like ? or users.last_name like ? then 1 else 2 end',
+                [$term, $term, $this->likeEscape($term).'%', $this->likeEscape($term).'%'],
+            );
+        }
+
+        return $query
             ->select('students.*')
             ->with(['user', 'schools' => fn ($q) => $q->wherePivot('is_active', true)])
             ->orderBy('users.last_name')
             ->orderBy('users.first_name')
-            ->limit(10)
+            ->orderBy('students.id')
+            ->limit(self::SEARCH_LIMIT)
             ->get();
+    }
+
+    /**
+     * Every whitespace-separated term must match first, middle or last name or
+     * email, so "Ian Lee" narrows to Ian Lee rather than matching nothing (the
+     * whole string never appears in a single column). A purely numeric search
+     * is a student id or user id — the ids the merge command and support
+     * requests are usually quoted by.
+     *
+     * @return Builder<Student>|null
+     */
+    private function searchQuery(string $raw, ?int $excludeId): ?Builder
+    {
+        $search = trim($raw);
+
+        if (mb_strlen($search) < 2) {
+            return null;
+        }
+
+        $query = Student::query()
+            ->join('users', 'users.id', '=', 'students.user_id')
+            ->when($excludeId !== null, fn ($q) => $q->where('students.id', '!=', $excludeId));
+
+        if (ctype_digit($search)) {
+            return $query->where(fn ($q) => $q
+                ->where('students.id', (int) $search)
+                ->orWhere('students.user_id', (int) $search)
+            );
+        }
+
+        foreach ($this->searchTerms($search) as $term) {
+            $like = '%'.$this->likeEscape($term).'%';
+
+            $query->where(fn ($q) => $q
+                ->where('users.first_name', 'like', $like)
+                ->orWhere('users.middle_name', 'like', $like)
+                ->orWhere('users.last_name', 'like', $like)
+                ->orWhere('users.email', 'like', $like)
+            );
+        }
+
+        return $query;
+    }
+
+    /** @return list<string> */
+    private function searchTerms(string $raw): array
+    {
+        $terms = preg_split('/\s+/', trim($raw), -1, PREG_SPLIT_NO_EMPTY);
+
+        return array_slice($terms === false ? [] : $terms, 0, 4);
+    }
+
+    private function likeEscape(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
     }
 
     // -----------------------------------------------------------------------
@@ -411,6 +486,8 @@ class MergeStudents extends Component
         return view('livewire.founder.merge-students', [
             'winnerResults' => $this->winnerResults(),
             'loserResults' => $this->loserResults(),
+            'winnerResultCount' => $this->winnerResultCount(),
+            'loserResultCount' => $this->loserResultCount(),
         ]);
     }
 }

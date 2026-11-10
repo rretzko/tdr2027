@@ -411,6 +411,66 @@ class Index extends Component
      */
     public function studentMatcherMatches(): Collection
     {
+        return $this->allStudentMatches()
+            ->reject(fn (array $match) => $this->teacherAlreadyHasStudentAtAddSchool($match['student']->id))
+            ->values();
+    }
+
+    /**
+     * The other half of studentMatcherMatches(): matches that are already on
+     * this teacher's own roster at the school being added to. These used to be
+     * dropped silently, which let a teacher re-add a student they'd entered a
+     * minute earlier with no warning at all (the Nov 2026 "Ian Lee" triplicate).
+     * Each one is surfaced with its roster row so the teacher can open the
+     * existing record instead, and blocks saveAdd() until it's opened or
+     * explicitly dismissed as a different person (e.g. a same-name sibling).
+     *
+     * @return Collection<int, array{student: Student, tier: string, row: StudentTeacher}>
+     */
+    public function ownRosterMatches(): Collection
+    {
+        if ($this->add_school_id === '') {
+            return collect();
+        }
+
+        return $this->allStudentMatches()
+            ->reject(fn (array $match) => in_array($match['student']->id, $this->dismissedStudentMatchIds, true))
+            ->map(function (array $match) {
+                $row = StudentTeacher::where('student_id', $match['student']->id)
+                    ->where('teacher_id', $this->teacher()->id)
+                    ->where('school_id', (int) $this->add_school_id)
+                    ->orderByDesc('is_active')
+                    ->orderBy('id')
+                    ->first();
+
+                return $row === null ? null : [...$match, 'row' => $row];
+            })
+            ->filter()
+            ->values();
+    }
+
+    /**
+     * Switches the open Add-student modal over to editing the teacher's
+     * existing roster record for a matched student — the "that's the one I
+     * already entered" answer to an ownRosterMatches() warning.
+     */
+    public function openOwnRosterMatch(int $rowId): void
+    {
+        $row = $this->teacherRow($rowId)->first();
+
+        if ($row === null || $row->isPending()) {
+            return;
+        }
+
+        $this->isAdding = false;
+        $this->edit($row->id);
+    }
+
+    /**
+     * @return Collection<int, array{student: Student, tier: string}>
+     */
+    private function allStudentMatches(): Collection
+    {
         if (! $this->isAdding || $this->attachingStudentId !== null || $this->claimingStudentId !== null) {
             return collect();
         }
@@ -423,7 +483,7 @@ class Index extends Component
             $this->edit_birthday !== '' ? $this->edit_birthday : null,
             $contact['email'] ?? null,
             $contact['cell_phone'] ?? null,
-        )->reject(fn (array $match) => $this->teacherAlreadyHasStudentAtAddSchool($match['student']->id));
+        );
     }
 
     private function teacherAlreadyHasStudentAtAddSchool(int $studentId): bool
@@ -1153,6 +1213,12 @@ class Index extends Component
 
     public function saveAdd(): void
     {
+        if ($this->ownRosterMatches()->isNotEmpty()) {
+            $this->addError('edit_first_name', 'This student may already be on your roster — open the existing record above, or choose "Add as a new student" if it\'s a different person.');
+
+            return;
+        }
+
         if ($this->blockingStudentMatches()->isNotEmpty()) {
             $this->addError('edit_first_name', 'Resolve the possible matching student(s) above before adding a new one.');
 
