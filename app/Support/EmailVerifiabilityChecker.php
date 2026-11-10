@@ -24,6 +24,23 @@ final class EmailVerifiabilityChecker
         // the Teacher/User observers, not here.
         'rocktwp.net',
         '*.rocktwp.net',
+        // Added 2026-11-10: domains where 0 (or 1) of several self-registered
+        // students ever verified, against ~66% for gmail — the verification
+        // email isn't getting through. montville.net (50%) was checked and
+        // left out: that's ordinary abandonment, not a block.
+        'madisonnjps.org',
+        '*.madisonnjps.org',
+        'mendhamboroschools.org',
+        '*.mendhamboroschools.org',
+        'msdstudent.org',
+        '*.msdstudent.org',
+        'nplainfield.org',
+        '*.nplainfield.org',
+        'panthers.pequannock.org',
+        'somervilleschools.org',
+        '*.somervilleschools.org',
+        'westfieldnjk12.org',
+        '*.westfieldnjk12.org',
     ];
 
     /**
