@@ -109,7 +109,7 @@ class MergeStudents extends Component
     {
         $search = trim($raw);
 
-        if (mb_strlen($search) < 2) {
+        if ($search === '' || (mb_strlen($search) < 2 && ! ctype_digit($search))) {
             return null;
         }
 
