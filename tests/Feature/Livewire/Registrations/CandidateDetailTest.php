@@ -1882,3 +1882,18 @@ test('payNow aborts with 422 when the requested fee is waived for the candidate'
 
     expect(PaymentTransaction::count())->toBe(0);
 });
+
+test('the payment panel lists a waived fee as waived by the event', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $candidate->id, 'reason' => 'Private reason text']);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->assertSee('Registration Fee: waived by the event')
+        ->assertDontSee('Private reason text');
+});

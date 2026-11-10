@@ -771,6 +771,16 @@ class CandidateDetail extends Component
             'participationFeeDue' => $participationFeeDue,
             'housingFeeDue' => $housingFeeDue,
             'overpaymentCents' => $overpaymentCents,
+            // Waived fees the Version actually charges (docs/plans/
+            // student-fee-waivers.md). The reason stays EM/RM-only.
+            'waivedFeeLabels' => array_values(array_map(
+                fn (FeeType $type): string => $type->label(),
+                array_filter(
+                    FeeType::cases(),
+                    fn (FeeType $type): bool => $this->candidate->hasFeeWaived($type)
+                        && $feeCalculator->configuredFeeCents($this->version, $type) > 0,
+                ),
+            )),
             'candidatePayments' => PaymentTransaction::whereHas(
                 'allocations',
                 fn ($q) => $q->where('candidate_id', $this->candidate->id),

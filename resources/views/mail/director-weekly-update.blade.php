@@ -58,7 +58,11 @@ No dates have been published yet.
 @if ($update->participationFeeCents > 0)
 | Participation Fee (per student) | {{ $update::dollars($update->participationFeeCents) }} |
 @endif
+@if ($update->registrationWaivedStudents > 0)
+| Due ({{ $update->registeredStudents - $update->registrationWaivedStudents }} registered × Registration Fee; {{ $update->registrationWaivedStudents }} waived by the event) | {{ $update::dollars($update->dueCents) }} |
+@else
 | Due ({{ $update->registeredStudents }} registered × Registration Fee) | {{ $update::dollars($update->dueCents) }} |
+@endif
 | Paid | {{ $update::dollars($update->paidCents) }} |
 @if ($update->balanceDueCents() < 0)
 | **Credit** | **{{ $update::dollars(-$update->balanceDueCents()) }}** |

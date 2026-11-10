@@ -67,7 +67,8 @@
                         <td>{{ $candidate->student->user->first_name }}</td>
                         <td>{{ $candidate->voicePart->name }}</td>
                         <td>{{ $candidate->student->grade ?? '—' }}</td>
-                        <td>{{ number_format((($index + 1) * $data->registrationCents) / 100, 2) }}</td>
+                        @php $feeRow = $data->feeRows[$candidate->id] ?? ['waived' => false, 'runningCents' => ($index + 1) * $data->registrationCents]; @endphp
+                        <td>{{ $feeRow['waived'] ? 'Waived' : number_format($feeRow['runningCents'] / 100, 2) }}</td>
                     </tr>
                 @endforeach
             </tbody>

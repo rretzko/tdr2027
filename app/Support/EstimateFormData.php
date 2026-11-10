@@ -55,6 +55,8 @@ final class EstimateFormData
         public readonly ?string $organizationLogoUrl,
         public readonly ?string $organizationLogoAlt,
         public readonly string $generatedAt,
+        /** @var array<int, array{waived: bool, runningCents: int}> keyed by candidate id */
+        public readonly array $feeRows = [],
     ) {}
 
     public static function build(Version $version, School $school, Teacher $teacher, MailToAddressResolver $mailToResolver): self
@@ -97,8 +99,21 @@ final class EstimateFormData
             ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
             ->sum('amount');
 
-        // Net of per-student fee waivers — see CandidateFeeCalculator.
-        $feeSubtotalCents = app(CandidateFeeCalculator::class)->sumFeeCents($version, $candidates, FeeType::Registration);
+        // Net of per-student fee waivers — see CandidateFeeCalculator. The
+        // Fee column is a running total (as on the legacy paper form), so a
+        // waived row adds $0 and the last row always equals the subtotal.
+        $calculator = app(CandidateFeeCalculator::class);
+        $calculator->loadWaivers($candidates);
+        $feeRows = [];
+        $runningCents = 0;
+        foreach ($candidates as $candidate) {
+            $runningCents += $calculator->feeCents($version, $candidate, FeeType::Registration);
+            $feeRows[$candidate->id] = [
+                'waived' => $candidate->hasFeeWaived(FeeType::Registration),
+                'runningCents' => $runningCents,
+            ];
+        }
+        $feeSubtotalCents = $runningCents;
 
         $membershipStatus = self::membershipCardStatus($version, $teacher);
 
@@ -123,6 +138,7 @@ final class EstimateFormData
             // America/New_York per §0.3 — ordinal day, matching the source
             // doc's "Downloaded on: Saturday, August 15th, 2026 @ 06:59:26 am".
             generatedAt: now()->timezone('America/New_York')->format('l, F jS, Y \@ h:i:s a'),
+            feeRows: $feeRows,
         );
     }
 

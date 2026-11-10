@@ -101,9 +101,11 @@ by the existing test suite. Waivers then go in as a small second commit.
 - **CandidateDetail:** the payment panel shows "Registration Fee: Waived" and
   so on for each waived fee.
 - **Estimate form PDF** (`EstimateFormData` + `pdf/estimate-form.blade.php`):
-  rows currently use `($index + 1) × registration` as a running total. Change
-  this to per-row amounts. Waived rows show "Waived" and $0, the subtotal is
-  the sum of the rows, and `balanceDueCents` follows.
+  rows used `($index + 1) × registration` as a running total. **Built
+  (2026-11-10):** the running total is kept, as on the legacy paper form, but
+  computed from each student's actual fee. A waived row shows "Waived" and
+  adds $0, so the last row still equals the subtotal, and `balanceDueCents`
+  follows.
 - **Candidate Application PDF** (`CandidateApplicationData`): for a waived fee,
   print "Waived" instead of the amount.
 - **Director Weekly Update email:** due becomes the sum of

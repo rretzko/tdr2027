@@ -122,6 +122,8 @@ class DirectorWeeklyUpdateService
             paidCents: $paidCents,
             pendingRoster: $pendingRoster,
             registeredRoster: $registeredRoster,
+            // feeWaivers already eager-loaded by sumFeeCents() above.
+            registrationWaivedStudents: $registered->filter(fn (Candidate $c): bool => $c->hasFeeWaived(FeeType::Registration))->count(),
         );
     }
 }

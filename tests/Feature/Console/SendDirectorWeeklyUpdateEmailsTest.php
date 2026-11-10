@@ -11,6 +11,7 @@ use App\Enums\VersionDateType;
 use App\Enums\VersionInvitationStatus;
 use App\Mail\DirectorWeeklyUpdateMail;
 use App\Models\Candidate;
+use App\Models\CandidateFeeWaiver;
 use App\Models\EmailUnsubscribe;
 use App\Models\EmergencyContact;
 use App\Models\PaymentAllocation;
@@ -249,4 +250,24 @@ test('the email has an unsubscribe button and one-click unsubscribe headers', fu
         ->toBe('<'.$user->unsubscribeUrl(UnsubscribableEmail::DirectorWeeklyUpdate).'>')
         ->and($message->getHeaders()->get('List-Unsubscribe-Post')?->getBodyAsString())
         ->toBe('List-Unsubscribe=One-Click');
+});
+
+test('excludes waived registration fees from due and says how many were waived', function () {
+    $version = Version::factory()->active()->create();
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2800]);
+    $invitation = inviteDirectorForWeeklyUpdate($version, VersionInvitationStatus::Obligated);
+
+    $candidates = Candidate::factory()->count(3)->create([
+        'version_id' => $version->id,
+        'teacher_id' => $invitation->teacher_id,
+        'status' => CandidateStatus::Registered,
+    ]);
+    CandidateFeeWaiver::factory()->create(['candidate_id' => $candidates->first()->id]);
+
+    $update = app(DirectorWeeklyUpdateService::class)->updateFor($invitation->fresh());
+    $html = (new DirectorWeeklyUpdateMail($update, $invitation->teacher->user))->render();
+
+    expect($update->dueCents)->toBe(5600)
+        ->and($update->registrationWaivedStudents)->toBe(1)
+        ->and($html)->toContain('2 registered × Registration Fee; 1 waived by the event');
 });
