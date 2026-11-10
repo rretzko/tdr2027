@@ -1,6 +1,6 @@
 # Per-Student Fee Waivers
 
-**Status:** Plan, not started (2026-11-10)
+**Status:** Steps 1–7 built and committed on `feature/student-fee-waivers` (2026-11-10). Not yet merged, browser-verified, or migrated on production.
 **Branch (when work starts):** `feature/student-fee-waivers` off `dev`
 
 ## Request

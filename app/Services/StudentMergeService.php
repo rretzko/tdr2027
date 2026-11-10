@@ -180,11 +180,23 @@ class StudentMergeService
         // candidates — unique on (version_id, student_id). Where both have one,
         // the winner's survives and the loser's payment allocations move onto
         // it; conflicts() has already ruled out anything else worth keeping.
-        $allocationsMoved = $discarded = 0;
+        $allocationsMoved = $discarded = $waiversMoved = 0;
 
         foreach ($this->sharedVersionCandidates($winner, $loser) as $pair) {
             $allocationsMoved += DB::table('payment_allocations')
                 ->where('candidate_id', $pair->loser_candidate_id)
+                ->update(['candidate_id' => $pair->winner_candidate_id, 'updated_at' => now()]);
+
+            // candidate_fee_waivers — unique per (candidate, fee_type) and
+            // cascade-deleted with the loser's Candidate below, so union them
+            // onto the winner's: the winner's own waiver wins for a fee type
+            // both have (docs/plans/student-fee-waivers.md).
+            $winnerWaivedFeeTypes = DB::table('candidate_fee_waivers')
+                ->where('candidate_id', $pair->winner_candidate_id)
+                ->pluck('fee_type');
+            $waiversMoved += DB::table('candidate_fee_waivers')
+                ->where('candidate_id', $pair->loser_candidate_id)
+                ->whereNotIn('fee_type', $winnerWaivedFeeTypes)
                 ->update(['candidate_id' => $pair->winner_candidate_id, 'updated_at' => now()]);
 
             DB::table('candidates')->where('id', $pair->loser_candidate_id)->delete();
@@ -197,6 +209,7 @@ class StudentMergeService
         $log[] = ['candidates reassigned', (string) $count];
         $log[] = ['candidates discarded (winner has one in that Version)', (string) $discarded];
         $log[] = ['payment_allocations moved to winner candidate', (string) $allocationsMoved];
+        $log[] = ['candidate_fee_waivers moved to winner candidate', (string) $waiversMoved];
 
         // scores — denormalised student_id alongside candidate_id; cascades on student delete
         $count = DB::table('scores')->where('student_id', $loser->id)->update(['student_id' => $winner->id]);
