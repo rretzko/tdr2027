@@ -18,6 +18,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
@@ -51,11 +52,25 @@ class WebRegistration extends Component
     /** @var list<int> */
     public array $selectedStudentIds = [];
 
+    /**
+     * Full Web Registration access (every tab). Registration /
+     * Co-Registration Managers reach this page only for the Voice Part Audit
+     * tab (canAuditVoiceParts()) and get false here — every other action
+     * still re-checks canManageWebRegistration() itself.
+     */
+    #[Locked]
+    public bool $fullAccess = false;
+
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
     {
-        abort_unless($roles->canManageWebRegistration(Auth::user(), $version), 403);
+        abort_unless($roles->canAuditVoiceParts(Auth::user(), $version), 403);
 
         $this->version = $version;
+        $this->fullAccess = $roles->canManageWebRegistration(Auth::user(), $version);
+
+        if (! $this->fullAccess) {
+            $this->activeTab = 'voice-parts';
+        }
     }
 
     public function updatedFromSchoolId(): void
@@ -181,7 +196,7 @@ class WebRegistration extends Component
      * From offers everyone who can still own a current student at the
      * school: the invited, active+verified pool (same as To), plus any
      * teacher whose school_teacher link there is no longer active+verified
-     * but who still holds active student_teacher rows � otherwise those
+     * but who still holds active student_teacher rows — otherwise those
      * students are orphaned with no way to move them. Active teachers who
      * simply weren't invited are deliberately not offered.
      *
@@ -350,6 +365,12 @@ class WebRegistration extends Component
 
     public function render(TeacherStudentTransferService $transferService, VersionInvitationEligibilityService $eligibility): View
     {
+        if (! $this->fullAccess) {
+            // Voice Part Audit only — don't load (or expose) the teacher and
+            // student data the other tabs need.
+            return view('livewire.events.web-registration');
+        }
+
         $invitedTeachers = $eligibility->invitedTeachers($this->version);
 
         $schoolOptions = $invitedTeachers->flatMap(fn (Teacher $teacher): Collection => $teacher->schools)

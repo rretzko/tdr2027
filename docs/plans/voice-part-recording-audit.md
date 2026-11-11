@@ -1,6 +1,6 @@
 # Voice Part ↔ Recording Audit (Founder page)
 
-**Status:** built 2026-11-11 (Founder page; EM/RM move not started) · **Branch:** `feature/voice-part-recording-audit` (off `dev`)
+**Status:** built 2026-11-11. Founder page, plus a **Voice Part Audit tab on Web Registration** (branch `feature/web-registration-voice-part-audit`). See "Web Registration tab" below · **Original branch:** `feature/voice-part-recording-audit` (off `dev`)
 
 ## Why
 
@@ -80,8 +80,14 @@ Use unique helper-function names (Pest helper functions are global across the wh
 
 Then: `composer dump-autoload`, Pint, the affected tests, and full-project PHPStan (no path arguments). The user does browser verification.
 
-## Out of scope / follow-ups
+## Web Registration tab (built 2026-11-11)
 
-- Moving the page to EM/RM (designed for above, not built).
+The audit is also a fourth tab, **Voice Part Audit**, on `events.versions.web-registration`.
+
+- **Components:** `Shared\AbstractVoicePartAudit` holds all the UI behavior. `Founder\VoicePartAudit` (Version picker, every county) and `Events\VersionVoicePartAudit` (embedded with `lazy`, `#[Locked]` versionId) extend it. The shared views live in `resources/views/livewire/voice-part-audit/`.
+- **Access** (confirmed with the user): `VersionRoleAssignmentService::canAuditVoiceParts()` = `canManageWebRegistration()` **or** `canManageReports()`. Registration Managers and Co-Registration Managers can now open Web Registration, but they see **only** this tab. `WebRegistration::$fullAccess` (locked) hides the other three tabs and skips loading their data. Their actions still re-check `canManageWebRegistration()`. This intentionally reverses the earlier rule that Registration Managers get a 403 on Web Registration. The Event page's Web Registration button now uses `canAuditVoiceParts()`.
+- **County scope:** `voicePartAuditCountyIds()` returns null (every county) for anyone with Web Registration access, and otherwise `reportCountyIds()`. Without that, a Web Registration Manager who isn't a Registration Manager would get `[]` and see nothing. Co-Registration Managers are limited to their counties for both listing and changes.
+
+## Out of scope / follow-ups
 - Proactive flagging: a Registration Checklist item for "voice part not offered for grade", and a warning when an Event Manager removes a voice part from an Ensemble that Candidates are using. These are the two remaining gaps that can create new mismatches.
 - An audit trail of voice-part changes. There's no candidate voice-part history table today. Status history records status changes only.

@@ -48,14 +48,50 @@ test('mount aborts with 403 for a user with no version-scoped role on the Versio
         ->assertStatus(403);
 });
 
-test('mount aborts with 403 for a Registration Manager (source doc names only Web Registration Manager)', function () {
+test('a Registration Manager can open the page but sees only the Voice Part Audit tab', function () {
     $user = User::factory()->create();
     $version = makeWebRegVersion();
     grantVersionRole($user, $version, 'Registration Manager');
 
     Livewire::actingAs($user)
         ->test(WebRegistration::class, ['version' => $version])
+        ->assertSet('fullAccess', false)
+        ->assertSet('activeTab', 'voice-parts')
+        ->assertSee('Voice Part Audit')
+        ->assertDontSee('Impersonate Teacher')
+        ->assertDontSee('Preview Student')
+        ->assertDontSee('Transfer Students');
+});
+
+test('a Registration Manager still cannot impersonate, preview or transfer (source doc names only Web Registration Manager)', function () {
+    $user = User::factory()->create();
+    $version = makeWebRegVersion();
+    grantVersionRole($user, $version, 'Registration Manager');
+    $teacher = Teacher::factory()->create();
+    inviteWebRegTeacher($version, $teacher);
+
+    Livewire::actingAs($user)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->call('impersonate', $teacher->user_id)
         ->assertStatus(403);
+
+    Livewire::actingAs($user)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->call('transferStudents')
+        ->assertStatus(403);
+});
+
+test('full-access users see every tab including the Voice Part Audit', function () {
+    $version = makeWebRegVersion();
+    $webRegManager = User::factory()->create();
+    grantVersionRole($webRegManager, $version, 'Web Registration Manager');
+
+    Livewire::actingAs($webRegManager)
+        ->test(WebRegistration::class, ['version' => $version])
+        ->assertSet('fullAccess', true)
+        ->assertSee('Impersonate Teacher')
+        ->assertSee('Transfer Students')
+        ->assertSee('Voice Part Audit');
 });
 
 test('mount allows Founder, Event Manager, and Web Registration Manager', function () {
