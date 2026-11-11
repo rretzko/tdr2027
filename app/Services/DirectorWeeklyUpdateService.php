@@ -45,7 +45,7 @@ class DirectorWeeklyUpdateService
         $candidates = $this->coTeacherAccess->candidateQuery($teacher)
             ->where('version_id', $version->id)
             ->whereIn('status', [CandidateStatus::Pending->value, CandidateStatus::Registered->value])
-            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'uploadFiles', 'voicePart', 'version'])
+            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'student.schools', 'uploadFiles', 'voicePart', 'version'])
             ->get()
             ->sortBy(fn (Candidate $candidate): string => mb_strtolower($candidate->student->user->sort_name))
             ->values();

@@ -512,7 +512,7 @@ class VersionDashboard extends Component
         // they're all now equally theirs to manage.
         $myCandidates = $coTeacherAccess->candidateQuery($teacher)
             ->where('version_id', $this->version->id)
-            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'voicePart', 'school', 'feeWaivers'])
+            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'student.schools', 'voicePart', 'school', 'feeWaivers'])
             ->get()
             ->sortBy(fn (Candidate $candidate): string => mb_strtolower($candidate->student->user->sort_name));
 
