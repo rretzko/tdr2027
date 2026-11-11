@@ -1,15 +1,23 @@
 <div>
-    <div class="mb-6">
-        <flux:heading size="xl">Voice Part Audit</flux:heading>
-        <flux:subheading>Listen to each candidate's teacher-approved recordings and confirm their voice part. Only voice parts offered for the student's grade can be chosen.</flux:subheading>
-    </div>
+    @if ($standalone)
+        <div class="mb-6">
+            <flux:heading size="xl">Voice Part Audit</flux:heading>
+            <flux:subheading>Listen to each candidate's teacher-approved recordings and confirm their voice part. Only voice parts offered for the student's grade can be chosen.</flux:subheading>
+        </div>
+    @else
+        <flux:text size="sm" class="mb-4 text-zinc-500">
+            Listen to each candidate's teacher-approved recordings and confirm their voice part. Only voice parts offered for the student's grade can be chosen.
+        </flux:text>
+    @endif
 
-    <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <flux:select wire:model.live="versionId" label="Version" placeholder="Select a version...">
-            @foreach ($versions as $option)
-                <flux:select.option value="{{ $option->id }}">{{ $option->event->name }} — {{ $option->name }}</flux:select.option>
-            @endforeach
-        </flux:select>
+    <div @class(['mb-4 grid grid-cols-1 gap-3 md:grid-cols-2', 'lg:grid-cols-4' => $standalone, 'lg:grid-cols-3' => ! $standalone])>
+        @if ($standalone)
+            <flux:select wire:model.live="versionId" label="Version" placeholder="Select a version...">
+                @foreach ($versions as $option)
+                    <flux:select.option value="{{ $option->id }}">{{ $option->event->name }} — {{ $option->name }}</flux:select.option>
+                @endforeach
+            </flux:select>
+        @endif
 
         <flux:select wire:model.live="status" label="Status">
             <flux:select.option value="{{ \App\Services\VoicePartAuditService::STATUS_ACTIVE }}">Active (Eligible/Pending/Registered)</flux:select.option>
@@ -47,7 +55,7 @@
         {{-- Cards below md:, table at md:+ --}}
         <div class="md:hidden space-y-3">
             @foreach ($rows as $row)
-                @include('livewire.founder.partials.voice-part-audit-row', ['row' => $row, 'layout' => 'card'])
+                @include('livewire.voice-part-audit.row', ['row' => $row, 'layout' => 'card'])
             @endforeach
         </div>
 
@@ -62,7 +70,7 @@
 
             <flux:table.rows>
                 @foreach ($rows as $row)
-                    @include('livewire.founder.partials.voice-part-audit-row', ['row' => $row, 'layout' => 'table'])
+                    @include('livewire.voice-part-audit.row', ['row' => $row, 'layout' => 'table'])
                 @endforeach
             </flux:table.rows>
         </flux:table>

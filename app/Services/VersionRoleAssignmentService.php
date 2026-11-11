@@ -312,6 +312,34 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Access to the Voice Part Audit tab on Web Registration
+     * (docs/plans/voice-part-recording-audit.md): everyone who can manage
+     * Web Registration, plus Registration/Co-Registration Managers (the
+     * Reports gate). The latter see *only* that tab — the rest of Web
+     * Registration stays canManageWebRegistration()-only.
+     */
+    public function canAuditVoiceParts(User $user, Version $version): bool
+    {
+        return $this->canManageWebRegistration($user, $version)
+            || $this->canManageReports($user, $version);
+    }
+
+    /**
+     * County scope for the Voice Part Audit: unrestricted (null) for anyone
+     * with Web Registration access — a Web Registration Manager who isn't
+     * also a Registration Manager would otherwise get reportCountyIds()'s
+     * empty list and see nothing — else the Reports county scope.
+     *
+     * @return list<int>|null
+     */
+    public function voicePartAuditCountyIds(User $user, Version $version): ?array
+    {
+        return $this->canManageWebRegistration($user, $version)
+            ? null
+            : $this->reportCountyIds($user, $version);
+    }
+
+    /**
      * The county scope a user's reports are restricted to for this Version.
      * Null means unrestricted (every county) — Founder, Event-wide Event
      * Manager, or Registration Manager held specifically on this Version. A
