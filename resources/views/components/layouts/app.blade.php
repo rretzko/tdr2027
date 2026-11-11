@@ -181,6 +181,9 @@
                     <flux:sidebar.item icon="no-symbol" :href="route('founder.remove-bot-registrations')" :current="request()->routeIs('founder.remove-bot-registrations')">
                         Remove Bot-registrations
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="musical-note" :href="route('founder.voice-part-audit')" :current="request()->routeIs('founder.voice-part-audit')">
+                        Voice Part Audit
+                    </flux:sidebar.item>
                     <flux:sidebar.item icon="bolt" :href="route('founder.trackable-pages')" :current="request()->routeIs('founder.trackable-pages')">
                         Trackable Pages
                     </flux:sidebar.item>

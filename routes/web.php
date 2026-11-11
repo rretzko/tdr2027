@@ -83,6 +83,7 @@ use App\Livewire\Founder\RemoveBotRegistrations as FounderRemoveBotRegistrations
 use App\Livewire\Founder\StudentFolio as FounderStudentFolio;
 use App\Livewire\Founder\TeacherVerification as FounderTeacherVerification;
 use App\Livewire\Founder\TrackablePages as FounderTrackablePages;
+use App\Livewire\Founder\VoicePartAudit as FounderVoicePartAudit;
 use App\Livewire\Onboarding\TeacherOnboardingWizard;
 use App\Livewire\Registrations\CandidateDetail;
 use App\Livewire\Registrations\EstimateForm;
@@ -217,6 +218,7 @@ Route::middleware(['auth', 'verified', 'founder'])->group(function () {
     Route::get('/founder/teacher-verification', FounderTeacherVerification::class)->name('founder.teacher-verification');
     Route::get('/founder/remove-bot-registrations', FounderRemoveBotRegistrations::class)->name('founder.remove-bot-registrations');
     Route::get('/founder/issues', FounderIssues::class)->name('founder.issues');
+    Route::get('/founder/voice-part-audit', FounderVoicePartAudit::class)->name('founder.voice-part-audit');
 });
 
 // Not behind the 'founder' middleware: once impersonating, the active user is
