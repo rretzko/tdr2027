@@ -607,6 +607,56 @@ test('saveStudent rejects a birthday outside the allowed age range', function ()
         ->assertHasErrors('edit_birthday');
 });
 
+test('editStudent clears a stored voice part the grade is not offered and names it in a callout', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create();
+
+    $ensemble = Ensemble::factory()->create(['event_id' => $version->event_id]);
+    $sopranoI = VoicePart::factory()->create(['name' => 'Soprano I']);
+    $ensemble->voiceParts()->attach($sopranoI->id);
+    $legacySoprano = VoicePart::factory()->create(['name' => 'Soprano']);
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'voice_part_id' => $legacySoprano->id,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->call('editStudent')
+        ->assertSet('edit_voice_part_id', '')
+        ->assertSet('edit_voice_part_invalid_name', 'Soprano')
+        ->assertSee('which isn\'t offered for grade', false)
+        ->call('saveStudent')
+        ->assertHasErrors('edit_voice_part_id');
+
+    expect($candidate->refresh()->voice_part_id)->toBe($legacySoprano->id);
+});
+
+test('editStudent keeps an offered voice part selected with no callout', function () {
+    $teacher = makeCandidateDetailTeacher();
+    $version = Version::factory()->create();
+
+    $ensemble = Ensemble::factory()->create(['event_id' => $version->event_id]);
+    $sopranoI = VoicePart::factory()->create(['name' => 'Soprano I']);
+    $ensemble->voiceParts()->attach($sopranoI->id);
+
+    actingAs($teacher->user);
+    $candidate = Candidate::factory()->create([
+        'version_id' => $version->id,
+        'teacher_id' => $teacher->id,
+        'voice_part_id' => $sopranoI->id,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->call('editStudent')
+        ->assertSet('edit_voice_part_id', (string) $sopranoI->id)
+        ->assertSet('edit_voice_part_invalid_name', null);
+});
+
 test('saveStudent rejects a voice part not offered by this Version', function () {
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create();

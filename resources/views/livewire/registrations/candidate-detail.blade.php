@@ -384,6 +384,16 @@
                 </flux:field>
             </div>
 
+            @if ($edit_voice_part_invalid_name !== null)
+                <flux:callout variant="warning" icon="exclamation-triangle">
+                    <flux:callout.text>
+                        This candidate is currently registered as <strong>{{ $edit_voice_part_invalid_name }}</strong>,
+                        which isn't offered for grade {{ $candidate->student->grade ?? '—' }}.
+                        Please choose the voice part that matches the student's recordings.
+                    </flux:callout.text>
+                </flux:callout>
+            @endif
+
             <flux:field>
                 <flux:label>Voice Part</flux:label>
                 <flux:select wire:model="edit_voice_part_id" placeholder="Select a voice part...">
