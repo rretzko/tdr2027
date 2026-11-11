@@ -21,7 +21,12 @@ trait HasCandidateChecklist
      * plus an optional `partial` closure (only ever consulted when `check`
      * returns false) for a third, amber "in progress" rendering state.
      *
-     * @return list<array{label: string, check: \Closure(Candidate): bool, partial?: \Closure(Candidate): bool}>
+     * An item with `gate => true` is required for Registered but isn't
+     * progress: it doesn't count toward the Eligible → Pending threshold in
+     * CandidateService::recalculateStatus(), since it's true from the moment
+     * a typical Candidate enrolls.
+     *
+     * @return list<array{label: string, check: \Closure(Candidate): bool, partial?: \Closure(Candidate): bool, gate?: bool}>
      */
     public function checklistDefs(Version $version): array
     {
@@ -31,6 +36,28 @@ trait HasCandidateChecklist
                 'check' => fn (Candidate $c): bool => $c->program_name !== '',
             ],
         ];
+
+        // Voice part must be one this student's grade is offered — the same
+        // rule the edit modals and auto-enrollment enforce. Catches legacy /
+        // pre-2026-09-21 enrollments and later changes (a grade correction, or
+        // a voice part removed from an Ensemble) that leave a Candidate on a
+        // part nothing offers them. Skipped when the Version has no Ensemble
+        // voice parts at all, which would otherwise fail every Candidate.
+        if ($version->availableVoiceParts()->isNotEmpty()) {
+            /** @var array<string, list<int>> $offeredByGrade */
+            $offeredByGrade = [];
+
+            $items[] = [
+                'label' => 'Voice part valid for grade',
+                'check' => function (Candidate $c) use ($version, &$offeredByGrade): bool {
+                    $grade = $c->student->grade;
+                    $offeredByGrade[(string) $grade] ??= $version->availableVoicePartsForGrade($grade)->pluck('id')->all();
+
+                    return in_array($c->voice_part_id, $offeredByGrade[(string) $grade], true);
+                },
+                'gate' => true,
+            ];
+        }
 
         if ((bool) $version->emergency_contact_name) {
             $items[] = [
