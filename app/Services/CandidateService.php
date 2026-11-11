@@ -119,7 +119,7 @@ class CandidateService
         Candidate::where('version_id', $versionId)
             ->where('teacher_id', $teacherId)
             ->where('status', CandidateStatus::TeacherWithdrawn->value)
-            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts'])
+            ->with(['student.user', 'student.homeAddress', 'student.emergencyContacts', 'student.schools'])
             ->get()
             ->each(function (Candidate $candidate) use ($checklistDefs): void {
                 $candidate->update(['status' => CandidateStatus::Eligible->value]);
@@ -137,7 +137,11 @@ class CandidateService
      *
      * Candidates already withdrawn or beyond registration are left unchanged.
      *
-     * @param  list<array{label: string, check: \Closure(Candidate): bool}>  $checklistDefs
+     * Items flagged `gate` (see HasCandidateChecklist) must pass for
+     * Registered but aren't counted as milestones, so a gate that's true on
+     * enrollment doesn't bump an untouched Candidate to Pending.
+     *
+     * @param  list<array{label: string, check: \Closure(Candidate): bool, gate?: bool}>  $checklistDefs
      */
     public function recalculateStatus(Candidate $candidate, array $checklistDefs): void
     {
@@ -151,17 +155,28 @@ class CandidateService
             return;
         }
 
-        $total = count($checklistDefs);
+        $total = 0;
         $done = 0;
+        $gatesPass = true;
 
         foreach ($checklistDefs as $item) {
-            if (($item['check'])($candidate)) {
+            $passed = ($item['check'])($candidate);
+
+            if ($item['gate'] ?? false) {
+                $gatesPass = $gatesPass && $passed;
+
+                continue;
+            }
+
+            $total++;
+
+            if ($passed) {
                 $done++;
             }
         }
 
         $newStatus = match (true) {
-            $total === 0 || $done >= $total => CandidateStatus::Registered->value,
+            $gatesPass && ($total === 0 || $done >= $total) => CandidateStatus::Registered->value,
             $done > 0 => CandidateStatus::Pending->value,
             default => CandidateStatus::Eligible->value,
         };

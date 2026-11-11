@@ -124,6 +124,45 @@ test('recalculateStatus promotes to registered when all checklist items are done
     expect($candidate->refresh()->status)->toBe(CandidateStatus::Registered);
 });
 
+test('recalculateStatus does not count a passing gate item as progress', function () {
+    actingAs(User::factory()->create());
+
+    $candidate = Candidate::factory()->create(['status' => CandidateStatus::Eligible]);
+
+    (new CandidateService)->recalculateStatus($candidate, [
+        ['label' => 'Gate', 'check' => fn (Candidate $c): bool => true, 'gate' => true],
+        ['label' => 'Item one', 'check' => fn (Candidate $c): bool => false],
+    ]);
+
+    expect($candidate->refresh()->status)->toBe(CandidateStatus::Eligible);
+});
+
+test('recalculateStatus holds a fully checklisted Candidate at pending while a gate item fails', function () {
+    actingAs(User::factory()->create());
+
+    $candidate = Candidate::factory()->create(['status' => CandidateStatus::Registered]);
+
+    (new CandidateService)->recalculateStatus($candidate, [
+        ['label' => 'Gate', 'check' => fn (Candidate $c): bool => false, 'gate' => true],
+        ['label' => 'Item one', 'check' => fn (Candidate $c): bool => true],
+    ]);
+
+    expect($candidate->refresh()->status)->toBe(CandidateStatus::Pending);
+});
+
+test('recalculateStatus registers once every item and every gate passes', function () {
+    actingAs(User::factory()->create());
+
+    $candidate = Candidate::factory()->create(['status' => CandidateStatus::Pending]);
+
+    (new CandidateService)->recalculateStatus($candidate, [
+        ['label' => 'Gate', 'check' => fn (Candidate $c): bool => true, 'gate' => true],
+        ['label' => 'Item one', 'check' => fn (Candidate $c): bool => true],
+    ]);
+
+    expect($candidate->refresh()->status)->toBe(CandidateStatus::Registered);
+});
+
 test('recalculateStatus promotes to registered when the checklist is empty', function () {
     actingAs(User::factory()->create());
 
