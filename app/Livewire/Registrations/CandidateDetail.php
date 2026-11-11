@@ -65,6 +65,13 @@ class CandidateDetail extends Component
 
     public string $edit_voice_part_id = '';
 
+    /**
+     * The Candidate's stored voice part name when it isn't one the
+     * student's grade is offered (e.g. legacy "Soprano" on a 10th grader) —
+     * the select can't display it, so the modal names it in a callout.
+     */
+    public ?string $edit_voice_part_invalid_name = null;
+
     public string $edit_birthday = '';
 
     public string $edit_height = '';
@@ -167,7 +174,13 @@ class CandidateDetail extends Component
         // Sourced from the Candidate, not the Student — this is this
         // registration's voice part, which can differ from whatever the
         // Student's general profile has on file.
-        $this->edit_voice_part_id = (string) $this->candidate->voice_part_id;
+        // A voice part the grade isn't offered has no option in the select,
+        // so the browser would display (and Save would submit) the first
+        // option instead. Clear it so the teacher must choose deliberately.
+        $isOffered = $this->version->availableVoicePartsForGrade($student->grade)
+            ->contains('id', $this->candidate->voice_part_id);
+        $this->edit_voice_part_id = $isOffered ? (string) $this->candidate->voice_part_id : '';
+        $this->edit_voice_part_invalid_name = $isOffered ? null : ($this->candidate->voicePart->name ?? 'None');
         $this->edit_birthday = (string) $student->getRawOriginal('birthday');
         $this->edit_height = $student->height !== null ? (string) $student->height : '';
         $this->resetErrorBag(['edit_first_name', 'edit_last_name', 'edit_voice_part_id', 'edit_birthday', 'edit_height']);
