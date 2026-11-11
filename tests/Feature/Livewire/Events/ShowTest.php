@@ -123,6 +123,29 @@ test('mount allows a Registration-Manager-only holder to view the Event', functi
         ->assertViewHas('canManageEvent', false);
 });
 
+test('a Registration Manager gets the Web Registration button (for its Voice Part Audit tab)', function () {
+    $user = makeShowTestUser();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($user, $version, 'Registration Manager');
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['event' => $event])
+        ->assertViewHas('versionWebRegistrationAccess', fn ($access): bool => ($access[$version->id] ?? false) === true)
+        ->assertSee(route('events.versions.web-registration', $version));
+});
+
+test('a RoomJudge-only holder does not get the Web Registration button', function () {
+    $user = makeShowTestUser();
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id]);
+    RoomJudge::factory()->create(['version_id' => $version->id, 'user_id' => $user->id]);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['event' => $event])
+        ->assertViewHas('versionWebRegistrationAccess', fn ($access): bool => ($access[$version->id] ?? false) === false);
+});
+
 test('mount allows a RoomJudge-only holder to view the Event, though they hold no Spatie role at all', function () {
     $user = makeShowTestUser();
     $event = Event::factory()->create();

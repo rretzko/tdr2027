@@ -19,9 +19,9 @@
             <flux:badge size="sm">{{ $statusLabel }}</flux:badge>
         </div>
         <div class="mb-3">
-            @include('livewire.founder.partials.voice-part-audit-select')
+            @include('livewire.voice-part-audit.select')
         </div>
-        @include('livewire.founder.partials.voice-part-audit-recordings')
+        @include('livewire.voice-part-audit.recordings')
     </flux:card>
 @else
     <flux:table.row wire:key="row-{{ $candidate->id }}">
@@ -35,10 +35,10 @@
             <div class="text-xs text-zinc-500 dark:text-zinc-400">{{ $candidate->school->name ?? '' }}</div>
         </flux:table.cell>
         <flux:table.cell class="align-top min-w-48">
-            @include('livewire.founder.partials.voice-part-audit-select')
+            @include('livewire.voice-part-audit.select')
         </flux:table.cell>
         <flux:table.cell class="align-top w-full">
-            @include('livewire.founder.partials.voice-part-audit-recordings')
+            @include('livewire.voice-part-audit.recordings')
         </flux:table.cell>
     </flux:table.row>
 @endif

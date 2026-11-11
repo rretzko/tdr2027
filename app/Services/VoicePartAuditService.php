@@ -40,17 +40,22 @@ class VoicePartAuditService
     public function __construct(private readonly CandidateService $candidates) {}
 
     /**
-     * @param  array{status?: string, voicePartId?: ?int, mismatchOnly?: bool, search?: string, sort?: string, direction?: string}  $filters
+     * countyIds: null = every county; a list restricts to Candidates whose
+     * school is in those counties (Co-Registration Manager scope).
+     *
+     * @param  array{status?: string, voicePartId?: ?int, mismatchOnly?: bool, search?: string, sort?: string, direction?: string, countyIds?: ?list<int>}  $filters
      * @return Collection<int, VoicePartAuditRow>
      */
     public function rows(Version $version, array $filters = []): Collection
     {
         $status = $filters['status'] ?? self::STATUS_ACTIVE;
         $search = trim($filters['search'] ?? '');
+        $countyIds = $filters['countyIds'] ?? null;
 
         $query = Candidate::query()
             ->where('version_id', $version->id)
             ->whereHas('uploadFiles', fn ($q) => $q->where('status', CandidateUploadStatus::Approved->value))
+            ->when($countyIds !== null, fn ($q) => $q->whereHas('school', fn ($s) => $s->whereIn('county_id', $countyIds)))
             ->with([
                 'student.user', 'student.schools', 'teacher.user', 'school', 'voicePart',
                 'uploadFiles' => fn ($q) => $q->where('status', CandidateUploadStatus::Approved->value)->with('versionUploadFile'),

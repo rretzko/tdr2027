@@ -279,11 +279,12 @@ class Show extends Component
             'versionTabRoomAccess' => $versions->mapWithKeys(
                 fn (Version $version): array => [$version->id => $service->canManageTabRoom(Auth::user(), $version)],
             ),
-            // Web Registration Manager Module (§5.11): Event Manager, or
-            // "Web Registration Manager" held specifically on this Version —
-            // its own gate, narrower than the audition-environment access above.
+            // Web Registration button: everyone who can open the page —
+            // full access (Event Manager / Web Registration Manager, §5.11)
+            // plus Registration / Co-Registration Managers, who see only its
+            // Voice Part Audit tab (canAuditVoiceParts()).
             'versionWebRegistrationAccess' => $versions->mapWithKeys(
-                fn (Version $version): array => [$version->id => $service->canManageWebRegistration(Auth::user(), $version)],
+                fn (Version $version): array => [$version->id => $service->canAuditVoiceParts(Auth::user(), $version)],
             ),
             // Setup-progress bar per Version (version-readiness.md) — skipped
             // for Closed Versions, whose setup no longer matters.
