@@ -250,6 +250,18 @@ final class VersionRoleAssignmentService
     }
 
     /**
+     * Who may use the Reports → Downloads card (full, un-county-scoped CSV
+     * exports of the Version's owned data): Founder or Event-wide Event
+     * Manager only. Deliberately narrower than canManageReports() —
+     * Registration/Co-Registration Managers never see this card. Kept as its
+     * own named method so the rule can change without touching call sites.
+     */
+    public function canDownloadVersionData(User $user, Version $version): bool
+    {
+        return $this->canManageEvent($user, $version->event);
+    }
+
+    /**
      * Access to the Tab Room Module (Add/Edit Scores, Adjudication Tracking,
      * Ensemble Cut-offs, Reports, Close Audition — Tab Room Module.docx):
      * Founder or Event-wide Event Manager, or "Tab Room Manager" held
