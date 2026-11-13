@@ -7,6 +7,7 @@ namespace App\Livewire\Events\Reports;
 use App\Concerns\ScopesReports;
 use App\Models\Version;
 use App\Services\VersionRoleAssignmentService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -18,11 +19,17 @@ class Index extends Component
 
     public Version $version;
 
+    /**
+     * Event Manager/Founder only — drives the Downloads card's visibility.
+     */
+    public bool $canDownload = false;
+
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
     {
         $this->authorizeReports($version, $roles);
 
         $this->version = $version;
+        $this->canDownload = $roles->canDownloadVersionData(Auth::user(), $version);
     }
 
     public function render(): View

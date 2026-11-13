@@ -26,6 +26,10 @@
                 ['route' => 'events.versions.reports.adjudication-backup', 'name' => 'Adjudication Backup', 'description' => 'Paper/CSV backups for in-person auditions.'],
                 ['route' => 'events.versions.reports.registration-cards', 'name' => 'Registration Cards', 'description' => 'Printable registration cards for in-person auditions.'],
             ];
+
+            if ($canDownload) {
+                $reports[] = ['route' => 'events.versions.reports.downloads', 'name' => 'Downloads', 'description' => "Download your event's data."];
+            }
         @endphp
 
         @foreach ($reports as $report)
