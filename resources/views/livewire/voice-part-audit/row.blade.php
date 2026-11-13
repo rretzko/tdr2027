@@ -5,6 +5,12 @@
     $teacher = $candidate->teacher?->user;
     $statusRaw = (string) $candidate->getRawOriginal('status');
     $statusLabel = \App\Enums\CandidateStatus::tryFrom($statusRaw)?->label() ?? $statusRaw;
+    $statusColor = match ($statusRaw) {
+        'pending' => 'amber',
+        'registered' => 'green',
+        'withdrew', 'teacher_withdrawn', 'removed' => 'red',
+        default => 'zinc',
+    };
 @endphp
 
 @if ($layout === 'card')
@@ -16,7 +22,7 @@
                     #{{ $candidate->id }} · Grade {{ $row->grade ?? '—' }} · {{ $teacher ? "{$teacher->last_name}, {$teacher->first_name}" : '—' }}
                 </flux:text>
             </div>
-            <flux:badge size="sm">{{ $statusLabel }}</flux:badge>
+            <flux:badge size="sm" :color="$statusColor">{{ $statusLabel }}</flux:badge>
         </div>
         <div class="mb-3">
             @include('livewire.voice-part-audit.select')
@@ -28,7 +34,7 @@
         <flux:table.cell class="align-top font-mono text-sm">{{ $candidate->id }}</flux:table.cell>
         <flux:table.cell class="align-top">
             <div class="font-medium">{{ $student->last_name }}, {{ $student->first_name }}</div>
-            <div class="text-xs text-zinc-500 dark:text-zinc-400">Grade {{ $row->grade ?? '—' }} · {{ $statusLabel }}</div>
+            <div class="text-xs text-zinc-500 dark:text-zinc-400">Grade {{ $row->grade ?? '—' }}</div>
         </flux:table.cell>
         <flux:table.cell class="align-top">
             <div>{{ $teacher ? "{$teacher->last_name}, {$teacher->first_name}" : '—' }}</div>
@@ -36,6 +42,9 @@
         </flux:table.cell>
         <flux:table.cell class="align-top min-w-48">
             @include('livewire.voice-part-audit.select')
+        </flux:table.cell>
+        <flux:table.cell class="align-top">
+            <flux:badge size="sm" :color="$statusColor">{{ $statusLabel }}</flux:badge>
         </flux:table.cell>
         <flux:table.cell class="align-top w-full">
             @include('livewire.voice-part-audit.recordings')
