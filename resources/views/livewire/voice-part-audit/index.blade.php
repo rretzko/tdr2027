@@ -65,6 +65,7 @@
                 <flux:table.column sortable :sorted="$sort === 'student'" :direction="$direction" wire:click="sortBy('student')">Student</flux:table.column>
                 <flux:table.column sortable :sorted="$sort === 'teacher'" :direction="$direction" wire:click="sortBy('teacher')">Teacher</flux:table.column>
                 <flux:table.column sortable :sorted="$sort === 'voice_part'" :direction="$direction" wire:click="sortBy('voice_part')">Voice part</flux:table.column>
+                <flux:table.column>Status</flux:table.column>
                 <flux:table.column>Approved recordings</flux:table.column>
             </flux:table.columns>
 
