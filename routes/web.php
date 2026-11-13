@@ -21,6 +21,7 @@ use App\Http\Controllers\Reports\TabRoom\AuditionScoresPdfController;
 use App\Http\Controllers\Reports\TabRoom\CombinedAuditionScoresExportController;
 use App\Http\Controllers\Reports\TabRoom\EnsembleParticipationExportController;
 use App\Http\Controllers\Reports\TabRoom\StudentSeniorityExportController;
+use App\Http\Controllers\Reports\VersionDataDownloadController;
 use App\Http\Controllers\SchoolEmailVerificationController;
 use App\Http\Controllers\SchoolScoreReportPdfController;
 use App\Http\Controllers\SharedScoresPdfController;
@@ -43,6 +44,7 @@ use App\Livewire\Events\CreateEvent;
 use App\Livewire\Events\Index as EventsIndex;
 use App\Livewire\Events\Reports\AdjudicationBackup;
 use App\Livewire\Events\Reports\CandidateCounts;
+use App\Livewire\Events\Reports\Downloads as ReportsDownloads;
 use App\Livewire\Events\Reports\Index as ReportsIndex;
 use App\Livewire\Events\Reports\ObligatedTeachers;
 use App\Livewire\Events\Reports\ParticipatingCandidates;
@@ -104,6 +106,7 @@ use App\Livewire\Sfdi\Events\Show as SfdiEventsShow;
 use App\Livewire\Sfdi\School as SfdiSchool;
 use App\Livewire\Sfdi\StudentDetails as SfdiStudentDetails;
 use App\Livewire\Students\Index as StudentsIndex;
+use App\Services\VersionDataDownloadService;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -346,6 +349,8 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/reports/adjudication-backup/export.{type}', AdjudicationBackupExportController::class)->whereIn('type', ['paper', 'csv', 'checklist'])->name('events.versions.reports.adjudication-backup.export');
         Route::get('/events/versions/{version}/reports/registration-cards', RegistrationCards::class)->name('events.versions.reports.registration-cards');
         Route::get('/events/versions/{version}/reports/registration-cards/export.pdf', RegistrationCardsPdfController::class)->name('events.versions.reports.registration-cards.pdf');
+        Route::get('/events/versions/{version}/reports/downloads', ReportsDownloads::class)->name('events.versions.reports.downloads');
+        Route::get('/events/versions/{version}/reports/downloads/{topic}.csv', VersionDataDownloadController::class)->whereIn('topic', VersionDataDownloadService::TOPICS)->name('events.versions.reports.downloads.export');
     });
 
     Route::get('/settings/profile', Profile::class)->name('settings.profile');
