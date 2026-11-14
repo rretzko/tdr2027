@@ -213,3 +213,27 @@ test('selectRoom switches the tracked Room via the #[Url] property', function ()
         ->assertSet('selectedRoomId', $roomB->id)
         ->assertSee('Room B');
 });
+
+test('only the selected Room gets the highlighted button border', function () {
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    VersionRoom::create(['version_id' => $version->id, 'name' => 'Room A', 'order_by' => 1]);
+    $roomB = VersionRoom::create(['version_id' => $version->id, 'name' => 'Room B', 'order_by' => 2]);
+
+    $selectedClass = 'border-zinc-800 bg-zinc-100 dark:border-zinc-200 dark:bg-zinc-700';
+
+    $component = Livewire::actingAs($manager)
+        ->test(AdjudicationTracking::class, ['version' => $version]);
+
+    expect(substr_count($component->html(), $selectedClass))->toBe(1);
+    expect($component->html())->toMatch('/'.preg_quote($selectedClass, '/').'[^>]*>\s*<input[^>]*checked/');
+
+    $component->call('selectRoom', $roomB->id);
+
+    expect(substr_count($component->html(), $selectedClass))->toBe(1);
+    expect(strpos($component->html(), $selectedClass))->toBeGreaterThan(strpos($component->html(), 'Room A'));
+});
