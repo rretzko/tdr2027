@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'organization_id', 'name', 'short_name', 'logo_url', 'logo_alt',
     'status', 'frequency', 'audition_count', 'ensemble_count',
+    'platform_fee_per_registrant_cents',
 ])]
 class Event extends Model
 {
@@ -32,6 +33,7 @@ class Event extends Model
         return [
             'status' => EventStatus::class,
             'frequency' => Frequency::class,
+            'platform_fee_per_registrant_cents' => 'integer',
         ];
     }
 

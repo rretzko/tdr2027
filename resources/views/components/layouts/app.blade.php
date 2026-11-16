@@ -169,6 +169,9 @@
                     <flux:sidebar.item icon="calendar-days" :href="route('founder.event-deadlines')" :current="request()->routeIs('founder.event-deadlines')">
                         Event Deadlines
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="document-currency-dollar" :href="route('founder.invoices')" :current="request()->routeIs('founder.invoices')">
+                        Invoices
+                    </flux:sidebar.item>
                     <flux:sidebar.item icon="arrow-path" :href="route('founder.merge-students')" :current="request()->routeIs('founder.merge-students')">
                         Merge Students
                     </flux:sidebar.item>

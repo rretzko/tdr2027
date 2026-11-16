@@ -3,6 +3,7 @@
 use App\Console\Commands\ExpireAbandonedPaymentTransactions;
 use App\Console\Commands\NotifyExpiringTeacherAccessWindows;
 use App\Console\Commands\SendDirectorWeeklyUpdateEmails;
+use App\Console\Commands\SendDuePlatformInvoices;
 use App\Console\Commands\SendMondayMorningScorecardEmails;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -16,6 +17,11 @@ Artisan::command('inspire', function () {
 // ExpireAbandonedPaymentTransactions's own docblock for why this exists.
 Schedule::command(ExpireAbandonedPaymentTransactions::class)->hourly();
 Schedule::command(NotifyExpiringTeacherAccessWindows::class)->daily();
+
+// Platform invoices go out 24h after Close Audition. A pending row + this
+// poll replaces a delayed job, since SQS on Vapor caps delay at 15 minutes
+// (docs/plans/close-audition-invoice.md).
+Schedule::command(SendDuePlatformInvoices::class)->everyFifteenMinutes()->withoutOverlapping();
 
 // Storage timezone is UTC (config/app.php); this fires at 7:30am America/New_York
 // wall-clock time every Monday regardless of DST, per config/app.php's
