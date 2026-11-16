@@ -7,6 +7,7 @@ namespace App\Enums;
 use App\Services\CutoffStrategies\AlternatingEnsembleAssignmentStrategy;
 use App\Services\CutoffStrategies\CutoffStrategyContract;
 use App\Services\CutoffStrategies\GradeSegmentedEnsemblesStrategy;
+use App\Services\CutoffStrategies\PerEnsembleCutoffStrategy;
 use App\Services\CutoffStrategies\PerVoicePartPerEnsembleStrategy;
 use App\Services\CutoffStrategies\SequentialEnsembleFillStrategy;
 
@@ -48,7 +49,7 @@ enum CutoffStrategy: string
     }
 
     /**
-     * @return class-string<CutoffStrategyContract>
+     * @return class-string<CutoffStrategyContract|PerEnsembleCutoffStrategy>
      */
     public function strategyClass(): string
     {

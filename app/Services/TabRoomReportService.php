@@ -32,8 +32,8 @@ use Illuminate\Support\Collection;
  * Cut-offs are established for a Voice Part, per the product owner (2026-08-
  * 11): the only two things that can still change one are a Score edit
  * (AdjudicationService::saveScores()) or a cutoff decision changing
- * (EnsembleCutoffService's applyCutoff()/applyEnsembleCutoff()/
- * finalizeVoicePart()), both of which call TabRoomReportCache::forget() on
+ * (EnsembleCutoffService's applyCutoff()/applyScoreClick()/
+ * resetVoicePart()/finalizeAll()), all of which call TabRoomReportCache::forget() on
  * write. combinedScoreRows()/allEnsemblesScoreRows() need no caching of
  * their own — they're thin loops over the now-cached auditionScoreRows(),
  * so a cache hit there already avoids the real cost (the DB queries), not

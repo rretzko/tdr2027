@@ -13,8 +13,8 @@ use Illuminate\Support\Facades\Cache;
  * (TabRoomReportService) — these reports are static once Ensemble Cut-offs
  * are established, changing only when a Score is saved
  * (AdjudicationService::saveScores()) or a cutoff decision changes
- * (EnsembleCutoffService's applyCutoff()/applyEnsembleCutoff()/
- * finalizeVoicePart()), both of which call forget() on write.
+ * (EnsembleCutoffService's applyCutoff()/applyScoreClick()/
+ * resetVoicePart()/finalizeAll()), all of which call forget() on write.
  *
  * Invalidation is generation-based rather than key deletion — this app's
  * CACHE_STORE is 'database', which has no tag support, so there is no way
