@@ -7,7 +7,6 @@ namespace App\Services\CutoffStrategies;
 use App\Models\Candidate;
 use App\Models\Ensemble;
 use App\Models\Version;
-use App\Models\VoicePart;
 use App\Services\EnsembleCutoffService;
 use Illuminate\Support\Collection;
 
@@ -15,43 +14,42 @@ use Illuminate\Support\Collection;
  * Candidates are partitioned by grade before any score comparison — a
  * 7th-grade soprano competes only for the junior Ensemble, an 11th-grade
  * soprano only for the senior Ensemble; they never compete against each
- * other. Disjoint, independent Ensembles resolved in parallel via separate
- * applyEnsembleCutoff() calls (each with its own cutoff score), not tiers of
- * one shared pool like AlternatingEnsembleAssignmentStrategy. Once filtered
- * to its own grade set, an Ensemble's pool is handled identically to
- * PerVoicePartPerEnsembleStrategy.
+ * other. Each Ensemble has its own independent line over its own grade
+ * partition, so a click always targets the (first, by ensembleOrder)
+ * eligible Ensemble the clicked candidate's grade belongs to.
  */
-final class GradeSegmentedEnsemblesStrategy implements CutoffStrategyContract
+final class GradeSegmentedEnsemblesStrategy implements PerEnsembleCutoffStrategy
 {
-    public function apply(
-        Version $version,
-        VoicePart $voicePart,
-        Ensemble $ensemble,
-        int $cutoffScore,
-        Collection $rankedCandidates,
-        Collection $eligibleEnsembles,
-        EnsembleCutoffService $cutoffs,
-    ): void {
-        $eligibleGrades = $ensemble->grades->pluck('grade')->map(fn ($grade): int => (int) $grade);
-
-        foreach ($rankedCandidates as $row) {
-            $candidate = $row['candidate'];
-
-            if (! $this->gradeMatches($candidate, $eligibleGrades)) {
-                continue;
-            }
-
-            if ($cutoffs->meetsCutoff($version, $row['total'], $cutoffScore)) {
-                $cutoffs->acceptCandidate($candidate, $ensemble, $row['total'], $row['scoreCount']);
-            }
-        }
+    public function targetEnsemble(Candidate $clicked, Collection $eligibleEnsembles, Collection $appliedEnsembleIds): ?Ensemble
+    {
+        return $eligibleEnsembles->first(fn (Ensemble $ensemble): bool => $this->canJoin($clicked, $ensemble));
     }
 
-    /**
-     * @param  Collection<int, int>  $eligibleGrades
-     */
-    private function gradeMatches(Candidate $candidate, Collection $eligibleGrades): bool
+    public function assign(Version $version, Collection $rankedCandidates, Collection $lines, EnsembleCutoffService $cutoffs): array
     {
+        $assignments = [];
+
+        foreach ($lines as $line) {
+            foreach ($rankedCandidates as $row) {
+                $candidate = $row['candidate'];
+
+                if (isset($assignments[$candidate->id]) || ! $this->canJoin($candidate, $line['ensemble'])) {
+                    continue;
+                }
+
+                if ($cutoffs->meetsCutoff($version, $row['total'], $line['score'])) {
+                    $assignments[$candidate->id] = $line['ensemble']->id;
+                }
+            }
+        }
+
+        return $assignments;
+    }
+
+    public function canJoin(Candidate $candidate, Ensemble $ensemble): bool
+    {
+        $eligibleGrades = $ensemble->grades->pluck('grade')->map(fn ($grade): int => (int) $grade);
+
         if ($eligibleGrades->isEmpty()) {
             return true; // an Ensemble with no configured grades is unrestricted, same "empty = unrestricted" convention as Version::counties()
         }

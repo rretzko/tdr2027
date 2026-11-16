@@ -8,11 +8,14 @@ use App\Enums\JudgeType;
 use App\Livewire\Events\TabRoom\EnsembleCutoffs;
 use App\Models\Candidate;
 use App\Models\Ensemble;
+use App\Models\EnsembleGrade;
 use App\Models\EnsembleHistory;
 use App\Models\Event;
 use App\Models\RoomJudge;
+use App\Models\School;
 use App\Models\ScoreCategory;
 use App\Models\ScoreFactor;
+use App\Models\Student;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionEnsembleOrder;
@@ -269,25 +272,27 @@ test('a slice smaller than the label threshold is not direct-labeled, but stays 
     expect($html)->toContain('Tenor I: 1 (5.0%)'); // still reachable via title/aria-label/hover
 });
 
-test('applyEnsembleCutoff and finalizeVoicePart resolve a per-Ensemble-strategy Voice Part', function () {
-    ['manager' => $manager, 'version' => $version, 'voicePart' => $voicePart, 'ensemble' => $ensemble, 'high' => $high, 'low' => $low] = makeEnsembleCutoffScenario(CutoffStrategy::SequentialEnsembleFill);
+test('a per-Ensemble click applies immediately, and the single Finalize resolves everyone left', function () {
+    ['manager' => $manager, 'version' => $version, 'voicePart' => $voicePart, 'high' => $high, 'low' => $low] = makeEnsembleCutoffScenario(CutoffStrategy::SequentialEnsembleFill);
 
-    $key = "{$voicePart->id}_{$ensemble->id}";
-
-    Livewire::actingAs($manager)
+    $component = Livewire::actingAs($manager)
         ->test(EnsembleCutoffs::class, ['version' => $version])
-        ->set("ensembleCutoffInputs.{$key}", '70')
-        ->call('applyEnsembleCutoff', $voicePart->id, $ensemble->id)
+        ->assertDontSee('Apply Ensemble Cutoffs')
+        ->assertSeeHtml("clickScore({$voicePart->id}, {$high->id})")
+        ->call('clickScore', $voicePart->id, $high->id)
         ->assertHasNoErrors();
 
     expect($high->fresh()->status)->toBe(CandidateStatus::Accepted);
-    expect($low->fresh()->status)->toBe(CandidateStatus::Registered); // not yet finalized
+    expect($low->fresh()->status)->toBe(CandidateStatus::Registered); // undecided until Finalize
 
-    Livewire::actingAs($manager)
-        ->test(EnsembleCutoffs::class, ['version' => $version])
-        ->call('finalizeVoicePart', $voicePart->id);
+    $component->call('prepareFinalize')
+        ->assertSet('finalizeProblems', [])
+        ->assertSet('finalizePreview', ['rejectCount' => 1, 'noShowCount' => 0])
+        ->call('confirmFinalize')
+        ->assertSet('finalizeProblems', []);
 
     expect($low->fresh()->status)->toBe(CandidateStatus::NotAccepted);
+    expect(substr_count($component->html(), 'Finalize — reject remaining'))->toBe(1); // one event-wide button, not one per Voice Part
 });
 
 test('the reopened ranked list colors each accepted row with its own Ensemble\'s color, not a generic accepted color', function () {
@@ -333,14 +338,58 @@ test('the reopened ranked list colors each accepted row with its own Ensemble\'s
     expect(substr_count($html, '#3b82f6'))->toBeGreaterThan(1); // appears in both the summary dot and the accepted row
 });
 
-test('applyEnsembleCutoff rejects a non-numeric score without applying anything', function () {
-    ['manager' => $manager, 'version' => $version, 'voicePart' => $voicePart, 'ensemble' => $ensemble, 'high' => $high] = makeEnsembleCutoffScenario(CutoffStrategy::SequentialEnsembleFill);
+test('prepareFinalize lists what blocks it and changes nothing', function () {
+    ['manager' => $manager, 'version' => $version, 'voicePart' => $voicePart, 'ensemble' => $ensemble, 'high' => $high, 'low' => $low] = makeEnsembleCutoffScenario(CutoffStrategy::SequentialEnsembleFill);
 
     Livewire::actingAs($manager)
         ->test(EnsembleCutoffs::class, ['version' => $version])
-        ->call('applyEnsembleCutoff', $voicePart->id, $ensemble->id);
+        ->call('prepareFinalize')
+        ->assertSet('finalizeProblems', ["{$voicePart->abbr}: no cutoff selected yet for {$ensemble->name}."])
+        ->assertSet('finalizePreview', null)
+        ->assertSee("Finalize didn't run — fix these first", escape: false)
+        ->assertSee("no cutoff selected yet for {$ensemble->name}.");
 
     expect($high->fresh()->status)->toBe(CandidateStatus::Registered);
+    expect($low->fresh()->status)->toBe(CandidateStatus::Registered);
+});
+
+test('resetVoicePart clears a Voice Part\'s cutoffs and its decisions', function () {
+    ['manager' => $manager, 'version' => $version, 'voicePart' => $voicePart, 'high' => $high] = makeEnsembleCutoffScenario(CutoffStrategy::SequentialEnsembleFill);
+
+    Livewire::actingAs($manager)
+        ->test(EnsembleCutoffs::class, ['version' => $version])
+        ->call('clickScore', $voicePart->id, $high->id)
+        ->assertSee("Reset {$voicePart->abbr}")
+        ->call('resetVoicePart', $voicePart->id)
+        ->assertDontSee("Reset {$voicePart->abbr}");
+
+    expect($high->fresh()->status)->toBe(CandidateStatus::Registered);
+});
+
+test('grade-segmented: a Voice Part shared by grade-partitioned Ensembles gets one score column per Ensemble', function () {
+    ['manager' => $manager, 'version' => $version, 'voicePart' => $voicePart, 'ensemble' => $junior, 'judge' => $judge, 'factor' => $factor] = makeEnsembleCutoffScenario(CutoffStrategy::GradeSegmentedEnsembles);
+    $junior->update(['name' => 'Junior Choir']);
+    EnsembleGrade::create(['ensemble_id' => $junior->id, 'grade' => 7]);
+
+    $senior = Ensemble::factory()->create(['event_id' => $version->event_id, 'name' => 'Senior Choir']);
+    $senior->voiceParts()->attach($voicePart->id);
+    EnsembleGrade::create(['ensemble_id' => $senior->id, 'grade' => 11]);
+    VersionEnsembleOrder::create(['version_id' => $version->id, 'ensemble_id' => $senior->id, 'order_by' => 2]);
+
+    $student = Student::factory()->create(['user_id' => User::factory()->create()->id]);
+    $school = School::factory()->create();
+    $student->schools()->attach($school->id, ['is_active' => true, 'class_of' => $school->senior_year + 1]); // 11th grade
+    $eleventh = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'student_id' => $student->id, 'school_id' => $school->id]);
+    app(AdjudicationService::class)->saveScores($judge, $eleventh, $version, [$factor->id => 60]);
+
+    $component = Livewire::actingAs($manager)
+        ->test(EnsembleCutoffs::class, ['version' => $version])
+        ->assertSeeHtml('title="Junior Choir"')
+        ->assertSeeHtml('title="Senior Choir"')
+        ->call('clickScore', $voicePart->id, $eleventh->id);
+
+    expect($eleventh->fresh()->accepted_ensemble_id)->toBe($senior->id);
+    $component->assertSeeHtml('title="Senior Choir cutoff"');
 });
 
 test('saveHistoryRow persists the entered counts and mount pre-hydrates them from EnsembleHistory on the next load', function () {
@@ -391,14 +440,14 @@ test('a closed version renders read-only: scores are not clickable and a reopen 
         ->assertDontSeeHtml("applyCutoff({$voicePart->id}");
 });
 
-test('a closed per-Ensemble-strategy version hides the Apply Ensemble Cutoffs panel', function () {
-    ['manager' => $manager, 'version' => $version] = makeEnsembleCutoffScenario(CutoffStrategy::SequentialEnsembleFill);
+test('a closed per-Ensemble-strategy version hides Finalize and makes scores unclickable', function () {
+    ['manager' => $manager, 'version' => $version, 'voicePart' => $voicePart] = makeEnsembleCutoffScenario(CutoffStrategy::SequentialEnsembleFill);
     $version->update(['status' => 'closed']);
 
     Livewire::actingAs($manager)
         ->test(EnsembleCutoffs::class, ['version' => $version])
-        ->assertDontSee('Apply Ensemble Cutoffs')
-        ->assertDontSee('Finalize — reject remaining');
+        ->assertDontSee('Finalize — reject remaining')
+        ->assertDontSeeHtml("clickScore({$voicePart->id}");
 });
 
 test('applyCutoff is rejected on a closed version', function () {
@@ -413,22 +462,21 @@ test('applyCutoff is rejected on a closed version', function () {
     expect($low->fresh()->status)->toBe(CandidateStatus::Registered);
 });
 
-test('applyEnsembleCutoff and finalizeVoicePart are rejected on a closed version', function () {
-    ['manager' => $manager, 'version' => $version, 'voicePart' => $voicePart, 'ensemble' => $ensemble, 'high' => $high, 'low' => $low] = makeEnsembleCutoffScenario(CutoffStrategy::SequentialEnsembleFill);
+test('clickScore, resetVoicePart and Finalize are rejected on a closed version', function () {
+    ['manager' => $manager, 'version' => $version, 'voicePart' => $voicePart, 'high' => $high] = makeEnsembleCutoffScenario(CutoffStrategy::SequentialEnsembleFill);
 
-    $component = Livewire::actingAs($manager)
-        ->test(EnsembleCutoffs::class, ['version' => $version])
-        ->set("ensembleCutoffInputs.{$voicePart->id}_{$ensemble->id}", '70');
+    $component = Livewire::actingAs($manager)->test(EnsembleCutoffs::class, ['version' => $version]);
     $version->update(['status' => 'closed']);
 
-    $component->call('applyEnsembleCutoff', $voicePart->id, $ensemble->id)->assertStatus(422);
-    Livewire::actingAs($manager)
-        ->test(EnsembleCutoffs::class, ['version' => $version])
-        ->call('finalizeVoicePart', $voicePart->id)
-        ->assertStatus(422);
-
+    $component->call('clickScore', $voicePart->id, $high->id)->assertStatus(422);
     expect($high->fresh()->status)->toBe(CandidateStatus::Registered);
-    expect($low->fresh()->status)->toBe(CandidateStatus::Registered);
+
+    foreach ([['resetVoicePart', $voicePart->id], ['prepareFinalize'], ['confirmFinalize']] as $call) {
+        Livewire::actingAs($manager)
+            ->test(EnsembleCutoffs::class, ['version' => $version])
+            ->call(...$call)
+            ->assertStatus(422);
+    }
 });
 
 test('History rows stay editable on a closed version', function () {

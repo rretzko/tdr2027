@@ -12,14 +12,13 @@ use App\Services\EnsembleCutoffService;
 use Illuminate\Support\Collection;
 
 /**
- * The four Ensemble Cut-off assignment behaviors (App\Enums\CutoffStrategy)
- * share this contract. Each implementation only ever ACCEPTS candidates
- * into $ensemble — it never rejects. EnsembleCutoffService::finalizeVoicePart()
- * is the single place that marks everyone still unresolved as not_accepted,
- * once every relevant Ensemble's cutoff has been applied — this lets
- * SequentialEnsembleFill/GradeSegmentedEnsembles apply one Ensemble's cutoff
- * per manager click without a partial mid-sequence candidate being
- * prematurely rejected before the next Ensemble gets its turn.
+ * The single-shared-cutoff Ensemble Cut-off behaviors
+ * (PerVoicePartPerEnsemble, AlternatingEnsembleAssignment) share this
+ * contract: EnsembleCutoffService::applyCutoff() calls apply() once per
+ * eligible Ensemble with the same score, then rejects everyone below it.
+ * Each implementation only ever ACCEPTS candidates into $ensemble — it
+ * never rejects. The per-Ensemble strategies (SequentialEnsembleFill,
+ * GradeSegmentedEnsembles) implement PerEnsembleCutoffStrategy instead.
  */
 interface CutoffStrategyContract
 {

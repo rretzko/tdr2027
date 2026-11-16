@@ -400,6 +400,17 @@ class Version extends Model
     }
 
     /**
+     * Applied per-Ensemble cutoff lines (SequentialEnsembleFill /
+     * GradeSegmentedEnsembles only).
+     *
+     * @return HasMany<VersionEnsembleCutoff, $this>
+     */
+    public function ensembleCutoffs(): HasMany
+    {
+        return $this->hasMany(VersionEnsembleCutoff::class);
+    }
+
+    /**
      * @return HasMany<VersionTimeslot, $this>
      */
     public function timeslots(): HasMany
