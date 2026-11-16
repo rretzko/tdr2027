@@ -14,6 +14,7 @@ use App\Models\CombinedScoresPdfExport;
 use App\Models\Version;
 use App\Services\EnsembleCutoffService;
 use App\Services\EnsembleHistoryService;
+use App\Services\PlatformInvoiceService;
 use App\Services\VersionRoleAssignmentService;
 use App\Support\Reports\TabRoomReportCache;
 use Flux\Flux;
@@ -59,7 +60,7 @@ class CloseAudition extends Component
         $this->version = $version;
     }
 
-    public function close(EnsembleHistoryService $history, EnsembleCutoffService $cutoffs): void
+    public function close(EnsembleHistoryService $history, EnsembleCutoffService $cutoffs, PlatformInvoiceService $invoices): void
     {
         abort_unless($this->version->getRawOriginal('status') === EventStatus::Active->value, 422);
 
@@ -80,7 +81,16 @@ class CloseAudition extends Component
             }
         }
 
-        Flux::toast(text: "{$this->version->name} closed — results are now available to teachers.", variant: 'success');
+        // TDR's platform-usage invoice to this Version's Event Managers,
+        // sent 24h from now by invoices:send-due — a no-op when one was
+        // already sent for this Version (send once).
+        $invoice = $invoices->scheduleOnClose($this->version, Auth::user());
+
+        $invoiceNote = $invoice->sent_at === null && $invoice->send_at !== null
+            ? ' The platform invoice will be emailed to Event Managers in 24 hours.'
+            : '';
+
+        Flux::toast(text: "{$this->version->name} closed — results are now available to teachers.{$invoiceNote}", variant: 'success');
     }
 
     /**
@@ -118,7 +128,7 @@ class CloseAudition extends Component
         GenerateCombinedScoresPdfJob::dispatch($export->id);
     }
 
-    public function reopen(): void
+    public function reopen(PlatformInvoiceService $invoices): void
     {
         abort_unless($this->version->getRawOriginal('status') === EventStatus::Closed->value, 422);
 
@@ -126,6 +136,10 @@ class CloseAudition extends Component
             'status' => EventStatus::Active->value,
             'results_released_at' => null,
         ]);
+
+        // Reopening inside the 24h window holds the not-yet-sent invoice;
+        // the next Close restarts the clock.
+        $invoices->holdOnReopen($this->version);
 
         Flux::toast(text: "{$this->version->name} reopened — teachers will no longer see results until you close again.", variant: 'warning');
     }

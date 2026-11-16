@@ -6,6 +6,7 @@ use App\Http\Controllers\CandidateScoreReportPdfController;
 use App\Http\Controllers\DirectorUploadTemplateController;
 use App\Http\Controllers\EmailUnsubscribeController;
 use App\Http\Controllers\EstimateFormPdfController;
+use App\Http\Controllers\Founder\PlatformInvoicePdfController as FounderPlatformInvoicePdfController;
 use App\Http\Controllers\PaymentRegisterCsvController;
 use App\Http\Controllers\PaymentRegisterPdfController;
 use App\Http\Controllers\Reports\AdjudicationBackupExportController;
@@ -81,6 +82,7 @@ use App\Livewire\Founder\EventDeadlines as FounderEventDeadlines;
 use App\Livewire\Founder\Impersonate as FounderImpersonate;
 use App\Livewire\Founder\Issues as FounderIssues;
 use App\Livewire\Founder\MergeStudents as FounderMergeStudents;
+use App\Livewire\Founder\PlatformInvoices as FounderPlatformInvoices;
 use App\Livewire\Founder\RemoveBotRegistrations as FounderRemoveBotRegistrations;
 use App\Livewire\Founder\StudentFolio as FounderStudentFolio;
 use App\Livewire\Founder\TeacherVerification as FounderTeacherVerification;
@@ -222,6 +224,8 @@ Route::middleware(['auth', 'verified', 'founder'])->group(function () {
     Route::get('/founder/remove-bot-registrations', FounderRemoveBotRegistrations::class)->name('founder.remove-bot-registrations');
     Route::get('/founder/issues', FounderIssues::class)->name('founder.issues');
     Route::get('/founder/voice-part-audit', FounderVoicePartAudit::class)->name('founder.voice-part-audit');
+    Route::get('/founder/invoices', FounderPlatformInvoices::class)->name('founder.invoices');
+    Route::get('/founder/invoices/{invoice}/pdf', FounderPlatformInvoicePdfController::class)->name('founder.invoices.pdf');
 });
 
 // Not behind the 'founder' middleware: once impersonating, the active user is
