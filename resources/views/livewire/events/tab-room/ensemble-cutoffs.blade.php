@@ -186,12 +186,14 @@
     {{-- Score Cut-offs — every Voice Part side by side in one shared-scroll
          grid, so counts can be compared across Voice Parts without paging
          through a separate full-width section per Voice Part. Each score is
-         itself the "apply cutoff" button, matching the prior UI. A resolved
-         Voice Part collapses to a compact summary; "Reopen" re-expands the
-         full color-coded list without undoing anything — clicking a
-         different score re-decides it in place. --}}
+         itself the "apply cutoff" button: in single-cutoff mode one click
+         resolves the Voice Part; in per-Ensemble mode each click draws (or
+         moves) one Ensemble's line and applies it immediately, and the
+         column header lists the lines drawn so far. A resolved Voice Part
+         collapses to a compact summary; "Reopen" re-expands the full
+         color-coded list without undoing anything. --}}
     <flux:card class="mb-4">
-        <div class="flex items-center justify-between mb-2">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
             <flux:heading size="lg">Score Cut-offs</flux:heading>
             @if ($versionIsClosed)
                 <flux:text size="sm" class="text-zinc-500">
@@ -200,16 +202,32 @@
                 </flux:text>
             @elseif (! $needsPerEnsemble)
                 <flux:text size="sm" class="text-zinc-500">Click a score to apply that cutoff.</flux:text>
+            @else
+                <flux:text size="sm" class="text-zinc-500">
+                    Click a score to set an Ensemble's cutoff. Click inside an Ensemble's band to move its line; click below every line to set the next Ensemble's.
+                </flux:text>
             @endif
         </div>
 
         <div class="overflow-auto max-h-[36rem] border border-zinc-200 dark:border-zinc-700 rounded-md">
             <div class="flex w-max min-w-full">
                 @foreach ($voicePartData as $data)
-                    @php [$voicePart, $ranked, $allDecided, $isReopened, $acceptedCount, $notAcceptedCount] = [$data['voicePart'], $data['ranked'], $data['allDecided'], $data['isReopened'], $data['acceptedCount'], $data['notAcceptedCount']]; @endphp
-                    <div class="w-28 shrink-0 border-e border-zinc-200 dark:border-zinc-700 last:border-e-0" wire:key="col-{{ $voicePart->id }}">
+                    @php
+                        [$voicePart, $ranked, $allDecided, $isReopened, $acceptedCount, $notAcceptedCount] = [$data['voicePart'], $data['ranked'], $data['allDecided'], $data['isReopened'], $data['acceptedCount'], $data['notAcceptedCount']];
+                        $canClick = ! $versionIsClosed && $data['clickable'];
+                    @endphp
+                    <div class="w-28 shrink-0 border-e border-zinc-200 dark:border-zinc-700 last:border-e-0" wire:key="col-{{ $data['key'] }}">
                         <div class="sticky top-0 z-10 bg-white dark:bg-zinc-900 px-2 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-center">
                             <flux:text size="sm" class="font-semibold">{{ $voicePart->abbr }}</flux:text>
+                            @if ($data['subLabel'])
+                                <flux:text size="sm" class="block text-xs text-zinc-500 truncate" title="{{ $data['subLabel'] }}">{{ $data['subLabel'] }}</flux:text>
+                            @endif
+                            @foreach ($data['lines'] as $line)
+                                <div class="flex items-center justify-center gap-1 text-xs tabular-nums" title="{{ $line['ensemble']->name }} cutoff">
+                                    <span class="inline-block w-2 h-2 rounded-sm shrink-0" style="background-color: {{ $ensembleColors[$line['ensemble']->id] ?? '#a1a1aa' }}"></span>
+                                    <span>{{ $line['score'] }}</span>
+                                </div>
+                            @endforeach
                         </div>
 
                         @if ($ranked->isEmpty())
@@ -232,14 +250,25 @@
                                     </button>
                                 @endif
 
+                                @if ($needsPerEnsemble && $canClick && $data['hasLines'])
+                                    <button
+                                        type="button"
+                                        wire:click="resetVoicePart({{ $voicePart->id }})"
+                                        wire:confirm="Clear every cutoff in {{ $voicePart->name }}? All of its candidates go back to undecided."
+                                        class="w-full px-2 py-1 text-center text-xs text-red-600 dark:text-red-400 hover:underline border-b border-zinc-100 dark:border-zinc-800"
+                                    >
+                                        Reset {{ $voicePart->abbr }}
+                                    </button>
+                                @endif
+
                                 @foreach ($ranked as $row)
                                     @php
                                         $rowStatus = $row['candidate']->getRawOriginal('status');
                                         // Accepted rows take on the specific Ensemble's own
                                         // color (same palette as the summary table above), not
-                                        // a generic "accepted" green — with
-                                        // AlternatingEnsembleAssignment, different rows in the
-                                        // same Voice Part land in different Ensembles.
+                                        // a generic "accepted" green — with several Ensembles
+                                        // per Voice Part, different rows land in different
+                                        // Ensembles.
                                         $rowColor = $rowStatus === 'accepted' ? ($ensembleColors[$row['candidate']->accepted_ensemble_id] ?? null) : null;
                                         $rowStyle = $rowColor ? "background-color: {$rowColor}1a; border-left: 3px solid {$rowColor};" : '';
                                         $rowClasses = match (true) {
@@ -248,16 +277,26 @@
                                             default => '',
                                         };
                                     @endphp
-                                    @if ($needsPerEnsemble || $versionIsClosed)
-                                        <div class="px-2 py-1 text-center text-sm tabular-nums border-b border-zinc-100 dark:border-zinc-800 {{ $rowClasses }}" style="{{ $rowStyle }}" wire:key="score-{{ $voicePart->id }}-{{ $row['candidate']->id }}">
+                                    @if (! $canClick)
+                                        <div class="px-2 py-1 text-center text-sm tabular-nums border-b border-zinc-100 dark:border-zinc-800 {{ $rowClasses }}" style="{{ $rowStyle }}" wire:key="score-{{ $data['key'] }}-{{ $row['candidate']->id }}">
                                             {{ $row['total'] }}
                                         </div>
+                                    @elseif ($needsPerEnsemble)
+                                        <button
+                                            type="button"
+                                            wire:click="clickScore({{ $voicePart->id }}, {{ $row['candidate']->id }})"
+                                            wire:key="score-{{ $data['key'] }}-{{ $row['candidate']->id }}"
+                                            style="{{ $rowStyle }}"
+                                            class="w-full px-2 py-1 text-center text-sm tabular-nums border-b border-zinc-100 dark:border-zinc-800 hover:font-semibold {{ $rowClasses ?: ($rowColor ? '' : 'hover:bg-blue-50 dark:hover:bg-blue-900/30') }}"
+                                        >
+                                            {{ $row['total'] }}
+                                        </button>
                                     @else
                                         <button
                                             type="button"
                                             wire:click="applyCutoff({{ $voicePart->id }}, {{ $row['total'] }})"
                                             wire:confirm="Apply a cutoff of {{ $row['total'] }} for {{ $voicePart->name }}? Candidates below this score will not be accepted."
-                                            wire:key="score-{{ $voicePart->id }}-{{ $row['candidate']->id }}"
+                                            wire:key="score-{{ $data['key'] }}-{{ $row['candidate']->id }}"
                                             style="{{ $rowStyle }}"
                                             class="w-full px-2 py-1 text-center text-sm tabular-nums border-b border-zinc-100 dark:border-zinc-800 hover:font-semibold {{ $rowClasses ?: ($rowColor ? '' : 'hover:bg-blue-50 dark:hover:bg-blue-900/30') }}"
                                         >
@@ -272,57 +311,65 @@
             </div>
         </div>
 
-        @if (! $needsPerEnsemble || $versionIsClosed)
-            <div class="flex flex-wrap gap-3 mt-2 text-xs text-zinc-500">
-                @foreach ($ensembles as $ensemble)
-                    <span><span class="inline-block w-2.5 h-2.5 rounded-sm me-1" style="background-color: {{ $ensembleColors[$ensemble->id] }}"></span>Accepted — {{ $ensemble->name }}</span>
-                @endforeach
-                <span><span class="inline-block w-2.5 h-2.5 rounded-sm bg-zinc-100 dark:bg-zinc-800 me-1"></span>Not accepted</span>
-            </div>
-        @endif
+        <div class="flex flex-wrap gap-3 mt-2 text-xs text-zinc-500">
+            @foreach ($ensembles as $ensemble)
+                <span><span class="inline-block w-2.5 h-2.5 rounded-sm me-1" style="background-color: {{ $ensembleColors[$ensemble->id] }}"></span>Accepted — {{ $ensemble->name }}</span>
+            @endforeach
+            @if ($needsPerEnsemble)
+                <span><span class="inline-block w-2.5 h-2.5 rounded-sm border border-zinc-300 dark:border-zinc-600 me-1"></span>Undecided until Finalize</span>
+            @endif
+            <span><span class="inline-block w-2.5 h-2.5 rounded-sm bg-zinc-100 dark:bg-zinc-800 me-1"></span>Not accepted</span>
+        </div>
     </flux:card>
 
-    {{-- Per-Ensemble cutoff entry — only for strategies needing a distinct
-         score per Ensemble (SequentialEnsembleFill, GradeSegmentedEnsembles).
-         Laid out as compact cards that wrap, not one full-width card per
-         Voice Part. Hidden once a Voice Part is fully decided, unless
-         reopened, and entirely while the Version is Closed. --}}
+    {{-- Event-wide Finalize — per-Ensemble strategies only. Always visible
+         while the Version is open; prepareFinalize() runs every guard
+         (EnsembleCutoffService::finalizeSummary()) and either lists what
+         blocks it here or opens the confirmation modal. --}}
     @if ($needsPerEnsemble && ! $versionIsClosed)
         <flux:card>
-            <flux:heading size="lg" class="mb-2">Apply Ensemble Cutoffs</flux:heading>
-            <flux:text size="sm" class="text-zinc-500 mb-3">Enter a cutoff for each Ensemble above, then finalize once every Ensemble has been applied.</flux:text>
-
-            <div class="flex flex-wrap gap-3">
-                @foreach ($voicePartData as $data)
-                    @php [$voicePart, $ranked, $eligibleEnsembles, $allDecided, $isReopened] = [$data['voicePart'], $data['ranked'], $data['eligibleEnsembles'], $data['allDecided'], $data['isReopened']]; @endphp
-                    @continue($ranked->isEmpty() || ($allDecided && ! $isReopened))
-
-                    <div class="w-64 border border-zinc-200 dark:border-zinc-700 rounded-md p-3" wire:key="ensemble-form-{{ $voicePart->id }}">
-                        <flux:text class="font-semibold block mb-2">{{ $voicePart->name }}</flux:text>
-
-                        <div class="space-y-2">
-                            @forelse ($eligibleEnsembles as $ensemble)
-                                @php $key = "{$voicePart->id}_{$ensemble->id}"; @endphp
-                                <div class="flex items-end gap-2" wire:key="ensemble-input-{{ $key }}">
-                                    <flux:field class="flex-1">
-                                        <flux:label class="text-xs">{{ $ensemble->name }}</flux:label>
-                                        <flux:input size="sm" wire:model="ensembleCutoffInputs.{{ $key }}" type="number" />
-                                    </flux:field>
-                                    <flux:button size="sm" wire:click="applyEnsembleCutoff({{ $voicePart->id }}, {{ $ensemble->id }})" wire:confirm="Apply this cutoff for {{ $ensemble->name }}?">
-                                        Apply
-                                    </flux:button>
-                                </div>
-                            @empty
-                                <flux:text size="sm" class="text-zinc-500">No Ensembles configured for this Voice Part yet.</flux:text>
-                            @endforelse
-
-                            <flux:button variant="danger" size="sm" class="w-full" wire:click="finalizeVoicePart({{ $voicePart->id }})" wire:confirm="Finalize {{ $voicePart->name }}? Every candidate not yet accepted into an Ensemble above will be marked not accepted.">
-                                Finalize — reject remaining
-                            </flux:button>
-                        </div>
-                    </div>
-                @endforeach
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <flux:heading size="lg">Finalize Cut-offs</flux:heading>
+                    <flux:text size="sm" class="text-zinc-500">Once every Ensemble's cutoff is set in every voice part, finalize to mark everyone below the lines not accepted.</flux:text>
+                </div>
+                <flux:button variant="danger" wire:click="prepareFinalize">
+                    Finalize — reject remaining
+                </flux:button>
             </div>
+
+            @if ($finalizeProblems !== [])
+                <flux:callout variant="danger" icon="exclamation-triangle" class="mt-4">
+                    <flux:callout.heading>Finalize didn't run — fix these first</flux:callout.heading>
+                    <flux:callout.text>
+                        <ul class="list-disc ps-5 space-y-0.5">
+                            @foreach ($finalizeProblems as $problem)
+                                <li>{{ $problem }}</li>
+                            @endforeach
+                        </ul>
+                    </flux:callout.text>
+                </flux:callout>
+            @endif
         </flux:card>
+
+        <flux:modal name="finalize-cutoffs" class="md:w-96">
+            <div class="space-y-4">
+                <flux:heading size="lg">Finalize cut-offs?</flux:heading>
+                @if ($finalizePreview)
+                    <flux:text>
+                        {{ $finalizePreview['rejectCount'] }} {{ str('candidate')->plural($finalizePreview['rejectCount']) }} below every cutoff will be marked <strong>not accepted</strong>.
+                        @if ($finalizePreview['noShowCount'] > 0)
+                            {{ $finalizePreview['noShowCount'] }} unscored {{ str('candidate')->plural($finalizePreview['noShowCount']) }} will be marked <strong>No Show</strong>.
+                        @endif
+                    </flux:text>
+                @endif
+                <div class="flex justify-end gap-2">
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Cancel</flux:button>
+                    </flux:modal.close>
+                    <flux:button variant="danger" wire:click="confirmFinalize">Finalize</flux:button>
+                </div>
+            </div>
+        </flux:modal>
     @endif
 </div>

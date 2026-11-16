@@ -17,6 +17,7 @@ use App\Models\ScoreFactor;
 use App\Models\Student;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionEnsembleCutoff;
 use App\Models\VersionEnsembleOrder;
 use App\Models\VersionRoom;
 use App\Models\VoicePart;
@@ -341,12 +342,19 @@ test('AlternatingEnsembleAssignmentStrategy degenerates to single-Ensemble behav
     expect($tenor2->fresh()->accepted_ensemble_id)->toBe($mixed->id); // both go to Mixed — no alternation, only one eligible Ensemble
 });
 
-test('SequentialEnsembleFillStrategy fills Ensembles in priority order via applyEnsembleCutoff, then finalizeVoicePart rejects the rest', function () {
-    $cutoffs = app(EnsembleCutoffService::class);
+/**
+ * A desc-scored Version with two Ensembles (First, Second — in that
+ * ensembleOrder priority) both serving one Voice Part, for the per-Ensemble
+ * strategies' click flow.
+ *
+ * @return array{version: Version, voicePart: VoicePart, first: Ensemble, second: Ensemble, factor: ScoreFactor, judge: RoomJudge, room: VersionRoom}
+ */
+function makeTwoEnsemblePerEnsembleVersion(CutoffStrategy $strategy): array
+{
     $event = Event::factory()->create();
-    $version = Version::factory()->create(['event_id' => $event->id, 'score_order' => 'desc', 'cutoff_strategy' => CutoffStrategy::SequentialEnsembleFill->value]);
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active', 'score_order' => 'desc', 'cutoff_strategy' => $strategy->value]);
     $voicePart = VoicePart::factory()->create();
-    ['factor' => $factor, 'judge' => $judge] = makeCutoffRoom($version, $voicePart);
+    ['room' => $room, 'factor' => $factor, 'judge' => $judge] = makeCutoffRoom($version, $voicePart);
 
     $first = Ensemble::factory()->create(['event_id' => $event->id, 'name' => 'First Choir']);
     $first->voiceParts()->attach($voicePart->id);
@@ -356,85 +364,238 @@ test('SequentialEnsembleFillStrategy fills Ensembles in priority order via apply
     $second->voiceParts()->attach($voicePart->id);
     VersionEnsembleOrder::create(['version_id' => $version->id, 'ensemble_id' => $second->id, 'order_by' => 2]);
 
-    $top = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
-    $middle = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
-    $bottom = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+    return compact('version', 'voicePart', 'first', 'second', 'factor', 'judge', 'room');
+}
 
-    scoreCandidate($judge, $top, $version, $factor->id, 95);
-    scoreCandidate($judge, $middle, $version, $factor->id, 75);
-    scoreCandidate($judge, $bottom, $version, $factor->id, 40);
+/**
+ * Four scored candidates (95, 85, 75, 40) in the fixture's Voice Part.
+ *
+ * @return array{top: Candidate, upper: Candidate, lower: Candidate, bottom: Candidate}
+ */
+function makeFourRankedCandidates(array $fixture): array
+{
+    $rows = [];
 
-    // First Choir takes only the top scorer (cutoff 90).
-    $cutoffs->applyEnsembleCutoff($version, $voicePart, $first, 90);
+    foreach (['top' => 95, 'upper' => 85, 'lower' => 75, 'bottom' => 40] as $name => $score) {
+        $rows[$name] = Candidate::factory()->registered()->create(['version_id' => $fixture['version']->id, 'voice_part_id' => $fixture['voicePart']->id]);
+        scoreCandidate($fixture['judge'], $rows[$name], $fixture['version'], $fixture['factor']->id, $score);
+    }
+
+    return $rows;
+}
+
+test('sequential: the first click sets the top Ensemble\'s line, a click below it sets the next Ensemble\'s, and finalizeAll rejects the rest', function () {
+    $cutoffs = app(EnsembleCutoffService::class);
+    $fixture = makeTwoEnsemblePerEnsembleVersion(CutoffStrategy::SequentialEnsembleFill);
+    ['version' => $version, 'voicePart' => $voicePart, 'first' => $first, 'second' => $second] = $fixture;
+    ['top' => $top, 'upper' => $upper, 'lower' => $lower, 'bottom' => $bottom] = makeFourRankedCandidates($fixture);
+
+    $result = $cutoffs->applyScoreClick($version, $voicePart, $upper->id);
+    expect($result['ensemble']->id)->toBe($first->id);
+    expect($result['score'])->toBe(85);
     expect($top->fresh()->accepted_ensemble_id)->toBe($first->id);
-    expect($middle->fresh()->status)->toBe(CandidateStatus::Registered); // still unresolved, not rejected yet
+    expect($upper->fresh()->accepted_ensemble_id)->toBe($first->id);
+    expect($lower->fresh()->status)->toBe(CandidateStatus::Registered); // undecided, not rejected
 
-    // Second Choir fills from the remaining pool (top is no longer Registered/ranked).
-    $cutoffs->applyEnsembleCutoff($version, $voicePart, $second, 70);
-    expect($middle->fresh()->accepted_ensemble_id)->toBe($second->id);
-    expect($bottom->fresh()->status)->toBe(CandidateStatus::Registered); // still unresolved
+    $result = $cutoffs->applyScoreClick($version, $voicePart, $lower->id);
+    expect($result['ensemble']->id)->toBe($second->id);
+    expect($lower->fresh()->accepted_ensemble_id)->toBe($second->id);
+    expect($bottom->fresh()->status)->toBe(CandidateStatus::Registered);
 
-    $cutoffs->finalizeVoicePart($version, $voicePart);
+    expect(VersionEnsembleCutoff::where('version_id', $version->id)->pluck('score', 'ensemble_id')->all())
+        ->toBe([$first->id => 85, $second->id => 75]);
+
+    expect($cutoffs->finalizeAll($version))->toBe([]);
     expect($bottom->fresh()->status)->toBe(CandidateStatus::NotAccepted);
+    expect($top->fresh()->status)->toBe(CandidateStatus::Accepted);
 });
 
-test('applyEnsembleCutoff re-decision never poaches a candidate another Ensemble already accepted', function () {
+test('sequential: clicking inside an Ensemble\'s band moves that Ensemble\'s line and re-flows freed candidates into the next Ensemble', function () {
     $cutoffs = app(EnsembleCutoffService::class);
-    $event = Event::factory()->create();
-    $version = Version::factory()->create(['event_id' => $event->id, 'score_order' => 'desc', 'cutoff_strategy' => CutoffStrategy::SequentialEnsembleFill->value]);
-    $voicePart = VoicePart::factory()->create();
-    ['factor' => $factor, 'judge' => $judge] = makeCutoffRoom($version, $voicePart);
+    $fixture = makeTwoEnsemblePerEnsembleVersion(CutoffStrategy::SequentialEnsembleFill);
+    ['version' => $version, 'voicePart' => $voicePart, 'first' => $first, 'second' => $second] = $fixture;
+    ['top' => $top, 'upper' => $upper, 'lower' => $lower] = makeFourRankedCandidates($fixture);
 
-    $first = Ensemble::factory()->create(['event_id' => $event->id, 'name' => 'First Choir']);
-    $first->voiceParts()->attach($voicePart->id);
-    VersionEnsembleOrder::create(['version_id' => $version->id, 'ensemble_id' => $first->id, 'order_by' => 1]);
+    $cutoffs->applyScoreClick($version, $voicePart, $upper->id); // First: 85
+    $cutoffs->applyScoreClick($version, $voicePart, $lower->id); // Second: 75
 
-    $second = Ensemble::factory()->create(['event_id' => $event->id, 'name' => 'Second Choir']);
-    $second->voiceParts()->attach($voicePart->id);
-    VersionEnsembleOrder::create(['version_id' => $version->id, 'ensemble_id' => $second->id, 'order_by' => 2]);
+    // $top is in First's band — raises First's line to 95; $upper falls through to Second.
+    $result = $cutoffs->applyScoreClick($version, $voicePart, $top->id);
+    expect($result['ensemble']->id)->toBe($first->id);
+    expect($top->fresh()->accepted_ensemble_id)->toBe($first->id);
+    expect($upper->fresh()->accepted_ensemble_id)->toBe($second->id);
+    expect($lower->fresh()->accepted_ensemble_id)->toBe($second->id);
 
-    $claimedBySecond = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
-    scoreCandidate($judge, $claimedBySecond, $version, $factor->id, 80);
-
-    $cutoffs->applyEnsembleCutoff($version, $voicePart, $second, 70);
-    expect($claimedBySecond->fresh()->accepted_ensemble_id)->toBe($second->id);
-
-    // First Choir widens its cutoff low enough to otherwise include
-    // $claimedBySecond's score — it must stay with Second Choir.
-    $cutoffs->applyEnsembleCutoff($version, $voicePart, $first, 50);
-
-    expect($claimedBySecond->fresh()->accepted_ensemble_id)->toBe($second->id);
-    expect($claimedBySecond->fresh()->status)->toBe(CandidateStatus::Accepted);
+    // $upper is now in Second's band — raises Second's line to 85; $lower goes back to undecided.
+    $result = $cutoffs->applyScoreClick($version, $voicePart, $upper->id);
+    expect($result['ensemble']->id)->toBe($second->id);
+    expect($lower->fresh()->status)->toBe(CandidateStatus::Registered);
+    expect($lower->fresh()->accepted_ensemble_id)->toBeNull();
+    expect(AuditionResult::where('candidate_id', $lower->id)->exists())->toBeFalse();
 });
 
-test('GradeSegmentedEnsemblesStrategy partitions candidates by grade before applying each Ensemble\'s own cutoff', function () {
+test('sequential: once every Ensemble has a line, clicking below them all moves the last Ensemble\'s line down', function () {
     $cutoffs = app(EnsembleCutoffService::class);
-    $event = Event::factory()->create();
-    $version = Version::factory()->create(['event_id' => $event->id, 'score_order' => 'desc', 'cutoff_strategy' => CutoffStrategy::GradeSegmentedEnsembles->value]);
-    $voicePart = VoicePart::factory()->create();
-    ['factor' => $factor, 'judge' => $judge] = makeCutoffRoom($version, $voicePart);
+    $fixture = makeTwoEnsemblePerEnsembleVersion(CutoffStrategy::SequentialEnsembleFill);
+    ['version' => $version, 'voicePart' => $voicePart, 'second' => $second] = $fixture;
+    ['upper' => $upper, 'lower' => $lower, 'bottom' => $bottom] = makeFourRankedCandidates($fixture);
 
-    $junior = Ensemble::factory()->create(['event_id' => $event->id, 'name' => 'Junior Choir']);
-    $junior->voiceParts()->attach($voicePart->id);
+    $cutoffs->applyScoreClick($version, $voicePart, $upper->id);
+    $cutoffs->applyScoreClick($version, $voicePart, $lower->id);
+    $result = $cutoffs->applyScoreClick($version, $voicePart, $bottom->id);
+
+    expect($result['ensemble']->id)->toBe($second->id);
+    expect($bottom->fresh()->accepted_ensemble_id)->toBe($second->id);
+    expect(VersionEnsembleCutoff::where('ensemble_id', $second->id)->value('score'))->toBe(40);
+});
+
+test('a moved line accepts a candidate who was already finalized as not accepted', function () {
+    $cutoffs = app(EnsembleCutoffService::class);
+    $fixture = makeTwoEnsemblePerEnsembleVersion(CutoffStrategy::SequentialEnsembleFill);
+    ['version' => $version, 'voicePart' => $voicePart, 'second' => $second] = $fixture;
+    ['upper' => $upper, 'lower' => $lower, 'bottom' => $bottom] = makeFourRankedCandidates($fixture);
+
+    $cutoffs->applyScoreClick($version, $voicePart, $upper->id);
+    $cutoffs->applyScoreClick($version, $voicePart, $lower->id);
+    $cutoffs->finalizeAll($version);
+    expect($bottom->fresh()->status)->toBe(CandidateStatus::NotAccepted);
+
+    $cutoffs->applyScoreClick($version, $voicePart, $bottom->id);
+
+    expect($bottom->fresh()->status)->toBe(CandidateStatus::Accepted);
+    expect($bottom->fresh()->accepted_ensemble_id)->toBe($second->id);
+});
+
+test('grade-segmented: a click targets the Ensemble the clicked candidate\'s grade belongs to, and lines never cross grades', function () {
+    $cutoffs = app(EnsembleCutoffService::class);
+    $fixture = makeTwoEnsemblePerEnsembleVersion(CutoffStrategy::GradeSegmentedEnsembles);
+    ['version' => $version, 'voicePart' => $voicePart, 'first' => $junior, 'second' => $senior, 'judge' => $judge, 'factor' => $factor] = $fixture;
     EnsembleGrade::create(['ensemble_id' => $junior->id, 'grade' => 7]);
-    VersionEnsembleOrder::create(['version_id' => $version->id, 'ensemble_id' => $junior->id, 'order_by' => 1]);
-
-    $senior = Ensemble::factory()->create(['event_id' => $event->id, 'name' => 'Senior Choir']);
-    $senior->voiceParts()->attach($voicePart->id);
     EnsembleGrade::create(['ensemble_id' => $senior->id, 'grade' => 11]);
-    VersionEnsembleOrder::create(['version_id' => $version->id, 'ensemble_id' => $senior->id, 'order_by' => 2]);
 
-    // A 7th-grader who outscores the 11th-grader must still only ever compete within their own grade partition.
-    $seventhGrader = candidateWithGrade($version, $voicePart, 7);
-    $eleventhGrader = candidateWithGrade($version, $voicePart, 11);
-    scoreCandidate($judge, $seventhGrader, $version, $factor->id, 95);
-    scoreCandidate($judge, $eleventhGrader, $version, $factor->id, 60);
+    $strongSeventh = candidateWithGrade($version, $voicePart, 7);
+    $weakSeventh = candidateWithGrade($version, $voicePart, 7);
+    $eleventh = candidateWithGrade($version, $voicePart, 11);
+    scoreCandidate($judge, $strongSeventh, $version, $factor->id, 95);
+    scoreCandidate($judge, $weakSeventh, $version, $factor->id, 30);
+    scoreCandidate($judge, $eleventh, $version, $factor->id, 60);
 
-    $cutoffs->applyEnsembleCutoff($version, $voicePart, $junior, 90);
-    $cutoffs->applyEnsembleCutoff($version, $voicePart, $senior, 50);
+    $result = $cutoffs->applyScoreClick($version, $voicePart, $eleventh->id);
+    expect($result['ensemble']->id)->toBe($senior->id);
+    expect($eleventh->fresh()->accepted_ensemble_id)->toBe($senior->id);
+    expect($strongSeventh->fresh()->status)->toBe(CandidateStatus::Registered); // outscores the line, but wrong grade
 
-    expect($seventhGrader->fresh()->accepted_ensemble_id)->toBe($junior->id);
-    expect($eleventhGrader->fresh()->accepted_ensemble_id)->toBe($senior->id);
+    $result = $cutoffs->applyScoreClick($version, $voicePart, $strongSeventh->id);
+    expect($result['ensemble']->id)->toBe($junior->id);
+    expect($strongSeventh->fresh()->accepted_ensemble_id)->toBe($junior->id);
+
+    expect($cutoffs->finalizeAll($version))->toBe([]);
+    expect($weakSeventh->fresh()->status)->toBe(CandidateStatus::NotAccepted);
+});
+
+test('applyScoreClick returns null and changes nothing when no eligible Ensemble accepts the candidate\'s grade', function () {
+    $cutoffs = app(EnsembleCutoffService::class);
+    $fixture = makeTwoEnsemblePerEnsembleVersion(CutoffStrategy::GradeSegmentedEnsembles);
+    ['version' => $version, 'voicePart' => $voicePart, 'first' => $junior, 'second' => $senior, 'judge' => $judge, 'factor' => $factor] = $fixture;
+    EnsembleGrade::create(['ensemble_id' => $junior->id, 'grade' => 7]);
+    EnsembleGrade::create(['ensemble_id' => $senior->id, 'grade' => 11]);
+
+    $ninth = candidateWithGrade($version, $voicePart, 9);
+    scoreCandidate($judge, $ninth, $version, $factor->id, 90);
+
+    expect($cutoffs->applyScoreClick($version, $voicePart, $ninth->id))->toBeNull();
+    expect(VersionEnsembleCutoff::count())->toBe(0);
+    expect($cutoffs->finalizeSummary($version)['problems'])->toContain("{$voicePart->abbr}: 1 candidate in a grade no Ensemble for this voice part accepts.");
+});
+
+test('resetVoicePart clears its lines and returns every decided candidate to Registered', function () {
+    $cutoffs = app(EnsembleCutoffService::class);
+    $fixture = makeTwoEnsemblePerEnsembleVersion(CutoffStrategy::SequentialEnsembleFill);
+    ['version' => $version, 'voicePart' => $voicePart] = $fixture;
+    ['top' => $top, 'lower' => $lower, 'bottom' => $bottom] = makeFourRankedCandidates($fixture);
+
+    $cutoffs->applyScoreClick($version, $voicePart, $top->id);
+    $cutoffs->applyScoreClick($version, $voicePart, $lower->id);
+    $cutoffs->finalizeAll($version);
+
+    $cutoffs->resetVoicePart($version, $voicePart);
+
+    expect(VersionEnsembleCutoff::count())->toBe(0);
+    foreach ([$top, $lower, $bottom] as $candidate) {
+        expect($candidate->fresh()->status)->toBe(CandidateStatus::Registered);
+        expect($candidate->fresh()->accepted_ensemble_id)->toBeNull();
+    }
+    expect(AuditionResult::where('version_id', $version->id)->count())->toBe(0);
+});
+
+test('finalizeAll refuses, changing nothing, while an Ensemble that could still claim candidates has no line', function () {
+    $cutoffs = app(EnsembleCutoffService::class);
+    $fixture = makeTwoEnsemblePerEnsembleVersion(CutoffStrategy::SequentialEnsembleFill);
+    ['version' => $version, 'voicePart' => $voicePart] = $fixture;
+    ['upper' => $upper, 'bottom' => $bottom] = makeFourRankedCandidates($fixture);
+
+    expect($cutoffs->finalizeAll($version))->toBe([
+        "{$voicePart->abbr}: no cutoff selected yet for First Choir.",
+        "{$voicePart->abbr}: no cutoff selected yet for Second Choir.",
+    ]);
+
+    $cutoffs->applyScoreClick($version, $voicePart, $upper->id);
+    expect($cutoffs->finalizeAll($version))->toBe(["{$voicePart->abbr}: no cutoff selected yet for Second Choir."]);
+    expect($bottom->fresh()->status)->toBe(CandidateStatus::Registered);
+});
+
+test('finalizeAll does not demand a line for a later Ensemble when every candidate is already claimed', function () {
+    $cutoffs = app(EnsembleCutoffService::class);
+    $fixture = makeTwoEnsemblePerEnsembleVersion(CutoffStrategy::SequentialEnsembleFill);
+    ['version' => $version, 'voicePart' => $voicePart] = $fixture;
+    ['bottom' => $bottom] = makeFourRankedCandidates($fixture);
+
+    $cutoffs->applyScoreClick($version, $voicePart, $bottom->id); // First takes everyone
+
+    expect($cutoffs->finalizeAll($version))->toBe([]);
+});
+
+test('finalizeAll refuses on partially scored and out-of-tolerance candidates, and marks unscored candidates No Show once clear', function () {
+    $cutoffs = app(EnsembleCutoffService::class);
+    $fixture = makeTwoEnsemblePerEnsembleVersion(CutoffStrategy::SequentialEnsembleFill);
+    ['version' => $version, 'voicePart' => $voicePart, 'room' => $room, 'judge' => $judge, 'factor' => $factor] = $fixture;
+    $room->update(['tolerance' => 10]);
+    $judge2 = RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $room->id, 'judge_type' => JudgeType::Judge2]);
+
+    $make = fn (): Candidate => Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+    $clean = $make();
+    scoreCandidate($judge, $clean, $version, $factor->id, 80);
+    scoreCandidate($judge2, $clean, $version, $factor->id, 82);
+    $partial = $make();
+    scoreCandidate($judge, $partial, $version, $factor->id, 70);
+    $outOfTolerance = $make();
+    scoreCandidate($judge, $outOfTolerance, $version, $factor->id, 90);
+    scoreCandidate($judge2, $outOfTolerance, $version, $factor->id, 50);
+    $unscored = $make();
+
+    $cutoffs->applyScoreClick($version, $voicePart, $clean->id);
+    $cutoffs->applyScoreClick($version, $voicePart, $outOfTolerance->id); // below First's line → Second's line
+
+    $summary = $cutoffs->finalizeSummary($version);
+    expect($summary['problems'])->toBe([
+        "{$voicePart->abbr}: 1 candidate only partially scored.",
+        "{$voicePart->abbr}: 1 candidate out of tolerance.",
+    ]);
+    expect($cutoffs->finalizeAll($version))->toBe($summary['problems']);
+    expect($unscored->fresh()->status)->toBe(CandidateStatus::Registered);
+
+    // Fix both, then finalize. Lines are First 162 (clean), Second 140 —
+    // finalizeAll() recomputes from the edited scores, so $partial (now
+    // 142) is claimed by Second and $outOfTolerance (now 178) by First,
+    // instead of being rejected on their stale Registered/Second statuses.
+    scoreCandidate($judge2, $partial, $version, $factor->id, 72);
+    scoreCandidate($judge2, $outOfTolerance, $version, $factor->id, 88);
+
+    expect($cutoffs->finalizeSummary($version))->toBe(['problems' => [], 'rejectCount' => 0, 'noShowCount' => 1]);
+    expect($cutoffs->finalizeAll($version))->toBe([]);
+    expect($unscored->fresh()->status)->toBe(CandidateStatus::NoShow);
+    expect($partial->fresh()->accepted_ensemble_id)->toBe($fixture['second']->id);
+    expect($outOfTolerance->fresh()->accepted_ensemble_id)->toBe($fixture['first']->id);
 });
 
 test('eligibleEnsembles is scoped to Ensembles whose voiceParts include the given Voice Part, in ensembleOrder priority', function () {

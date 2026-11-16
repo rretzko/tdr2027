@@ -30,9 +30,13 @@ use Livewire\Component;
  * - Single shared cutoff (PerVoicePartPerEnsemble, AlternatingEnsembleAssignment):
  *   one click on a ranked score immediately resolves the whole Voice Part.
  * - Per-Ensemble cutoff (SequentialEnsembleFill, GradeSegmentedEnsembles):
- *   the ranked list is reference only; the manager enters a distinct score
- *   per eligible Ensemble and applies each in turn, then explicitly
- *   finalizes the Voice Part once every Ensemble has been entered.
+ *   each click on a ranked score immediately draws (or moves) one
+ *   Ensemble's line — the strategy decides which Ensemble from the clicked
+ *   row (EnsembleCutoffService::applyScoreClick()) — so a cascading Voice
+ *   Part takes one click per Ensemble. Candidates below every line stay
+ *   Registered until the single event-wide Finalize (prepareFinalize() →
+ *   confirmFinalize()), which refuses to run while anything would be
+ *   orphaned (EnsembleCutoffService::finalizeSummary()).
  *
  * Once every candidate in a Voice Part has a decision, its column collapses
  * to a compact "Resolved" summary. "Reopen" ($reopenedVoiceParts) is purely
@@ -42,8 +46,8 @@ use Livewire\Component;
  * (previously-accepted candidates who no longer qualify move to
  * NotAccepted, and vice versa) without ever reverting anyone to Registered.
  *
- * A Closed Version stays viewable, but applyCutoff(), applyEnsembleCutoff()
- * and finalizeVoicePart() are blocked until the audition is reopened via
+ * A Closed Version stays viewable, but applyCutoff(), clickScore(),
+ * resetVoicePart() and finalizing are blocked until the audition is reopened via
  * CloseAudition (same rule as AddEditScores). History entry is about prior
  * seasons, so it stays editable.
  */
@@ -53,12 +57,19 @@ class EnsembleCutoffs extends Component
     public Version $version;
 
     /**
-     * Keyed "{voicePartId}_{ensembleId}" => score input string, for the
-     * per-Ensemble cutoff UI mode.
+     * Problems that stopped the last Finalize attempt, shown under the
+     * Finalize button until the next attempt.
      *
-     * @var array<string, string>
+     * @var list<string>
      */
-    public array $ensembleCutoffInputs = [];
+    public array $finalizeProblems = [];
+
+    /**
+     * What a confirmed Finalize will do, for the confirmation modal.
+     *
+     * @var array{rejectCount: int, noShowCount: int}|null
+     */
+    public ?array $finalizePreview = null;
 
     /**
      * Voice Part ids currently showing their full ranked list instead of
@@ -114,36 +125,79 @@ class EnsembleCutoffs extends Component
         Flux::toast(text: "Cutoff applied for {$voicePart->name}.", variant: 'success');
     }
 
-    public function applyEnsembleCutoff(int $voicePartId, int $ensembleId, EnsembleCutoffService $cutoffs): void
+    /**
+     * Per-Ensemble mode only: a click on a ranked row applies immediately —
+     * the service picks the Ensemble and uses the row's own total as the
+     * line, so no score is trusted from the browser.
+     */
+    public function clickScore(int $voicePartId, int $candidateId, EnsembleCutoffService $cutoffs): void
     {
         abort_if($this->version->isClosed(), 422);
 
         $voicePart = VoicePart::findOrFail($voicePartId);
-        $ensemble = Ensemble::findOrFail($ensembleId);
+        $result = $cutoffs->applyScoreClick($this->version, $voicePart, $candidateId);
 
-        $key = "{$voicePartId}_{$ensembleId}";
-        $score = filter_var($this->ensembleCutoffInputs[$key] ?? '', FILTER_VALIDATE_INT);
-
-        if ($score === false) {
-            Flux::toast(text: 'Enter a numeric cutoff score first.', variant: 'danger');
+        if ($result === null) {
+            Flux::toast(text: "No Ensemble for {$voicePart->abbr} can take that candidate — check the Ensembles' voice parts and grades.", variant: 'danger');
 
             return;
         }
 
-        $cutoffs->applyEnsembleCutoff($this->version, $voicePart, $ensemble, $score);
+        $this->finalizeProblems = [];
 
-        Flux::toast(text: "Cutoff applied for {$ensemble->name} ({$voicePart->name}).", variant: 'success');
+        Flux::toast(text: "{$voicePart->abbr}: {$result['ensemble']->name} cutoff set to {$result['score']}.", variant: 'success');
     }
 
-    public function finalizeVoicePart(int $voicePartId, EnsembleCutoffService $cutoffs): void
+    public function resetVoicePart(int $voicePartId, EnsembleCutoffService $cutoffs): void
     {
         abort_if($this->version->isClosed(), 422);
 
         $voicePart = VoicePart::findOrFail($voicePartId);
+        $cutoffs->resetVoicePart($this->version, $voicePart);
 
-        $cutoffs->finalizeVoicePart($this->version, $voicePart);
+        Flux::toast(text: "{$voicePart->abbr} cutoffs cleared.", variant: 'warning');
+    }
 
-        Flux::toast(text: "{$voicePart->name} finalized — remaining candidates marked not accepted.", variant: 'warning');
+    /**
+     * Step 1 of the event-wide Finalize: run every guard first. Problems
+     * are listed under the button; otherwise the confirmation modal opens
+     * with exactly what will happen.
+     */
+    public function prepareFinalize(EnsembleCutoffService $cutoffs): void
+    {
+        abort_if($this->version->isClosed(), 422);
+
+        $summary = $cutoffs->finalizeSummary($this->version);
+        $this->finalizeProblems = $summary['problems'];
+        $this->finalizePreview = null;
+
+        if ($this->finalizeProblems !== []) {
+            return;
+        }
+
+        $this->finalizePreview = ['rejectCount' => $summary['rejectCount'], 'noShowCount' => $summary['noShowCount']];
+        Flux::modal('finalize-cutoffs')->show();
+    }
+
+    /**
+     * Step 2: finalizeAll() re-runs the guards itself, so a score edited
+     * between the two steps still can't orphan anyone.
+     */
+    public function confirmFinalize(EnsembleCutoffService $cutoffs): void
+    {
+        abort_if($this->version->isClosed(), 422);
+
+        $this->finalizeProblems = $cutoffs->finalizeAll($this->version);
+        $this->finalizePreview = null;
+        Flux::modal('finalize-cutoffs')->close();
+
+        if ($this->finalizeProblems !== []) {
+            return;
+        }
+
+        $this->reopenedVoiceParts = [];
+
+        Flux::toast(text: 'Cut-offs finalized — every remaining candidate has a decision.', variant: 'success');
     }
 
     public function reopenVoicePart(int $voicePartId): void
@@ -192,22 +246,58 @@ class EnsembleCutoffs extends Component
             $ensemble->id => $ensemble->color ?? $palette[$index % count($palette)],
         ]);
 
-        $voicePartData = $voiceParts->map(function (VoicePart $voicePart) use ($cutoffs): array {
+        $perEnsembleStrategy = $needsPerEnsemble ? $cutoffs->resolvePerEnsembleStrategy($this->version) : null;
+        $splitByGrade = $strategy === CutoffStrategy::GradeSegmentedEnsembles;
+
+        // One column per Voice Part — except, under GradeSegmentedEnsembles,
+        // a Voice Part shared by several Ensembles gets one sub-column per
+        // Ensemble (its grade partition), so each line is drawn over only
+        // the candidates it can apply to.
+        $voicePartData = $voiceParts->flatMap(function (VoicePart $voicePart) use ($cutoffs, $needsPerEnsemble, $perEnsembleStrategy, $splitByGrade): array {
             $ranked = $cutoffs->rankedCandidates($this->version, $voicePart);
+            $eligibleEnsembles = $cutoffs->eligibleEnsembles($this->version, $voicePart);
+            $lines = $needsPerEnsemble ? $cutoffs->linesFor($this->version, $voicePart, $eligibleEnsembles) : collect();
 
-            $allDecided = $ranked->isNotEmpty() && $ranked->every(
-                fn (array $row): bool => $row['candidate']->getRawOriginal('status') !== CandidateStatus::Registered->value,
-            );
-
-            return [
+            $column = fn (Collection $rows, ?Ensemble $ensemble, bool $clickable): array => [
+                'key' => $voicePart->id.'-'.($ensemble->id ?? ($clickable ? 'all' : 'none')),
                 'voicePart' => $voicePart,
-                'ranked' => $ranked,
-                'eligibleEnsembles' => $cutoffs->eligibleEnsembles($this->version, $voicePart),
-                'allDecided' => $allDecided,
+                'subLabel' => $ensemble !== null ? $ensemble->name : ($clickable ? null : 'No eligible Ensemble'),
+                'ranked' => $rows->values(),
+                'clickable' => $clickable,
+                'lines' => $ensemble === null ? $lines : $lines->filter(fn (array $line): bool => $line['ensemble']->id === $ensemble->id)->values(),
+                'hasLines' => $lines->isNotEmpty(),
+                'allDecided' => $rows->isNotEmpty() && $rows->every(
+                    fn (array $row): bool => $row['candidate']->getRawOriginal('status') !== CandidateStatus::Registered->value,
+                ),
                 'isReopened' => in_array($voicePart->id, $this->reopenedVoiceParts, true),
-                'acceptedCount' => $ranked->filter(fn (array $row): bool => $row['candidate']->getRawOriginal('status') === CandidateStatus::Accepted->value)->count(),
-                'notAcceptedCount' => $ranked->filter(fn (array $row): bool => $row['candidate']->getRawOriginal('status') === CandidateStatus::NotAccepted->value)->count(),
+                'acceptedCount' => $rows->filter(fn (array $row): bool => $row['candidate']->getRawOriginal('status') === CandidateStatus::Accepted->value)->count(),
+                'notAcceptedCount' => $rows->filter(fn (array $row): bool => $row['candidate']->getRawOriginal('status') === CandidateStatus::NotAccepted->value)->count(),
             ];
+
+            if (! $splitByGrade || $perEnsembleStrategy === null || $eligibleEnsembles->count() < 2) {
+                return [$column($ranked, null, true)];
+            }
+
+            $columns = [];
+            $placed = [];
+
+            foreach ($eligibleEnsembles as $ensemble) {
+                $rows = $ranked->filter(function (array $row) use ($perEnsembleStrategy, $ensemble, &$placed): bool {
+                    if (isset($placed[$row['candidate']->id]) || ! $perEnsembleStrategy->canJoin($row['candidate'], $ensemble)) {
+                        return false;
+                    }
+
+                    return $placed[$row['candidate']->id] = true;
+                });
+                $columns[] = $column($rows, $ensemble, true);
+            }
+
+            $unplaced = $ranked->reject(fn (array $row): bool => isset($placed[$row['candidate']->id]));
+            if ($unplaced->isNotEmpty()) {
+                $columns[] = $column($unplaced, null, false);
+            }
+
+            return $columns;
         });
 
         $acceptedCounts = $cutoffs->acceptedCounts($this->version);
