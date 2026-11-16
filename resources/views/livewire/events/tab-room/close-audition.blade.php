@@ -41,6 +41,10 @@
                     Email {{ $notifiableTeacherCount }} participating {{ Str::plural('teacher', $notifiableTeacherCount) }} that results are available
                 </label>
 
+                <flux:text size="sm" class="block text-zinc-500">
+                    Closing also schedules TheDirectorsRoom.com's platform-usage invoice to this Version's Event Managers. It is emailed 24 hours later, and reopening before then cancels it.
+                </flux:text>
+
                 <flux:button variant="danger" wire:click="close" wire:confirm="Close {{ $version->name }}? This releases audition results to participating teachers{{ $emailTeachers ? ' and emails them now' : '' }}.">
                     Close Audition
                 </flux:button>

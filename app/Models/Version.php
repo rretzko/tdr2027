@@ -96,6 +96,17 @@ class Version extends Model
     }
 
     /**
+     * TDR's platform-usage invoice for this Version (Close Audition →
+     * invoices:send-due). At most one — see VersionPlatformInvoice.
+     *
+     * @return HasOne<VersionPlatformInvoice, $this>
+     */
+    public function platformInvoice(): HasOne
+    {
+        return $this->hasOne(VersionPlatformInvoice::class);
+    }
+
+    /**
      * @return HasOne<VersionFee, $this>
      */
     public function fees(): HasOne

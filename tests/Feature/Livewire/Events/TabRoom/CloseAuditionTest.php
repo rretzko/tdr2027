@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\CandidateStatus;
 use App\Enums\PdfExportStatus;
+use App\Enums\PlatformInvoiceStatus;
 use App\Jobs\GenerateCombinedScoresPdfJob;
 use App\Livewire\Events\TabRoom\CloseAudition;
 use App\Mail\AuditionResultsAvailableMail;
@@ -14,6 +15,7 @@ use App\Models\School;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionPlatformInvoice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
@@ -212,4 +214,27 @@ test('closing without emailTeachers checked sends no mail', function () {
         ->call('close');
 
     Mail::assertNothingSent();
+});
+
+test('close schedules the platform invoice 24 hours out and reopen holds it', function () {
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    Livewire::actingAs($manager)
+        ->test(CloseAudition::class, ['version' => $version])
+        ->call('close');
+
+    $invoice = VersionPlatformInvoice::where('version_id', $version->id)->sole();
+    expect($invoice->statusEnum())->toBe(PlatformInvoiceStatus::Pending);
+    expect($invoice->closed_by_user_id)->toBe($manager->id);
+    expect(abs($invoice->send_at->diffInMinutes(now()->addHours(24))))->toBeLessThan(2);
+
+    Livewire::actingAs($manager)
+        ->test(CloseAudition::class, ['version' => $version->fresh()])
+        ->call('reopen');
+
+    expect($invoice->fresh()->statusEnum())->toBe(PlatformInvoiceStatus::Held);
 });
