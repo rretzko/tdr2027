@@ -1352,3 +1352,30 @@ test('the Application preview shows an empty-state message when there is no text
         ->set('activeTab', 'application')
         ->assertSee('Nothing to preview yet');
 });
+
+test('the edit page renders no password inputs, so Safari does not autofill a saved login into it', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    $html = Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->set('upload_type', 'audio') // shows the upload-file list, and its New File Label input
+        ->html();
+
+    expect($html)->not->toContain('type="password"');
+
+    foreach (['payment_secret', 'payment_webhook_signature_key'] as $field) {
+        expect($html)->toMatch('/<input[^>]*wire:model="'.$field.'"[^>]*>/');
+        preg_match('/<input[^>]*wire:model="'.$field.'"[^>]*>/', $html, $match);
+        expect($match[0])
+            ->toContain('[-webkit-text-security:disc]') // still masked on screen
+            ->toContain('autocomplete="off"');
+    }
+
+    foreach (['new_upload_file_name', 'payment_vendor_account_id'] as $field) {
+        expect($html)->toMatch('/<input[^>]*wire:model="'.$field.'"[^>]*>/');
+        preg_match('/<input[^>]*wire:model="'.$field.'"[^>]*>/', $html, $match);
+        expect($match[0])->toContain('autocomplete="off"');
+    }
+});
