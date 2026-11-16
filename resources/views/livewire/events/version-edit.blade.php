@@ -164,7 +164,7 @@
                             <div class="flex items-end gap-3 pt-2 border-t border-zinc-200 dark:border-zinc-700">
                                 <flux:field class="flex-1">
                                     <flux:label>New File Label</flux:label>
-                                    <flux:input wire:model="new_upload_file_name" placeholder="e.g. scales" />
+                                    <flux:input wire:model="new_upload_file_name" placeholder="e.g. scales" autocomplete="off" />
                                     <flux:error name="new_upload_file_name" />
                                 </flux:field>
                                 <flux:button wire:click="addUploadFile">Add</flux:button>
@@ -760,19 +760,25 @@
 
                         <flux:field>
                             <flux:label>Account/Client ID/Location ID</flux:label>
-                            <flux:input wire:model="payment_vendor_account_id" placeholder="Square location id, or PayPal Client ID" />
+                            <flux:input wire:model="payment_vendor_account_id" placeholder="Square location id, or PayPal Client ID" autocomplete="off" />
                             <flux:error name="payment_vendor_account_id" />
                         </flux:field>
 
+                        {{-- The two secrets are masked text inputs, not type="password": this
+                             page's inputs aren't in a <form>, so Safari treats the whole page
+                             as one login form whenever a password input exists — autofilling
+                             the user's email into "New File Label" and potentially their login
+                             password into these secrets, overwriting the saved credential on
+                             Save. Safari ignores autocomplete hints on password inputs. --}}
                         <flux:field>
                             <flux:label>API Secret/Access Token</flux:label>
-                            <flux:input wire:model="payment_secret" type="password" placeholder="{{ $payment_has_secret ? 'A secret is already saved — leave blank to keep it' : 'Square access token, or PayPal Client Secret' }}" />
+                            <flux:input wire:model="payment_secret" type="text" autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true" class:input="[-webkit-text-security:disc]" placeholder="{{ $payment_has_secret ? 'A secret is already saved — leave blank to keep it' : 'Square access token, or PayPal Client Secret' }}" />
                             <flux:error name="payment_secret" />
                         </flux:field>
 
                         <flux:field>
                             <flux:label>Webhook Signing Key/Signature Key</flux:label>
-                            <flux:input wire:model="payment_webhook_signature_key" type="password" placeholder="{{ $payment_has_webhook_signature_key ? 'A webhook key is already saved — leave blank to keep it' : 'Square webhook signature key, or PayPal Webhook ID' }}" />
+                            <flux:input wire:model="payment_webhook_signature_key" type="text" autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true" class:input="[-webkit-text-security:disc]" placeholder="{{ $payment_has_webhook_signature_key ? 'A webhook key is already saved — leave blank to keep it' : 'Square webhook signature key, or PayPal Webhook ID' }}" />
                             <flux:error name="payment_webhook_signature_key" />
                         </flux:field>
 
