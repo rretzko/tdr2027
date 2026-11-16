@@ -32,9 +32,16 @@
     {{-- Room selection --}}
     <flux:card class="mb-4">
         <flux:heading size="lg" class="mb-2">Rooms</flux:heading>
-        <div class="flex flex-wrap gap-4">
+        <div class="flex flex-wrap gap-2">
             @forelse ($rooms as $room)
-                <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+                <label
+                    wire:key="room-option-{{ $room->id }}"
+                    @class([
+                        'flex items-center gap-1.5 text-sm cursor-pointer rounded-lg border-2 px-3 py-1.5 transition-colors',
+                        'border-zinc-800 bg-zinc-100 dark:border-zinc-200 dark:bg-zinc-700 font-semibold shadow-sm' => $selectedRoom?->id === $room->id,
+                        'border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500' => $selectedRoom?->id !== $room->id,
+                    ])
+                >
                     <input type="radio" wire:click="selectRoom({{ $room->id }})" @checked($selectedRoom?->id === $room->id) name="room" class="text-zinc-800 focus:ring-zinc-800 dark:text-zinc-200">
                     <span
                         @class([
