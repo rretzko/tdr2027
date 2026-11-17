@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * `file_type` to `score_categories.description`, case-insensitively (see
  * AdjudicationService::recordingsForCandidate()).
  */
-#[Fillable(['version_id', 'candidate_id', 'file_type', 'uploaded_by', 'approved_at', 'approved_by', 'url'])]
+#[Fillable(['version_id', 'candidate_id', 'file_type', 'uploaded_by', 'approved_at', 'approved_by', 'url', 'duration_seconds'])]
 class Recording extends Model
 {
     /**
@@ -25,6 +25,7 @@ class Recording extends Model
     {
         return [
             'approved_at' => 'datetime',
+            'duration_seconds' => 'integer',
         ];
     }
 

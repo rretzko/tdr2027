@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Enums\AdjudicationEventType;
 use App\Enums\JudgeType;
 use App\Livewire\Events\Adjudicate;
+use App\Models\AdjudicationEvent;
 use App\Models\Candidate;
 use App\Models\Event;
+use App\Models\Recording;
 use App\Models\RoomJudge;
 use App\Models\School;
 use App\Models\Score;
@@ -288,4 +291,113 @@ test('a room with a rubric shows no rubric warning', function () {
     Livewire::actingAs($user)
         ->test(Adjudicate::class, ['version' => $version])
         ->assertDontSee('This room has no scoring rubric');
+});
+
+/**
+ * An approved recording for the given candidate.
+ */
+function makeTrackedRecording(Version $version, Candidate $candidate, bool $approved = true): Recording
+{
+    $uploader = User::factory()->create();
+
+    return Recording::create([
+        'version_id' => $version->id,
+        'candidate_id' => $candidate->id,
+        'file_type' => 'Scales',
+        'uploaded_by' => $uploader->id,
+        'approved_at' => $approved ? now() : null,
+        'approved_by' => $approved ? $uploader->id : null,
+        'url' => 'recordings/scales.mp3',
+    ]);
+}
+
+test('opening a candidate logs it with the candidate\'s roster position', function () {
+    $user = User::factory()->create();
+    actingAs($user);
+    ['version' => $version, 'roomJudge' => $roomJudge, 'candidate' => $candidate] = makeAdjudicationScenario($user);
+
+    Livewire::actingAs($user)
+        ->test(Adjudicate::class, ['version' => $version])
+        ->call('selectCandidate', $candidate->id);
+
+    $event = AdjudicationEvent::sole();
+    expect($event->event)->toBe(AdjudicationEventType::CandidateOpened)
+        ->and($event->room_judge_id)->toBe($roomJudge->id)
+        ->and($event->candidate_id)->toBe($candidate->id)
+        ->and($event->roster_position)->toBe(1)
+        ->and($event->recording_id)->toBeNull();
+});
+
+test('reloading the page on a selected candidate logs another open', function () {
+    $user = User::factory()->create();
+    actingAs($user);
+    ['version' => $version, 'candidate' => $candidate] = makeAdjudicationScenario($user);
+
+    Livewire::actingAs($user)
+        ->withQueryParams(['selectedCandidateId' => $candidate->id])
+        ->test(Adjudicate::class, ['version' => $version]);
+
+    expect(AdjudicationEvent::where('event', AdjudicationEventType::CandidateOpened)->count())->toBe(1);
+});
+
+test('playback events are logged with their position against the selected candidate\'s recording', function () {
+    $user = User::factory()->create();
+    actingAs($user);
+    ['version' => $version, 'candidate' => $candidate] = makeAdjudicationScenario($user);
+    $recording = makeTrackedRecording($version, $candidate);
+
+    Livewire::actingAs($user)
+        ->test(Adjudicate::class, ['version' => $version])
+        ->call('selectCandidate', $candidate->id)
+        ->call('trackRecording', $recording->id, 'recording_played', 0.0)
+        ->call('trackRecording', $recording->id, 'recording_paused', 41.6)
+        ->call('trackRecording', $recording->id, 'recording_ended', 93.2);
+
+    $playback = AdjudicationEvent::whereNotNull('recording_id')->orderBy('id')->get();
+
+    expect($playback->map(fn (AdjudicationEvent $event): string => $event->getRawOriginal('event'))->all())
+        ->toBe(['recording_played', 'recording_paused', 'recording_ended'])
+        ->and($playback->pluck('position_seconds')->all())->toBe([0, 42, 93])
+        ->and($playback->pluck('recording_id')->unique()->all())->toBe([$recording->id]);
+});
+
+test('playback is ignored for unknown events, other candidates\' recordings, unapproved recordings, or with no candidate selected', function () {
+    $user = User::factory()->create();
+    actingAs($user);
+    ['version' => $version, 'candidate' => $candidate] = makeAdjudicationScenario($user);
+    $recording = makeTrackedRecording($version, $candidate);
+    $unapproved = makeTrackedRecording($version, $candidate, approved: false);
+    $otherCandidate = Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $candidate->voice_part_id]);
+    $otherRecording = makeTrackedRecording($version, $otherCandidate);
+
+    $component = Livewire::actingAs($user)->test(Adjudicate::class, ['version' => $version]);
+    $component->call('trackRecording', $recording->id, 'recording_played', 0.0); // nothing selected yet
+
+    $component->call('selectCandidate', $candidate->id)
+        ->call('trackRecording', $recording->id, 'candidate_opened', 0.0)
+        ->call('trackRecording', $recording->id, 'bogus', 0.0)
+        ->call('trackRecording', $otherRecording->id, 'recording_played', 0.0)
+        ->call('trackRecording', $unapproved->id, 'recording_played', 0.0);
+
+    expect(AdjudicationEvent::whereNotNull('recording_id')->count())->toBe(0);
+});
+
+test('a recording\'s duration is stored once from the browser, ignoring unusable values', function () {
+    $user = User::factory()->create();
+    actingAs($user);
+    ['version' => $version, 'candidate' => $candidate] = makeAdjudicationScenario($user);
+    $recording = makeTrackedRecording($version, $candidate);
+
+    $component = Livewire::actingAs($user)
+        ->test(Adjudicate::class, ['version' => $version])
+        ->call('selectCandidate', $candidate->id)
+        ->call('recordDuration', $recording->id, INF)
+        ->call('recordDuration', $recording->id, 0.2);
+
+    expect($recording->fresh()->duration_seconds)->toBeNull();
+
+    $component->call('recordDuration', $recording->id, 87.6)
+        ->call('recordDuration', $recording->id, 120.0);
+
+    expect($recording->fresh()->duration_seconds)->toBe(88);
 });
