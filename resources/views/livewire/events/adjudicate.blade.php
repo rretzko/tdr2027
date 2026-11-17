@@ -120,7 +120,14 @@
                         @foreach ($recordings as $recording)
                             <div wire:key="recording-{{ $recording->id }}">
                                 <flux:text class="font-medium capitalize">{{ $recording->file_type }}</flux:text>
-                                <audio controls preload="metadata" class="w-full">
+                                {{-- Playback and length are logged for adjudication analytics (Adjudicate::trackRecording/recordDuration — both renderless). A pause fires just before ended, so it's skipped there. --}}
+                                <audio controls preload="metadata" class="w-full"
+                                    x-data="{ id: {{ $recording->id }}, needsDuration: @js($recording->duration_seconds === null), track(event) { $wire.trackRecording(this.id, event, $el.currentTime || 0) } }"
+                                    x-on:play="track('recording_played')"
+                                    x-on:pause="if (! $el.ended) track('recording_paused')"
+                                    x-on:ended="track('recording_ended')"
+                                    x-on:loadedmetadata="if (needsDuration && isFinite($el.duration) && $el.duration > 0) { needsDuration = false; $wire.recordDuration(id, $el.duration) }"
+                                >
                                     <source src="{{ \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($recording->url, now()->addHour()) }}">
                                 </audio>
                             </div>

@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Livewire\Events;
 
+use App\Enums\AdjudicationEventType;
 use App\Enums\AuditionType;
 use App\Enums\VersionDateType;
+use App\Models\AdjudicationEvent;
 use App\Models\Candidate;
+use App\Models\Recording;
 use App\Models\RoomJudge;
 use App\Models\ScoreCategory;
 use App\Models\Version;
@@ -18,6 +21,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Renderless;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -55,6 +59,7 @@ class Adjudicate extends Component
                 $this->selectedCandidateId = null;
             } else {
                 $this->scores = $adjudication->existingScoresFor($this->roomJudge, $candidate);
+                $this->logCandidateOpened($candidate, $adjudication);
             }
         }
     }
@@ -68,6 +73,7 @@ class Adjudicate extends Component
         $this->selectedCandidateId = $candidateId;
         $this->resetValidation();
         $this->scores = $adjudication->existingScoresFor($this->roomJudge, $candidate);
+        $this->logCandidateOpened($candidate, $adjudication);
     }
 
     public function save(AdjudicationService $adjudication): void
@@ -127,6 +133,97 @@ class Adjudicate extends Component
                 return;
             }
         }
+    }
+
+    /**
+     * Playback reported by the browser's <audio> element. Renderless: a
+     * re-render here would only add load, and the page must not change
+     * under a judge who is listening.
+     */
+    #[Renderless]
+    public function trackRecording(int $recordingId, string $event, float $positionSeconds): void
+    {
+        $type = AdjudicationEventType::tryFrom($event);
+        $recording = $this->selectedRecording($recordingId);
+
+        if ($type === null || ! in_array($type, AdjudicationEventType::playbackEvents(), true) || $recording === null) {
+            return;
+        }
+
+        AdjudicationEvent::create([
+            'version_id' => $this->version->id,
+            'room_judge_id' => $this->roomJudge->id,
+            'candidate_id' => $recording->candidate_id,
+            'recording_id' => $recording->id,
+            'event' => $type,
+            'position_seconds' => $this->wholeSeconds($positionSeconds),
+        ]);
+    }
+
+    /**
+     * The recording's length, as the judge's browser read it from the
+     * file's metadata. Stored once; a recording doesn't change after upload.
+     */
+    #[Renderless]
+    public function recordDuration(int $recordingId, float $durationSeconds): void
+    {
+        $recording = $this->selectedRecording($recordingId);
+        $seconds = $this->wholeSeconds($durationSeconds);
+
+        if ($recording === null || $recording->duration_seconds !== null || $seconds === null || $seconds === 0) {
+            return;
+        }
+
+        $recording->update(['duration_seconds' => $seconds]);
+    }
+
+    /**
+     * roster_position is the candidate's 1-based place in this judge's
+     * roster (the same order every judge in the Room sees), so analytics can
+     * tell working-in-order from jumping around.
+     */
+    private function logCandidateOpened(Candidate $candidate, AdjudicationService $adjudication): void
+    {
+        $position = $adjudication->candidatesForRoom($this->roomJudge->room)
+            ->search(fn (Candidate $rosterCandidate): bool => $rosterCandidate->id === $candidate->id);
+
+        AdjudicationEvent::create([
+            'version_id' => $this->version->id,
+            'room_judge_id' => $this->roomJudge->id,
+            'candidate_id' => $candidate->id,
+            'event' => AdjudicationEventType::CandidateOpened,
+            'roster_position' => $position === false ? null : $position + 1,
+        ]);
+    }
+
+    /**
+     * Only an approved recording of the candidate on screen — the browser
+     * can't log against anything else.
+     */
+    private function selectedRecording(int $recordingId): ?Recording
+    {
+        if ($this->selectedCandidateId === null) {
+            return null;
+        }
+
+        return Recording::where('id', $recordingId)
+            ->where('version_id', $this->version->id)
+            ->where('candidate_id', $this->selectedCandidateId)
+            ->whereNotNull('approved_at')
+            ->first();
+    }
+
+    /**
+     * Browsers report NaN/Infinity while a stream's length is unknown, and
+     * nothing over three hours is an audition recording.
+     */
+    private function wholeSeconds(float $seconds): ?int
+    {
+        if (! is_finite($seconds) || $seconds < 0 || $seconds > 10800) {
+            return null;
+        }
+
+        return (int) round($seconds);
     }
 
     public function render(AdjudicationService $adjudication): View
