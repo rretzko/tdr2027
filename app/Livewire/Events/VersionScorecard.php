@@ -8,12 +8,14 @@ use App\Enums\VersionDateType;
 use App\Models\Version;
 use App\Models\VersionDate;
 use App\Models\VersionScorecardSnapshot;
+use App\Services\AdjudicationProgressService;
 use App\Services\VersionRoleAssignmentService;
 use App\Services\VersionScorecardService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
@@ -27,14 +29,22 @@ class VersionScorecard extends Component
 {
     public Version $version;
 
+    /** registration | adjudication */
+    #[Url(as: 'tab')]
+    public string $tab = '';
+
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
     {
         abort_unless($roles->canManageEvent(Auth::user(), $version->event), 403);
 
         $this->version = $version;
+
+        if (! in_array($this->tab, ['registration', 'adjudication'], true)) {
+            $this->tab = $this->adjudicationHasBegun() ? 'adjudication' : 'registration';
+        }
     }
 
-    public function render(VersionScorecardService $scorecard): View
+    public function render(VersionScorecardService $scorecard, AdjudicationProgressService $adjudication): View
     {
         $snapshots = $this->version->scorecardSnapshots()->orderBy('captured_on')->get();
         $deadline = $this->postmarkDeadline();
@@ -60,7 +70,22 @@ class VersionScorecard extends Component
             'metrics' => $scorecard->metricsFor($this->version),
             'rows' => $rows,
             'deadline' => $deadline,
+            // Only computed for the tab on screen; the tabs switch via wire:model.live.
+            'progress' => $this->tab === 'adjudication' ? $adjudication->forVersion($this->version) : null,
         ]);
+    }
+
+    /**
+     * Whether the adjudication window has opened, so the page lands on the
+     * Adjudication tab once judging is under way.
+     */
+    private function adjudicationHasBegun(): bool
+    {
+        $startAt = VersionDate::where('version_id', $this->version->id)
+            ->where('date_type', VersionDateType::Adjudication)
+            ->value('start_at');
+
+        return $startAt !== null && Carbon::parse($startAt)->lte(Carbon::now());
     }
 
     /**
