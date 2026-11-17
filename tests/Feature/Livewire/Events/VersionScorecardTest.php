@@ -13,6 +13,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionDate;
+use App\Models\VersionRoom;
 use App\Models\VersionScorecardSnapshot;
 use App\Services\VersionRoleService;
 use App\Services\VersionScorecardService;
@@ -158,6 +159,47 @@ class VersionScorecardTest extends TestCase
             ->test(VersionScorecard::class, ['version' => $version])
             ->assertDontSee('Sep 28, 2026')
             ->assertDontSee('Snapshot history');
+    }
+
+    public function test_lands_on_the_registration_tab_before_adjudication_opens(): void
+    {
+        $version = $this->makeVersion();
+
+        Livewire::actingAs($this->makeEventManager($version))
+            ->test(VersionScorecard::class, ['version' => $version])
+            ->assertSet('tab', 'registration')
+            ->assertSee('Invited Teachers')
+            ->assertDontSee('Overall progress');
+    }
+
+    public function test_lands_on_the_adjudication_tab_once_the_window_opens(): void
+    {
+        $version = $this->makeVersion();
+        VersionDate::create([
+            'version_id' => $version->id,
+            'date_type' => VersionDateType::Adjudication,
+            'start_at' => now()->subDay(),
+            'end_at' => now()->addDays(5),
+        ]);
+        VersionRoom::create(['version_id' => $version->id, 'name' => 'Treble Scales', 'tolerance' => null, 'order_by' => 1]);
+
+        Livewire::actingAs($this->makeEventManager($version))
+            ->test(VersionScorecard::class, ['version' => $version])
+            ->assertSet('tab', 'adjudication')
+            ->assertSee('Adjudication is open')
+            ->assertSee('Overall progress')
+            ->assertSee('Treble Scales');
+    }
+
+    public function test_switching_to_the_adjudication_tab_renders_progress(): void
+    {
+        $version = $this->makeVersion();
+
+        Livewire::actingAs($this->makeEventManager($version))
+            ->test(VersionScorecard::class, ['version' => $version])
+            ->set('tab', 'adjudication')
+            ->assertSee('No adjudication window is set')
+            ->assertSee('No Rooms are set up for this Version yet');
     }
 
     public function test_the_monday_email_links_to_the_scorecard_page(): void
