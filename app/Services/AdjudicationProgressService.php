@@ -4,15 +4,21 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\AdjudicationEventType;
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
 use App\Enums\VersionDateType;
+use App\Models\AdjudicationEvent;
+use App\Models\Recording;
 use App\Models\RoomJudge;
 use App\Models\Score;
+use App\Models\ScoreCategory;
 use App\Models\Version;
 use App\Models\VersionDate;
 use App\Models\VersionRoom;
 use App\Support\Adjudication\JudgeSave;
+use App\Support\Adjudication\ListeningEstimate;
+use App\Support\Adjudication\PlaybackEvent;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -50,6 +56,9 @@ final class AdjudicationProgressService
     /** A recent rate at or above this share of the needed rate is "at risk" rather than "behind". */
     public const AT_RISK_RATIO = 0.75;
 
+    /** A save made before this share of the Candidate's recordings had played is a short listen. */
+    public const SHORT_LISTEN_RATIO = 0.75;
+
     /** In-sitting gaps needed before a judge's own pace is trusted over the Version's. */
     private const MIN_PACE_SAMPLES = 3;
 
@@ -61,6 +70,7 @@ final class AdjudicationProgressService
      *     totals: array{expected: int, completed: int, percent: int, candidates: int, candidatesComplete: int, judges: int, judgesComplete: int, judgesNotStarted: int, judgesNeedingAttention: int, paceSeconds: ?int, remainingMinutes: ?int},
      *     schedule: array{status: string, remaining: int, neededPerDay: ?int, recentPerDay: ?int, rateDays: ?int, projectedFinish: ?Carbon},
      *     rooms: list<array{room: VersionRoom, candidates: int, candidatesComplete: int, expected: int, completed: int, percent: int, flag: ?string, judgesNotStarted: int, judges: list<array<string, mixed>>}>,
+     *     listeningTracked: bool,
      *     daily: list<array{date: string, x: string, heading: string, saves: int}>,
      * }
      */
@@ -70,7 +80,7 @@ final class AdjudicationProgressService
         $window = $this->window($version, $now);
 
         $rooms = VersionRoom::where('version_id', $version->id)
-            ->with(['voiceParts', 'roomJudges.user'])
+            ->with(['voiceParts', 'roomJudges.user', 'scoreCategories.scoreFactors'])
             ->orderBy('order_by')
             ->orderBy('id')
             ->get();
@@ -78,8 +88,10 @@ final class AdjudicationProgressService
         $pairs = $this->savePairs($version);
         $versionPace = $this->medianPace($pairs);
         $rateSince = $this->rateSince($window, $now);
+        $playback = $this->playbackEvents($version, $pairs);
+        $recordingLengths = $playback === [] ? [] : $this->recordingLengths($version);
 
-        $roomRows = $rooms->map(fn (VersionRoom $room): array => $this->roomRow($room, $pairs, $versionPace, $now, $window['status'], $rateSince))->values();
+        $roomRows = $rooms->map(fn (VersionRoom $room): array => $this->roomRow($room, $pairs, $playback, $recordingLengths, $versionPace, $now, $window['status'], $rateSince))->values();
         $completedSince = (int) $roomRows->sum('completedSince');
         $roomRows = $roomRows->map(function (array $room): array {
             unset($room['completedSince']);
@@ -109,6 +121,7 @@ final class AdjudicationProgressService
             ],
             'schedule' => $this->schedule($window, $expected, $expected - $completed, $completedSince, $rateSince, $now),
             'rooms' => $roomRows->all(),
+            'listeningTracked' => $playback !== [],
             'daily' => $this->daily($pairs, $window),
         ];
     }
@@ -224,13 +237,113 @@ final class AdjudicationProgressService
     }
 
     /**
+     * The Version's tracked Adjudicate-page activity, keyed "judgeId:candidateId".
+     *
+     * Only events up to a judge's first save on a Candidate can affect how
+     * much they heard before scoring, so everything else — replays after
+     * saving, review passes, Candidates not yet scored — is skipped before
+     * any object is built. That filter runs here rather than as a SQL join
+     * against scores: without an index on (room_judge_id, candidate_id,
+     * created_at), MariaDB plans that join as a nested loop over each
+     * judge's whole history and took ~10s on an all-state-sized Version.
+     * Ordering by the (version_id, room_judge_id, created_at) index keeps
+     * each pair's events chronological without a sort.
+     *
      * @param  Collection<int, JudgeSave>  $pairs
+     * @return array<string, list<PlaybackEvent>>
+     */
+    private function playbackEvents(Version $version, Collection $pairs): array
+    {
+        $firstSaves = [];
+        foreach ($pairs as $pair) {
+            $firstSaves[$pair->judgeId.':'.$pair->candidateId] = $pair->firstAt->getTimestamp();
+        }
+
+        if ($firstSaves === []) {
+            return [];
+        }
+
+        $rows = AdjudicationEvent::where('version_id', $version->id)
+            ->orderBy('room_judge_id')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->toBase()
+            ->get(['room_judge_id', 'candidate_id', 'recording_id', 'event', 'position_seconds', 'created_at']);
+
+        $events = [];
+        foreach ($rows as $row) {
+            $key = $row->room_judge_id.':'.$row->candidate_id;
+            $at = strtotime((string) $row->created_at);
+
+            if ($at === false || ! isset($firstSaves[$key]) || $at > $firstSaves[$key]) {
+                continue;
+            }
+
+            $events[$key][] = new PlaybackEvent(
+                event: AdjudicationEventType::from($row->event),
+                recordingId: $row->recording_id === null ? null : (int) $row->recording_id,
+                positionSeconds: $row->position_seconds === null ? null : (int) $row->position_seconds,
+                at: $at,
+            );
+        }
+
+        return $events;
+    }
+
+    /**
+     * Known lengths of the Version's approved recordings, by Candidate, in
+     * one query. Each Room keeps the ones whose file_type matches one of its
+     * score categories — the same rule as AdjudicationService::recordingsForCandidate().
+     *
+     * @return array<int, list<array{id: int, type: string, seconds: int}>>
+     */
+    private function recordingLengths(Version $version): array
+    {
+        $rows = Recording::where('version_id', $version->id)
+            ->whereNotNull('approved_at')
+            ->whereNotNull('approved_by')
+            ->where('duration_seconds', '>', 0)
+            ->toBase()
+            ->get(['id', 'candidate_id', 'file_type', 'duration_seconds']);
+
+        $lengths = [];
+        foreach ($rows as $row) {
+            $lengths[(int) $row->candidate_id][] = [
+                'id' => (int) $row->id,
+                'type' => strtolower(trim((string) $row->file_type)),
+                'seconds' => (int) $row->duration_seconds,
+            ];
+        }
+
+        return $lengths;
+    }
+
+    /**
+     * @param  Collection<int, JudgeSave>  $pairs
+     * @param  array<string, list<PlaybackEvent>>  $playback
+     * @param  array<int, list<array{id: int, type: string, seconds: int}>>  $recordingLengths
      * @return array{room: VersionRoom, candidates: int, candidatesComplete: int, expected: int, completed: int, completedSince: int, percent: int, flag: ?string, judgesNotStarted: int, judges: list<array<string, mixed>>}
      */
-    private function roomRow(VersionRoom $room, Collection $pairs, ?int $versionPace, Carbon $now, string $windowStatus, ?Carbon $rateSince): array
+    private function roomRow(VersionRoom $room, Collection $pairs, array $playback, array $recordingLengths, ?int $versionPace, Carbon $now, string $windowStatus, ?Carbon $rateSince): array
     {
         $candidateIds = $this->adjudication->candidatesForRoom($room)->pluck('id')->flip();
-        $factorCount = $this->adjudication->factorCount($room);
+
+        // The rubric is eager-loaded with the Rooms; AdjudicationService::factorCount()
+        // would query it again for every Room.
+        $factorCount = (int) $room->scoreCategories->sum(fn (ScoreCategory $category): int => $category->scoreFactors->count());
+        $categoryNames = $room->scoreCategories
+            ->mapWithKeys(fn (ScoreCategory $category): array => [strtolower(trim($category->description)) => true])
+            ->all();
+
+        // recording id => length, for this Room's recordings of each Candidate.
+        $durations = [];
+        foreach ($candidateIds->keys() as $candidateId) {
+            foreach ($recordingLengths[$candidateId] ?? [] as $recording) {
+                if (isset($categoryNames[$recording['type']])) {
+                    $durations[$candidateId][$recording['id']] = $recording['seconds'];
+                }
+            }
+        }
         $candidateCount = $candidateIds->count();
 
         $judges = $room->roomJudges
@@ -244,6 +357,8 @@ final class AdjudicationProgressService
                 $versionPace,
                 $now,
                 $rateSince,
+                $playback,
+                $durations,
             ));
 
         $scoring = $judges->filter(fn (array $judge): bool => $judge['scoring']);
@@ -290,9 +405,11 @@ final class AdjudicationProgressService
 
     /**
      * @param  Collection<int, JudgeSave>  $pairs
+     * @param  array<string, list<PlaybackEvent>>  $playback
+     * @param  array<int, array<int, int>>  $durations
      * @return array<string, mixed>
      */
-    private function judgeRow(RoomJudge $judge, Collection $pairs, int $candidateCount, int $factorCount, ?int $versionPace, Carbon $now, ?Carbon $rateSince): array
+    private function judgeRow(RoomJudge $judge, Collection $pairs, int $candidateCount, int $factorCount, ?int $versionPace, Carbon $now, ?Carbon $rateSince, array $playback, array $durations): array
     {
         $judgeType = JudgeType::from($judge->getRawOriginal('judge_type'));
         $judgeStatus = JudgeStatus::from($judge->getRawOriginal('status'));
@@ -331,6 +448,15 @@ final class AdjudicationProgressService
         // working through their Room, not stuck — don't nudge them yet.
         $recentlyActive = $lastActivity instanceof Carbon && $lastActivity->gte($now->copy()->subHours(self::RECENT_HOURS));
 
+        $heard = $pairs
+            ->map(fn (JudgeSave $pair): ?float => ListeningEstimate::heardRatio(
+                $playback[$judge->id.':'.$pair->candidateId] ?? [],
+                $pair->firstAt,
+                $durations[$pair->candidateId] ?? [],
+            ))
+            ->filter(fn (?float $ratio): bool => $ratio !== null)
+            ->values();
+
         return [
             'judge' => $judge,
             'name' => $judge->user->name,
@@ -347,6 +473,11 @@ final class AdjudicationProgressService
             'paceSeconds' => $ownPace,
             'paceIsEstimate' => $ownPace === null,
             'remainingMinutes' => $scoring && $pace !== null && $remaining > 0 ? (int) ceil($remaining * $pace / 60) : null,
+            'listening' => [
+                'measured' => $heard->count(),
+                'heardPercent' => $heard->isEmpty() ? null : (int) floor((float) $heard->avg() * 100),
+                'short' => $heard->filter(fn (float $ratio): bool => $ratio < self::SHORT_LISTEN_RATIO)->count(),
+            ],
             'firstActivity' => $saves->first(),
             'lastActivity' => $lastActivity,
             'completedCandidateIds' => $completedPairs->pluck('candidateId')->all(),
