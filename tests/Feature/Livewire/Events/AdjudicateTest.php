@@ -22,11 +22,16 @@ use App\Models\VersionRoom;
 use App\Models\VoicePart;
 use App\Services\AdjudicationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
+
+// The page signs S3 URLs for approved recordings; CI has no AWS_BUCKET, so
+// never rely on the real disk's config here.
+beforeEach(fn () => Storage::fake('s3'));
 
 function makeQualifyingVersion(User $user): Version
 {
