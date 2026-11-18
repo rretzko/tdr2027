@@ -26,16 +26,24 @@ The Scorecard page (`/events/versions/{version}/scorecard`) follows the same str
 
 ### 2. Adjudication
 
-- Completion over the window: daily activity, and when each Room and each judge finished.
-- How judges worked: sittings per judge, candidates per sitting, pace per candidate (scales vs solos), and time of day / day of week.
-- Possible fatigue: pace and score drift from the start to the end of a sitting.
-- Listening behavior (Versions tracked from the start only, so Version 88 onward): time from opening a candidate to saving, how much of each recording was heard compared with its length, replays, and whether judges worked through the roster in order.
-- Planning takeaways, e.g. Room sizes that fit in one sitting, window length, and when reminders are most effective.
+The Scorecard's Adjudication tab already computes live progress (`AdjudicationProgressService`): per-Room and per-judge completion, sittings, pace, an on-time projection, Room stall flags and how much of each recording judges heard before scoring (`ListeningEstimate`). The report should reuse those calculations and add the following.
+
+- Completion over the window: daily activity, and when each Room and each judge finished. Include the schedule history: how often the Version was behind, and whether judges who hadn't started (the main cause in Version 93) caught up.
+- How judges worked: sittings per judge, candidates per sitting, pace per candidate (scales vs solos), and time of day / day of week. In Version 93, saves peaked at 9 am–1 pm and 7–9 pm Eastern, which bears on when reminders go out.
+- **Judge agreement.** Per Room, for each pair of judges: correlation of totals, average gap and largest gap, and how many candidates fell outside the Room's tolerance. In Version 93 pairs correlated at 0.67–0.86 and no candidate exceeded tolerance (largest gap 7, tolerance 10). Flag tolerances that can never trigger: 10 is very loose for a three-factor Solos rubric with totals from 3 to 27.
+- **Calibration.** Each judge's average total compared with their co-judges' totals on the same candidates, to show harsh or lenient scoring. In Version 93 every judge was within 0.8 points of their co-judges.
+- **Scale use.** How much of the 1–9 range each judge used, and the share of candidates who got the same score on every factor. In Version 93 one judge gave 4 or 5 on 81% of factor scores, and 16–29% of candidates got the same score on every factor from several judges.
+- **Possible fatigue / score drift**, from the start to the end of a sitting and across a judge's whole Room. Measure it relative to co-judges on the same candidates, not as raw drift: the roster is ordered by voice part, so a judge's raw totals change as the voice parts change. In Version 93 both judges in one Room got harsher in the middle third together, which reflects the candidate mix rather than fatigue.
+- **Review passes.** Candidates a judge reopened and re-scored after their first save, how far the scores moved, and how many recordings they listened to again. In Version 93 one judge swept back over the whole roster and revised 25 candidates, replaying only about 10 recordings.
+- Listening behavior (Versions tracked from the start only, so Version 88 onward): time from opening a candidate to saving, how much of each recording was heard compared with its length (summarize the Scorecard's Heard measure per Room and judge), replays, and whether judges worked through the roster in order (`roster_position`).
+- Planning takeaways, e.g. Room sizes that fit in one sitting, window length, tolerance settings and when reminders are most effective.
+
+Performance: `ListeningEstimate` reads every tracked event for the Version. A synthetic all-state Version (1,000 candidates × 3 recordings, 30 judges, 27k–48k events) took 0.7–1.2s per Scorecard refresh. Computing these measures once at Close Audition for the snapshot is fine, but don't join `adjudication_events` to a derived table of `scores`: without an index on (room_judge_id, candidate_id, created_at), MariaDB ran that join as a nested loop, about 10s at 48k events.
 
 ### 3. Selection
 
 - Cut-off results per ensemble and voice part: accepted, not accepted, no-show and incomplete.
-- Score distributions around each cut-off, and how out-of-tolerance candidates were resolved.
+- Score distributions around each cut-off, and how out-of-tolerance candidates were resolved (see judge agreement under Adjudication).
 - Acceptances and declines after results were released.
 
 ## Prerequisites
