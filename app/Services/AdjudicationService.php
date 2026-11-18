@@ -96,17 +96,39 @@ final class AdjudicationService
      */
     public function recordingsForCandidate(VersionRoom $room, Candidate $candidate): Collection
     {
+        return $this->recordingsForCandidates($room, [$candidate->id])->get($candidate->id, collect());
+    }
+
+    /**
+     * recordingsForCandidate() for many Candidates in one query, keyed by
+     * candidate_id. Candidates with no matching recording are absent.
+     *
+     * @param  list<int>  $candidateIds
+     * @return Collection<int, Collection<int, Recording>>
+     */
+    public function recordingsForCandidates(VersionRoom $room, array $candidateIds): Collection
+    {
+        if ($candidateIds === []) {
+            return collect();
+        }
+
         $categoryOrderByName = $this->roomRubric($room)
             ->mapWithKeys(fn (ScoreCategory $category): array => [strtolower(trim($category->description)) => $category->order_by]);
 
-        return Recording::where('version_id', $room->version_id)
-            ->where('candidate_id', $candidate->id)
+        $recordings = Recording::where('version_id', $room->version_id)
+            ->whereIn('candidate_id', $candidateIds)
             ->whereNotNull('approved_at')
             ->whereNotNull('approved_by')
             ->get()
             ->filter(fn (Recording $recording): bool => $categoryOrderByName->has(strtolower(trim($recording->file_type))))
-            ->sortBy(fn (Recording $recording): int => $categoryOrderByName[strtolower(trim($recording->file_type))])
-            ->values();
+            ->sortBy(fn (Recording $recording): int => $categoryOrderByName[strtolower(trim($recording->file_type))]);
+
+        $byCandidate = [];
+        foreach ($recordings as $recording) {
+            $byCandidate[$recording->candidate_id][] = $recording;
+        }
+
+        return collect($byCandidate)->map(fn (array $candidateRecordings): Collection => collect($candidateRecordings));
     }
 
     /**

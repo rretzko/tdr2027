@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Enums\AdjudicationEventType;
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
 use App\Enums\VersionDateType;
+use App\Models\AdjudicationEvent;
 use App\Models\Candidate;
+use App\Models\Recording;
 use App\Models\RoomJudge;
 use App\Models\ScoreCategory;
 use App\Models\ScoreFactor;
@@ -342,4 +345,71 @@ test('Rooms are not flagged before the window opens', function () {
     $room = app(AdjudicationProgressService::class)->forVersion($version, Carbon::parse('2026-11-17 18:00:00'))['rooms'][0];
 
     expect($room['flag'])->toBeNull();
+});
+
+test('judges report how much of each recording they heard before saving, from tracked saves only', function () {
+    $version = Version::factory()->create();
+    $fixture = progressRoomFixture($version, 3, [JudgeType::Judge1, JudgeType::Judge2]);
+    [$listener, $untracked] = $fixture['judges'];
+    [$full, $short, $beforeTracking] = $fixture['candidates'];
+    $uploader = User::factory()->create();
+
+    $recordings = collect($fixture['candidates'])->mapWithKeys(fn (Candidate $candidate): array => [$candidate->id => Recording::create([
+        'version_id' => $version->id,
+        'candidate_id' => $candidate->id,
+        'file_type' => 'Scales Room',
+        'uploaded_by' => $uploader->id,
+        'approved_at' => now(),
+        'approved_by' => $uploader->id,
+        'url' => 'recordings/scales.mp3',
+        'duration_seconds' => 40,
+    ])]);
+
+    $log = function (RoomJudge $judge, Candidate $candidate, AdjudicationEventType $type, string $at, ?int $position = null) use ($version, $recordings): void {
+        Carbon::setTestNow(Carbon::parse($at));
+        AdjudicationEvent::create([
+            'version_id' => $version->id,
+            'room_judge_id' => $judge->id,
+            'candidate_id' => $candidate->id,
+            'recording_id' => $type === AdjudicationEventType::CandidateOpened ? null : $recordings[$candidate->id]->id,
+            'event' => $type,
+            'position_seconds' => $position,
+        ]);
+        Carbon::setTestNow();
+    };
+
+    // Scored before tracking began: no open event, so not measured.
+    progressScoreAt($version, $listener, $fixture, [$beforeTracking], ['2026-11-16 14:00:00']);
+
+    // Heard all 40s, then saved.
+    $log($listener, $full, AdjudicationEventType::CandidateOpened, '2026-11-17 14:00:00');
+    $log($listener, $full, AdjudicationEventType::RecordingPlayed, '2026-11-17 14:00:01', 0);
+    $log($listener, $full, AdjudicationEventType::RecordingEnded, '2026-11-17 14:00:41', 40);
+    progressScoreAt($version, $listener, $fixture, [$full], ['2026-11-17 14:00:45']);
+
+    // Saved 20s in and moved on: no pause or end event.
+    $log($listener, $short, AdjudicationEventType::CandidateOpened, '2026-11-17 14:01:00');
+    $log($listener, $short, AdjudicationEventType::RecordingPlayed, '2026-11-17 14:01:01', 0);
+    progressScoreAt($version, $listener, $fixture, [$short], ['2026-11-17 14:01:21']);
+
+    // The other judge scored with no tracking at all.
+    progressScoreAt($version, $untracked, $fixture, [$full], ['2026-11-17 15:00:00']);
+
+    $progress = app(AdjudicationProgressService::class)->forVersion($version, Carbon::parse('2026-11-17 18:00:00'));
+    $rows = collect($progress['rooms'][0]['judges'])->keyBy(fn (array $row): int => $row['judge']->id);
+
+    expect($progress['listeningTracked'])->toBeTrue()
+        ->and($rows[$listener->id]['listening'])->toBe(['measured' => 2, 'heardPercent' => 75, 'short' => 1])
+        ->and($rows[$untracked->id]['listening'])->toBe(['measured' => 0, 'heardPercent' => null, 'short' => 0]);
+});
+
+test('listening is not tracked for a Version with no playback events', function () {
+    $version = Version::factory()->create();
+    $fixture = progressRoomFixture($version, 1, [JudgeType::Judge1]);
+    progressScoreAt($version, $fixture['judges'][0], $fixture, $fixture['candidates'], ['2026-11-16 14:00:00']);
+
+    $progress = app(AdjudicationProgressService::class)->forVersion($version, Carbon::parse('2026-11-17 18:00:00'));
+
+    expect($progress['listeningTracked'])->toBeFalse()
+        ->and($progress['rooms'][0]['judges'][0]['listening']['measured'])->toBe(0);
 });
