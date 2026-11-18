@@ -33,7 +33,8 @@ final class ListeningEstimate
             return null;
         }
 
-        $before = array_filter($events, fn (PlaybackEvent $event): bool => $event->at->lte($savedAt));
+        $saved = $savedAt->getTimestamp();
+        $before = array_filter($events, fn (PlaybackEvent $event): bool => $event->at <= $saved);
 
         $opened = array_filter($before, fn (PlaybackEvent $event): bool => $event->event === AdjudicationEventType::CandidateOpened);
         if ($opened === []) {
@@ -60,7 +61,7 @@ final class ListeningEstimate
         }
 
         foreach ($playing as $recordingId => $play) {
-            $furthest[$recordingId] = max($furthest[$recordingId], ($play->positionSeconds ?? 0) + $play->at->diffInSeconds($savedAt));
+            $furthest[$recordingId] = max($furthest[$recordingId], ($play->positionSeconds ?? 0) + ($saved - $play->at));
         }
 
         $heard = 0.0;

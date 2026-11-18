@@ -9,7 +9,7 @@ use Illuminate\Support\Carbon;
 
 function listenAt(AdjudicationEventType $type, string $time, ?int $recordingId = null, ?int $position = null): PlaybackEvent
 {
-    return new PlaybackEvent($type, $recordingId, $position, Carbon::parse("2026-11-17 {$time}"));
+    return new PlaybackEvent($type, $recordingId, $position, Carbon::parse("2026-11-17 {$time}")->getTimestamp());
 }
 
 test('a recording played to the end before saving is fully heard', function () {

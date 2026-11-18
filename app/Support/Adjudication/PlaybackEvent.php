@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Support\Adjudication;
 
 use App\Enums\AdjudicationEventType;
-use Illuminate\Support\Carbon;
 
 /**
- * One adjudication_events row, as ListeningEstimate reads it.
+ * One adjudication_events row, as ListeningEstimate reads it. $at is a Unix
+ * timestamp rather than a Carbon: an all-state Version can have tens of
+ * thousands of these per Scorecard refresh, and parsing each into a Carbon
+ * was a measurable share of the cost.
  */
 final readonly class PlaybackEvent
 {
@@ -16,6 +18,6 @@ final readonly class PlaybackEvent
         public AdjudicationEventType $event,
         public ?int $recordingId,
         public ?int $positionSeconds,
-        public Carbon $at,
+        public int $at,
     ) {}
 }
