@@ -39,6 +39,26 @@
         ->filter(fn (array $judge): bool => $judge['needsAttention'])
         ->sortBy(fn (array $judge): array => [['not_started' => 0, 'just_started' => 1][$judge['status']] ?? 2, $judge['roomName']])
         ->values();
+
+    $schedule = $progress['schedule'];
+    $scheduleCallout = [
+        'on_track' => ['On track to finish', 'green', 'check-circle'],
+        'at_risk' => ['At risk of running late', 'amber', 'exclamation-triangle'],
+        'behind' => ['Behind schedule', 'red', 'exclamation-triangle'],
+    ][$schedule['status']] ?? null;
+
+    $listeningTracked = $progress['listeningTracked'];
+    $shortListeners = collect($progress['rooms'])
+        ->flatMap(fn (array $room): array => array_map(fn (array $judge): array => [...$judge, 'roomName' => $room['room']->name], $room['judges']))
+        ->filter(fn (array $judge): bool => $judge['listening']['short'] > 0)
+        ->sortByDesc(fn (array $judge): int => $judge['listening']['short'])
+        ->values();
+    $shortThreshold = (int) round(\App\Services\AdjudicationProgressService::SHORT_LISTEN_RATIO * 100);
+
+    $roomFlag = [
+        'stalled' => ['No judge has started', 'red'],
+        'uneven' => ['Waiting on judges', 'amber'],
+    ];
 @endphp
 
 <div wire:poll.120s.visible class="space-y-8">
@@ -56,6 +76,29 @@
             Progress refreshes every two minutes while this tab is open.
         </flux:callout.text>
     </flux:callout>
+
+    {{-- Schedule: will the window finish at the recent pace? --}}
+    @if ($scheduleCallout !== null)
+        <flux:callout :icon="$scheduleCallout[2]" :color="$scheduleCallout[1]">
+            <flux:callout.heading>{{ $scheduleCallout[0] }}</flux:callout.heading>
+            <flux:callout.text>
+                {{ number_format($schedule['remaining']) }} judge {{ \Illuminate\Support\Str::plural('scoring', $schedule['remaining']) }} remain, so judges need about
+                <strong>{{ number_format($schedule['neededPerDay']) }} a day</strong> to finish by {{ $when($window['end']) }}.
+                Over the last {{ $schedule['rateDays'] }} {{ \Illuminate\Support\Str::plural('day', $schedule['rateDays']) }} they've averaged
+                <strong>{{ number_format($schedule['recentPerDay']) }} a day</strong>.
+                @if ($schedule['status'] !== 'on_track')
+                    @if ($schedule['projectedFinish'] !== null)
+                        At that rate the last score would land around {{ $when($schedule['projectedFinish']) }}.
+                    @else
+                        No scoring has been completed recently, so there's no finish to project.
+                    @endif
+                    @if ($totals['judgesNotStarted'] > 0)
+                        Getting the {{ $totals['judgesNotStarted'] }} {{ \Illuminate\Support\Str::plural('judge', $totals['judgesNotStarted']) }} who haven't started under way will help most.
+                    @endif
+                @endif
+            </flux:callout.text>
+        </flux:callout>
+    @endif
 
     {{-- Headline tiles --}}
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -105,7 +148,7 @@
     <div>
         <flux:heading size="lg" class="mb-1">Judges who may need a nudge</flux:heading>
         <flux:text size="sm" class="text-zinc-500 mb-3 max-w-3xl">
-            Not started, just started (under 10% of their Room), or no scoring in the last {{ \App\Services\AdjudicationProgressService::IDLE_HOURS }} hours.
+            Not started; just started (under 10% of their Room) with no scoring in the last {{ \App\Services\AdjudicationProgressService::RECENT_HOURS }} hours; or no scoring in the last {{ \App\Services\AdjudicationProgressService::IDLE_HOURS }} hours.
             "Est. time left" uses the judge's own pace, or the typical pace if they haven't scored enough yet.
         </flux:text>
 
@@ -158,6 +201,25 @@
         @endif
     </div>
 
+    {{-- Short listens --}}
+    @if ($shortListeners->isNotEmpty())
+        <flux:callout icon="speaker-wave" color="amber">
+            <flux:callout.heading>Some scores were saved before the recording finished</flux:callout.heading>
+            <flux:callout.text>
+                Saves made before {{ $shortThreshold }}% of a candidate's recordings had played:
+            </flux:callout.text>
+            <ul class="mt-2 space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
+                @foreach ($shortListeners as $judge)
+                    <li wire:key="short-{{ $judge['judge']->id }}">
+                        <span class="font-medium">{{ $judge['name'] }}</span> ({{ $judge['roomName'] }}) —
+                        {{ $judge['listening']['short'] }} of {{ $judge['listening']['measured'] }} measured {{ \Illuminate\Support\Str::plural('save', $judge['listening']['measured']) }},
+                        {{ $judge['listening']['heardPercent'] }}% heard on average
+                    </li>
+                @endforeach
+            </ul>
+        </flux:callout>
+    @endif
+
     {{-- Daily activity --}}
     @if ($progress['daily'] !== [])
         <div>
@@ -193,17 +255,34 @@
         <flux:text size="sm" class="text-zinc-500 mb-3 max-w-3xl">
             A sitting is a stretch of scoring with no break longer than {{ intdiv(\App\Services\AdjudicationProgressService::SITTING_BREAK_SECONDS, 60) }} minutes.
             Pace is the median time between a judge's saves within a sitting.
+            @if ($listeningTracked)
+                Heard is how far into a candidate's recordings the judge had played, on average, when they first saved scores; it covers only saves made since playback tracking began.
+            @endif
         </flux:text>
 
         @forelse ($progress['rooms'] as $room)
             <flux:card class="mb-4 space-y-4" wire:key="room-{{ $room['room']->id }}">
                 <div class="flex flex-wrap items-baseline justify-between gap-2">
-                    <flux:heading size="md">{{ $room['room']->name }}</flux:heading>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <flux:heading size="md">{{ $room['room']->name }}</flux:heading>
+                        @if ($room['flag'] !== null)
+                            <flux:badge size="sm" :color="$roomFlag[$room['flag']][1]">{{ $roomFlag[$room['flag']][0] }}</flux:badge>
+                        @endif
+                    </div>
                     <flux:text size="sm" class="tabular-nums">
                         {{ $room['candidatesComplete'] }} of {{ $room['candidates'] }} candidates fully scored · {{ $room['percent'] }}%
                     </flux:text>
                 </div>
                 <x-adjudication-progress-bar :percent="$room['percent']" />
+                @if ($room['flag'] === 'stalled')
+                    <flux:text size="sm" class="text-red-600 dark:text-red-400">
+                        None of this Room's judges has scored yet.
+                    </flux:text>
+                @elseif ($room['flag'] === 'uneven')
+                    <flux:text size="sm" class="text-amber-600 dark:text-amber-400">
+                        {{ $room['judgesNotStarted'] }} {{ \Illuminate\Support\Str::plural('judge', $room['judgesNotStarted']) }} {{ $room['judgesNotStarted'] === 1 ? "hasn't" : "haven't" }} started — no candidate in this Room can be fully scored until every judge has.
+                    </flux:text>
+                @endif
 
                 {{-- Mobile: cards --}}
                 <div class="space-y-2 md:hidden">
@@ -217,6 +296,11 @@
                             <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400">
                                 {{ $judge['sittings'] }} {{ \Illuminate\Support\Str::plural('sitting', $judge['sittings']) }} · pace {{ $pace($judge['paceSeconds']) }} · est. {{ $duration($judge['remainingMinutes']) }} left
                             </flux:text>
+                            @if ($judge['listening']['heardPercent'] !== null)
+                                <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400">
+                                    Heard {{ $judge['listening']['heardPercent'] }}% before scoring @if ($judge['listening']['short'] > 0) · <span class="text-amber-600 dark:text-amber-400">{{ $judge['listening']['short'] }} short</span>@endif
+                                </flux:text>
+                            @endif
                         </div>
                     @endforeach
                 </div>
@@ -231,6 +315,9 @@
                         <flux:table.column align="end">Sittings</flux:table.column>
                         <flux:table.column align="end">Pace</flux:table.column>
                         <flux:table.column align="end">Est. time left</flux:table.column>
+                        @if ($listeningTracked)
+                            <flux:table.column align="end">Heard</flux:table.column>
+                        @endif
                         <flux:table.column>First / last activity</flux:table.column>
                     </flux:table.columns>
                     <flux:table.rows>
@@ -258,6 +345,18 @@
                                         <span class="block text-xs text-zinc-500 dark:text-zinc-400">typical pace</span>
                                     @endif
                                 </flux:table.cell>
+                                @if ($listeningTracked)
+                                    <flux:table.cell align="end" class="tabular-nums">
+                                        @if ($judge['listening']['heardPercent'] === null)
+                                            —
+                                        @else
+                                            {{ $judge['listening']['heardPercent'] }}%
+                                            @if ($judge['listening']['short'] > 0)
+                                                <span class="block text-xs text-amber-600 dark:text-amber-400">{{ $judge['listening']['short'] }} short</span>
+                                            @endif
+                                        @endif
+                                    </flux:table.cell>
+                                @endif
                                 <flux:table.cell class="text-sm">
                                     {{ $when($judge['firstActivity']) }}
                                     @if ($judge['lastActivity'] !== null)

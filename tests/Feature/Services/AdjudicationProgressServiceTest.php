@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Enums\AdjudicationEventType;
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
 use App\Enums\VersionDateType;
+use App\Models\AdjudicationEvent;
 use App\Models\Candidate;
+use App\Models\Recording;
 use App\Models\RoomJudge;
 use App\Models\ScoreCategory;
 use App\Models\ScoreFactor;
@@ -112,8 +115,8 @@ test('not started, just started and idle judges need attention, and estimates fa
         range(0, 9),
     ));
 
-    // Sampler: 1 of 20 (under 10%).
-    progressScoreAt($version, $sampler, $fixture, [$candidates[0]], ['2026-11-17 16:00:00']);
+    // Sampler: 1 of 20 (under 10%), and nothing in the last day.
+    progressScoreAt($version, $sampler, $fixture, [$candidates[0]], ['2026-11-16 12:00:00']);
 
     // Idle: 5 of 20, last saved 3 days ago.
     progressScoreAt($version, $idle, $fixture, array_slice($candidates, 0, 5), array_map(
@@ -219,4 +222,194 @@ test('the window reports open with days left, and daily activity spans it in dis
         ->and($daily['2026-11-15']['saves'])->toBe(1)
         ->and($daily['2026-11-16']['saves'])->toBe(1)
         ->and($daily['2026-11-18']['saves'])->toBe(0);
+});
+
+/**
+ * An Adjudication window on the Version.
+ */
+function progressWindow(Version $version, string $start, string $end): void
+{
+    VersionDate::create([
+        'version_id' => $version->id,
+        'date_type' => VersionDateType::Adjudication,
+        'start_at' => $start,
+        'end_at' => $end,
+    ]);
+}
+
+test('a just-started judge who scored recently is working, not in need of a nudge', function () {
+    $version = Version::factory()->create();
+    $fixture = progressRoomFixture($version, 20, [JudgeType::Judge1]);
+
+    progressScoreAt($version, $fixture['judges'][0], $fixture, [$fixture['candidates'][0]], ['2026-11-17 10:00:00']);
+
+    $row = app(AdjudicationProgressService::class)->forVersion($version, Carbon::parse('2026-11-17 18:00:00'))['rooms'][0]['judges'][0];
+
+    expect($row['status'])->toBe('just_started')
+        ->and($row['needsAttention'])->toBeFalse();
+});
+
+test('the schedule compares the needed daily rate with the recent one', function () {
+    $version = Version::factory()->create();
+    progressWindow($version, '2026-11-14 00:00:00', '2026-11-19 00:00:00');
+    $fixture = progressRoomFixture($version, 40, [JudgeType::Judge1]);
+
+    // 4 a day on each of four days; the first day's saves fall before the 72-hour rate window.
+    $times = [];
+    foreach (['2026-11-14', '2026-11-15', '2026-11-16', '2026-11-17'] as $day) {
+        foreach ([1, 2, 3, 4] as $hour) {
+            $times[] = "{$day} 1{$hour}:00:00";
+        }
+    }
+    progressScoreAt($version, $fixture['judges'][0], $fixture, array_slice($fixture['candidates'], 0, 16), $times);
+
+    // Now 2026-11-17 18:00: 24 left with 30 hours (1.25 days) to go, so 20 a day needed.
+    // Rate window from 2026-11-14 18:00: 12 completions over 3 days, so 4 a day.
+    $schedule = app(AdjudicationProgressService::class)->forVersion($version, Carbon::parse('2026-11-17 18:00:00'))['schedule'];
+
+    expect($schedule)->toMatchArray([
+        'status' => 'behind',
+        'remaining' => 24,
+        'neededPerDay' => 20,
+        'recentPerDay' => 4,
+        'rateDays' => 3,
+    ])->and($schedule['projectedFinish']->toDateTimeString())->toBe('2026-11-23 18:00:00');
+});
+
+test('the schedule is on track or at risk relative to the needed rate, and never measures less than a day', function () {
+    $version = Version::factory()->create();
+    // Window opened two hours before "now" and closes two days after it.
+    progressWindow($version, '2026-11-17 16:00:00', '2026-11-19 18:00:00');
+    $fixture = progressRoomFixture($version, 20, [JudgeType::Judge1]);
+
+    // 8 saves in the first two hours: measured over a full day, that is 8 a day.
+    progressScoreAt($version, $fixture['judges'][0], $fixture, array_slice($fixture['candidates'], 0, 8), array_map(
+        fn (int $i): string => Carbon::parse('2026-11-17 16:30:00')->addMinutes($i * 5)->toDateTimeString(),
+        range(0, 7),
+    ));
+
+    $service = app(AdjudicationProgressService::class);
+
+    // 12 left over 2 days: 6 a day needed; 8 a day recent.
+    expect($service->forVersion($version, Carbon::parse('2026-11-17 18:00:00'))['schedule'])
+        ->toMatchArray(['status' => 'on_track', 'neededPerDay' => 6, 'recentPerDay' => 8, 'rateDays' => 1]);
+
+    // 12 left over 34 hours: 8.47 a day needed; still measured over one day, so 8 recent (at least 75%).
+    expect($service->forVersion($version, Carbon::parse('2026-11-18 08:00:00'))['schedule'])
+        ->toMatchArray(['status' => 'at_risk', 'neededPerDay' => 9, 'recentPerDay' => 8]);
+});
+
+test('the schedule only projects while the window is open, and reports a finished Version as complete', function () {
+    $service = app(AdjudicationProgressService::class);
+
+    $unscheduled = Version::factory()->create();
+    progressRoomFixture($unscheduled, 2, [JudgeType::Judge1]);
+    expect($service->forVersion($unscheduled, Carbon::parse('2026-11-17 18:00:00'))['schedule']['status'])->toBe('not_applicable');
+
+    $upcoming = Version::factory()->create();
+    progressWindow($upcoming, '2026-11-20 00:00:00', '2026-11-25 00:00:00');
+    progressRoomFixture($upcoming, 2, [JudgeType::Judge1]);
+    expect($service->forVersion($upcoming, Carbon::parse('2026-11-17 18:00:00'))['schedule']['status'])->toBe('not_applicable');
+
+    $done = Version::factory()->create();
+    progressWindow($done, '2026-11-14 00:00:00', '2026-11-20 00:00:00');
+    $fixture = progressRoomFixture($done, 2, [JudgeType::Judge1]);
+    progressScoreAt($done, $fixture['judges'][0], $fixture, $fixture['candidates'], ['2026-11-16 14:00:00', '2026-11-16 14:01:00']);
+    expect($service->forVersion($done, Carbon::parse('2026-11-17 18:00:00'))['schedule']['status'])->toBe('complete');
+});
+
+test('Rooms are flagged stalled or uneven once the window is open', function () {
+    $version = Version::factory()->create();
+    progressWindow($version, '2026-11-14 00:00:00', '2026-11-20 00:00:00');
+    progressRoomFixture($version, 3, [JudgeType::Judge1, JudgeType::Judge2], 'Stalled');
+    $uneven = progressRoomFixture($version, 3, [JudgeType::Judge1, JudgeType::Judge2, JudgeType::Judge3], 'Uneven');
+    $moving = progressRoomFixture($version, 3, [JudgeType::Judge1, JudgeType::Monitor], 'Moving');
+
+    progressScoreAt($version, $uneven['judges'][0], $uneven, $uneven['candidates'], ['2026-11-16 14:00:00', '2026-11-16 14:01:00', '2026-11-16 14:02:00']);
+    progressScoreAt($version, $moving['judges'][0], $moving, [$moving['candidates'][0]], ['2026-11-16 14:00:00']);
+
+    $rooms = collect(app(AdjudicationProgressService::class)->forVersion($version, Carbon::parse('2026-11-17 18:00:00'))['rooms'])
+        ->keyBy(fn (array $room): string => $room['room']->name);
+
+    expect($rooms['Stalled'])->toMatchArray(['flag' => 'stalled', 'judgesNotStarted' => 2])
+        ->and($rooms['Uneven'])->toMatchArray(['flag' => 'uneven', 'judgesNotStarted' => 2])
+        // The monitor does not score, so it never holds a Room up.
+        ->and($rooms['Moving'])->toMatchArray(['flag' => null, 'judgesNotStarted' => 0]);
+});
+
+test('Rooms are not flagged before the window opens', function () {
+    $version = Version::factory()->create();
+    progressWindow($version, '2026-11-20 00:00:00', '2026-11-25 00:00:00');
+    progressRoomFixture($version, 3, [JudgeType::Judge1]);
+
+    $room = app(AdjudicationProgressService::class)->forVersion($version, Carbon::parse('2026-11-17 18:00:00'))['rooms'][0];
+
+    expect($room['flag'])->toBeNull();
+});
+
+test('judges report how much of each recording they heard before saving, from tracked saves only', function () {
+    $version = Version::factory()->create();
+    $fixture = progressRoomFixture($version, 3, [JudgeType::Judge1, JudgeType::Judge2]);
+    [$listener, $untracked] = $fixture['judges'];
+    [$full, $short, $beforeTracking] = $fixture['candidates'];
+    $uploader = User::factory()->create();
+
+    $recordings = collect($fixture['candidates'])->mapWithKeys(fn (Candidate $candidate): array => [$candidate->id => Recording::create([
+        'version_id' => $version->id,
+        'candidate_id' => $candidate->id,
+        'file_type' => 'Scales Room',
+        'uploaded_by' => $uploader->id,
+        'approved_at' => now(),
+        'approved_by' => $uploader->id,
+        'url' => 'recordings/scales.mp3',
+        'duration_seconds' => 40,
+    ])]);
+
+    $log = function (RoomJudge $judge, Candidate $candidate, AdjudicationEventType $type, string $at, ?int $position = null) use ($version, $recordings): void {
+        Carbon::setTestNow(Carbon::parse($at));
+        AdjudicationEvent::create([
+            'version_id' => $version->id,
+            'room_judge_id' => $judge->id,
+            'candidate_id' => $candidate->id,
+            'recording_id' => $type === AdjudicationEventType::CandidateOpened ? null : $recordings[$candidate->id]->id,
+            'event' => $type,
+            'position_seconds' => $position,
+        ]);
+        Carbon::setTestNow();
+    };
+
+    // Scored before tracking began: no open event, so not measured.
+    progressScoreAt($version, $listener, $fixture, [$beforeTracking], ['2026-11-16 14:00:00']);
+
+    // Heard all 40s, then saved.
+    $log($listener, $full, AdjudicationEventType::CandidateOpened, '2026-11-17 14:00:00');
+    $log($listener, $full, AdjudicationEventType::RecordingPlayed, '2026-11-17 14:00:01', 0);
+    $log($listener, $full, AdjudicationEventType::RecordingEnded, '2026-11-17 14:00:41', 40);
+    progressScoreAt($version, $listener, $fixture, [$full], ['2026-11-17 14:00:45']);
+
+    // Saved 20s in and moved on: no pause or end event.
+    $log($listener, $short, AdjudicationEventType::CandidateOpened, '2026-11-17 14:01:00');
+    $log($listener, $short, AdjudicationEventType::RecordingPlayed, '2026-11-17 14:01:01', 0);
+    progressScoreAt($version, $listener, $fixture, [$short], ['2026-11-17 14:01:21']);
+
+    // The other judge scored with no tracking at all.
+    progressScoreAt($version, $untracked, $fixture, [$full], ['2026-11-17 15:00:00']);
+
+    $progress = app(AdjudicationProgressService::class)->forVersion($version, Carbon::parse('2026-11-17 18:00:00'));
+    $rows = collect($progress['rooms'][0]['judges'])->keyBy(fn (array $row): int => $row['judge']->id);
+
+    expect($progress['listeningTracked'])->toBeTrue()
+        ->and($rows[$listener->id]['listening'])->toBe(['measured' => 2, 'heardPercent' => 75, 'short' => 1])
+        ->and($rows[$untracked->id]['listening'])->toBe(['measured' => 0, 'heardPercent' => null, 'short' => 0]);
+});
+
+test('listening is not tracked for a Version with no playback events', function () {
+    $version = Version::factory()->create();
+    $fixture = progressRoomFixture($version, 1, [JudgeType::Judge1]);
+    progressScoreAt($version, $fixture['judges'][0], $fixture, $fixture['candidates'], ['2026-11-16 14:00:00']);
+
+    $progress = app(AdjudicationProgressService::class)->forVersion($version, Carbon::parse('2026-11-17 18:00:00'));
+
+    expect($progress['listeningTracked'])->toBeFalse()
+        ->and($progress['rooms'][0]['judges'][0]['listening']['measured'])->toBe(0);
 });
