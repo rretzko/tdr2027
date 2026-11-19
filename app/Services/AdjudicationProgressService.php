@@ -62,6 +62,12 @@ final class AdjudicationProgressService
     /** A save made before this share of the Candidate's recordings had played is a short listen. */
     public const SHORT_LISTEN_RATIO = 0.75;
 
+    /** Full score sheets a judge needs in a Room before their halo measure is shown. */
+    public const HALO_MIN_SHEETS = 10;
+
+    /** An average inter-factor correlation at or above this reads as one overall impression. */
+    public const HALO_HIGH = 0.80;
+
     /** In-sitting gaps needed before a judge's own pace is trusted over the Version's. */
     private const MIN_PACE_SAMPLES = 3;
 
@@ -92,12 +98,13 @@ final class AdjudicationProgressService
         $versionPace = $this->medianPace($pairs);
         $rateSince = $this->rateSince($window, $now);
         $playback = $this->playbackEvents($version, $pairs);
+        $factorScores = $this->factorScores($version);
         $recordingLengths = $playback === [] ? [] : $this->recordingLengths($version);
 
         $judgeTeachers = $this->judgeTeachers($rooms);
         $higherIsBetter = $version->getRawOriginal('score_order') === ScoreOrder::Desc->value;
 
-        $roomRows = $rooms->map(fn (VersionRoom $room): array => $this->roomRow($room, $pairs, $playback, $recordingLengths, $versionPace, $now, $window['status'], $rateSince, $judgeTeachers, $higherIsBetter))->values();
+        $roomRows = $rooms->map(fn (VersionRoom $room): array => $this->roomRow($room, $pairs, $playback, $recordingLengths, $versionPace, $now, $window['status'], $rateSince, $judgeTeachers, $higherIsBetter, $factorScores))->values();
         $completedSince = (int) $roomRows->sum('completedSince');
         $roomRows = $roomRows->map(function (array $room): array {
             unset($room['completedSince']);
@@ -331,9 +338,10 @@ final class AdjudicationProgressService
      * @param  array<string, list<PlaybackEvent>>  $playback
      * @param  array<int, list<array{id: int, type: string, seconds: int}>>  $recordingLengths
      * @param  Collection<int, Teacher>  $judgeTeachers  keyed by user_id
+     * @param  array<int, array<int, array<int, int>>>  $factorScores  judge id => candidate id => factor id => score
      * @return array{room: VersionRoom, candidates: int, candidatesComplete: int, expected: int, completed: int, completedSince: int, percent: int, flag: ?string, judgesNotStarted: int, judges: list<array<string, mixed>>}
      */
-    private function roomRow(VersionRoom $room, Collection $pairs, array $playback, array $recordingLengths, ?int $versionPace, Carbon $now, string $windowStatus, ?Carbon $rateSince, Collection $judgeTeachers, bool $higherIsBetter): array
+    private function roomRow(VersionRoom $room, Collection $pairs, array $playback, array $recordingLengths, ?int $versionPace, Carbon $now, string $windowStatus, ?Carbon $rateSince, Collection $judgeTeachers, bool $higherIsBetter, array $factorScores): array
     {
         $candidates = $this->adjudication->candidatesForRoom($room);
         $candidateIds = $candidates->pluck('id')->flip();
@@ -380,7 +388,10 @@ final class AdjudicationProgressService
                 $rateSince,
                 $playback,
                 $durations,
-            ), 'ownStudents' => $this->ownStudents($judge, $judgeTeachers->get($judge->user_id), $candidates, $completeTotals, $higherIsBetter)]);
+            ),
+                'ownStudents' => $this->ownStudents($judge, $judgeTeachers->get($judge->user_id), $candidates, $completeTotals, $higherIsBetter),
+                'halo' => $this->halo($factorScores[$judge->id] ?? [], $candidateIds->all(), $room),
+            ]);
 
         $scoring = $judges->filter(fn (array $judge): bool => $judge['scoring']);
 
@@ -664,6 +675,98 @@ final class AdjudicationProgressService
     private function median(array $values): int
     {
         return (int) round((float) collect($values)->median());
+    }
+
+    /**
+     * Every factor score in the Version: judge id => candidate id => factor id => score.
+     *
+     * @return array<int, array<int, array<int, int>>>
+     */
+    private function factorScores(Version $version): array
+    {
+        $scores = [];
+        foreach (Score::where('version_id', $version->id)->toBase()->get(['judge_id', 'candidate_id', 'score_factor_id', 'score']) as $row) {
+            $scores[(int) $row->judge_id][(int) $row->candidate_id][(int) $row->score_factor_id] = (int) $row->score;
+        }
+
+        return $scores;
+    }
+
+    /**
+     * Halo effect: how closely a judge's factor scores move together on the
+     * same sheet. The average correlation between each pair of factors in the
+     * same score category, over the judge's full sheets in this Room. Pairs
+     * across categories (a Room hearing both Scales and a Solo) are left out,
+     * since a candidate's real ability links those. Near 1 means the judge is
+     * giving one overall impression rather than scoring each factor.
+     *
+     * @param  array<int, array<int, int>>  $sheets  candidate id => factor id => score
+     * @param  array<int, int>  $candidateIds  candidate id => index
+     * @return array{sheets: int, r: ?float}
+     */
+    private function halo(array $sheets, array $candidateIds, VersionRoom $room): array
+    {
+        $categories = $room->scoreCategories
+            ->map(fn (ScoreCategory $category): array => $category->scoreFactors->pluck('id')->map(fn (mixed $id): int => (int) $id)->all())
+            ->all();
+        $factorIds = array_merge(...array_values($categories));
+
+        $full = [];
+        foreach ($sheets as $candidateId => $sheet) {
+            if (isset($candidateIds[$candidateId]) && $factorIds !== [] && array_diff($factorIds, array_keys($sheet)) === []) {
+                $full[] = $sheet;
+            }
+        }
+
+        if (count($full) < self::HALO_MIN_SHEETS) {
+            return ['sheets' => count($full), 'r' => null];
+        }
+
+        $correlations = [];
+        foreach ($categories as $ids) {
+            for ($i = 0; $i < count($ids); $i++) {
+                for ($j = $i + 1; $j < count($ids); $j++) {
+                    $r = $this->correlation(
+                        array_map(fn (array $sheet): int => $sheet[$ids[$i]], $full),
+                        array_map(fn (array $sheet): int => $sheet[$ids[$j]], $full),
+                    );
+                    if ($r !== null) {
+                        $correlations[] = $r;
+                    }
+                }
+            }
+        }
+
+        return [
+            'sheets' => count($full),
+            'r' => $correlations === [] ? null : round(array_sum($correlations) / count($correlations), 2),
+        ];
+    }
+
+    /**
+     * Pearson correlation, or null when either side never varies.
+     *
+     * @param  list<int>  $xs
+     * @param  list<int>  $ys
+     */
+    private function correlation(array $xs, array $ys): ?float
+    {
+        $n = count($xs);
+        $meanX = array_sum($xs) / $n;
+        $meanY = array_sum($ys) / $n;
+
+        $covariance = 0.0;
+        $varianceX = 0.0;
+        $varianceY = 0.0;
+        for ($k = 0; $k < $n; $k++) {
+            $dx = $xs[$k] - $meanX;
+            $dy = $ys[$k] - $meanY;
+            $covariance += $dx * $dy;
+            $varianceX += $dx * $dx;
+            $varianceY += $dy * $dy;
+        }
+
+        return $varianceX > 0 && $varianceY > 0 ? $covariance / sqrt($varianceX * $varianceY) : null;
     }
 
     private function percent(int $part, int $whole): int
