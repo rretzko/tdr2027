@@ -78,6 +78,9 @@
         return number_format($points, 1).' '.(number_format($points, 1) === '1.0' ? 'point' : 'points').' '.($own['lean'] > 0 ? 'more favorable' : 'harsher').' than co-judges '.$compared;
     };
 
+    $haloHigh = \App\Services\AdjudicationProgressService::HALO_HIGH;
+    $haloMin = \App\Services\AdjudicationProgressService::HALO_MIN_SHEETS;
+
     $roomFlag = [
         'stalled' => ['No judge has started', 'red'],
         'uneven' => ['Waiting on judges', 'amber'],
@@ -298,6 +301,7 @@
         <flux:text size="sm" class="text-zinc-500 mb-3 max-w-3xl">
             A sitting is a stretch of scoring with no break longer than {{ intdiv(\App\Services\AdjudicationProgressService::SITTING_BREAK_SECONDS, 60) }} minutes.
             Pace is the median time between a judge's saves within a sitting.
+            Halo is how closely a judge's factor scores move together on the same sheet (the average correlation between factors in the same category, from {{ $haloMin }} full sheets): near 1 means one overall impression rather than separate factor scores; {{ number_format($haloHigh, 2) }} or higher is marked.
             @if ($listeningTracked)
                 Heard is how far into a candidate's recordings the judge had played, on average, when they first saved scores; it covers only saves made since playback tracking began.
             @endif
@@ -343,6 +347,11 @@
                             <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400">
                                 {{ $judge['sittings'] }} {{ \Illuminate\Support\Str::plural('sitting', $judge['sittings']) }} · pace {{ $pace($judge['paceSeconds']) }} · est. {{ $duration($judge['remainingMinutes']) }} left
                             </flux:text>
+                            @if ($judge['halo']['r'] !== null)
+                                <flux:text size="sm" class="{{ $judge['halo']['r'] >= $haloHigh ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-500 dark:text-zinc-400' }}">
+                                    Halo {{ number_format($judge['halo']['r'], 2) }}@if ($judge['halo']['r'] >= $haloHigh) · one overall impression @endif
+                                </flux:text>
+                            @endif
                             @if ($judge['listening']['heardPercent'] !== null)
                                 <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400">
                                     Heard {{ $judge['listening']['heardPercent'] }}% before scoring @if ($judge['listening']['short'] > 0) · <span class="text-amber-600 dark:text-amber-400">{{ $judge['listening']['short'] }} short</span>@endif
@@ -365,6 +374,7 @@
                         @if ($listeningTracked)
                             <flux:table.column align="end">Heard</flux:table.column>
                         @endif
+                        <flux:table.column align="end">Halo</flux:table.column>
                         <flux:table.column>First / last activity</flux:table.column>
                     </flux:table.columns>
                     <flux:table.rows>
@@ -411,6 +421,16 @@
                                         @endif
                                     </flux:table.cell>
                                 @endif
+                                <flux:table.cell align="end" class="tabular-nums">
+                                    @if ($judge['halo']['r'] === null)
+                                        —
+                                    @else
+                                        <span class="{{ $judge['halo']['r'] >= $haloHigh ? 'text-amber-600 dark:text-amber-400 font-medium' : '' }}">{{ number_format($judge['halo']['r'], 2) }}</span>
+                                        @if ($judge['halo']['r'] >= $haloHigh)
+                                            <span class="block text-xs text-amber-600 dark:text-amber-400">one impression</span>
+                                        @endif
+                                    @endif
+                                </flux:table.cell>
                                 <flux:table.cell class="text-sm">
                                     {{ $when($judge['firstActivity']) }}
                                     @if ($judge['lastActivity'] !== null)

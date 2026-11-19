@@ -520,3 +520,58 @@ test('judges in another Room hearing the same candidate are not co-judges', func
     expect($rows[0]['ownStudents']['compared'])->toBe(1)
         ->and($rows[0]['ownStudents']['lean'])->toBe(2.0);
 });
+
+test('halo is the average correlation between a judge\'s factor scores, once they have enough full sheets', function () {
+    $version = Version::factory()->create();
+    $fixture = progressRoomFixture($version, AdjudicationProgressService::HALO_MIN_SHEETS, [JudgeType::Judge1, JudgeType::Judge2, JudgeType::Judge3, JudgeType::Judge4]);
+    [$impression, $separate, $flat, $few] = $fixture['judges'];
+
+    $first = [1, 2, 3, 4, 5, 6, 7, 8, 9, 5];
+    $second = [5, 9, 1, 8, 2, 7, 3, 6, 4, 5];
+    foreach ($fixture['candidates'] as $i => $candidate) {
+        ownStudentScore($version, $impression, $fixture, $candidate, $first[$i], $first[$i]);
+        ownStudentScore($version, $separate, $fixture, $candidate, $first[$i], $second[$i]);
+        ownStudentScore($version, $flat, $fixture, $candidate, 5, 5);
+        if ($i < AdjudicationProgressService::HALO_MIN_SHEETS - 1) {
+            ownStudentScore($version, $few, $fixture, $candidate, $first[$i], $first[$i]);
+        }
+    }
+
+    $rows = collect(app(AdjudicationProgressService::class)->forVersion($version)['rooms'][0]['judges'])
+        ->keyBy(fn (array $row): int => $row['judge']->id);
+
+    expect($rows[$impression->id]['halo'])->toBe(['sheets' => 10, 'r' => 1.0])
+        ->and($rows[$separate->id]['halo']['r'])->toBeLessThan(0.0)
+        ->and($rows[$flat->id]['halo'])->toBe(['sheets' => 10, 'r' => null]) // never varies
+        ->and($rows[$few->id]['halo'])->toBe(['sheets' => 9, 'r' => null]);
+});
+
+test('halo leaves out factor pairs from different score categories', function () {
+    $version = Version::factory()->create();
+    $fixture = progressRoomFixture($version, AdjudicationProgressService::HALO_MIN_SHEETS, [JudgeType::Judge1]);
+    $judge = $fixture['judges'][0];
+
+    $solo = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Solo', 'order_by' => 2]);
+    $soloFactors = collect([1, 2])->map(fn (int $order): ScoreFactor => ScoreFactor::create([
+        'event_id' => $version->event_id, 'version_id' => null, 'score_category_id' => $solo->id,
+        'description' => "S{$order}", 'abbreviation' => "S{$order}", 'best' => 9, 'worst' => 1,
+        'interval_by' => 1, 'multiplier' => 1, 'tolerance' => null, 'order_by' => $order,
+    ]))->all();
+    $fixture['room']->scoreCategories()->attach($solo->id);
+
+    // Each category's two factors agree exactly; the categories don't track each other.
+    $scales = [1, 2, 3, 4, 5, 6, 7, 8, 9, 5];
+    $solos = [5, 9, 1, 8, 2, 7, 3, 6, 4, 5];
+    foreach ($fixture['candidates'] as $i => $candidate) {
+        app(AdjudicationService::class)->saveScores($judge, $candidate, $version, [
+            $fixture['factors'][0]->id => $scales[$i],
+            $fixture['factors'][1]->id => $scales[$i],
+            $soloFactors[0]->id => $solos[$i],
+            $soloFactors[1]->id => $solos[$i],
+        ]);
+    }
+
+    $halo = app(AdjudicationProgressService::class)->forVersion($version)['rooms'][0]['judges'][0]['halo'];
+
+    expect($halo)->toBe(['sheets' => 10, 'r' => 1.0]);
+});
