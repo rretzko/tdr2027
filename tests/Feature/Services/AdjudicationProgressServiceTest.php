@@ -5,13 +5,16 @@ declare(strict_types=1);
 use App\Enums\AdjudicationEventType;
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
+use App\Enums\ScoreOrder;
 use App\Enums\VersionDateType;
 use App\Models\AdjudicationEvent;
 use App\Models\Candidate;
 use App\Models\Recording;
 use App\Models\RoomJudge;
+use App\Models\School;
 use App\Models\ScoreCategory;
 use App\Models\ScoreFactor;
+use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionDate;
@@ -412,4 +415,108 @@ test('listening is not tracked for a Version with no playback events', function 
 
     expect($progress['listeningTracked'])->toBeFalse()
         ->and($progress['rooms'][0]['judges'][0]['listening']['measured'])->toBe(0);
+});
+
+/**
+ * Judge 1 teaches candidate 0 and teaches at candidate 1's school; candidate 2
+ * is unrelated. Judge 2 has no Teacher record.
+ *
+ * @return array{fixture: array{room: VersionRoom, factors: list<ScoreFactor>, candidates: list<Candidate>, judges: list<RoomJudge>}, school: School}
+ */
+function ownStudentRoomFixture(Version $version, bool $verified = true): array
+{
+    $fixture = progressRoomFixture($version, 3, [JudgeType::Judge1, JudgeType::Judge2]);
+    $teacher = Teacher::factory()->create(['user_id' => $fixture['judges'][0]->user_id]);
+    $school = School::factory()->create();
+    $teacher->schools()->attach($school->id, ['is_active' => true, 'verified_at' => $verified ? now() : null]);
+
+    [$own, $sameSchool] = $fixture['candidates'];
+    $own->update(['teacher_id' => $teacher->id]);
+    $sameSchool->update(['school_id' => $school->id]);
+
+    return ['fixture' => $fixture, 'school' => $school];
+}
+
+/**
+ * @param  array{factors: list<ScoreFactor>}  $fixture
+ */
+function ownStudentScore(Version $version, RoomJudge $judge, array $fixture, Candidate $candidate, int $first, int $second): void
+{
+    app(AdjudicationService::class)->saveScores($judge, $candidate, $version, [
+        $fixture['factors'][0]->id => $first,
+        $fixture['factors'][1]->id => $second,
+    ]);
+}
+
+test('judges with their own or their school\'s students are flagged, with their lean against co-judges', function () {
+    $version = Version::factory()->create(['score_order' => ScoreOrder::Asc]);
+    ['fixture' => $fixture] = ownStudentRoomFixture($version);
+    [$judge, $coJudge] = $fixture['judges'];
+    [$own, $sameSchool, $other] = $fixture['candidates'];
+
+    // Lower is better: 6 vs the co-judge's 10 is 4 points more favorable; 10 vs 10 is level.
+    ownStudentScore($version, $judge, $fixture, $own, 3, 3);
+    ownStudentScore($version, $coJudge, $fixture, $own, 5, 5);
+    ownStudentScore($version, $judge, $fixture, $sameSchool, 5, 5);
+    ownStudentScore($version, $coJudge, $fixture, $sameSchool, 5, 5);
+    // Unrelated candidates never feed the lean.
+    ownStudentScore($version, $judge, $fixture, $other, 1, 1);
+    ownStudentScore($version, $coJudge, $fixture, $other, 9, 9);
+
+    $rows = collect(app(AdjudicationProgressService::class)->forVersion($version)['rooms'][0]['judges'])
+        ->keyBy(fn (array $row): int => $row['judge']->id);
+
+    expect($rows[$judge->id]['ownStudents'])->toBe(['count' => 2, 'ownTeacher' => 1, 'sameSchool' => 1, 'compared' => 2, 'lean' => 2.0])
+        ->and($rows[$coJudge->id]['ownStudents'])->toBe(['count' => 0, 'ownTeacher' => 0, 'sameSchool' => 0, 'compared' => 0, 'lean' => null]);
+});
+
+test('lean follows the Version\'s score order and needs a co-judge\'s full rubric', function () {
+    $version = Version::factory()->create(['score_order' => ScoreOrder::Desc]);
+    ['fixture' => $fixture] = ownStudentRoomFixture($version);
+    [$judge, $coJudge] = $fixture['judges'];
+    [$own, $sameSchool] = $fixture['candidates'];
+
+    // Higher is better: 6 vs 10 is 4 points harsher.
+    ownStudentScore($version, $judge, $fixture, $own, 3, 3);
+    ownStudentScore($version, $coJudge, $fixture, $own, 5, 5);
+    // The co-judge hasn't scored this one, so there's nothing to compare.
+    ownStudentScore($version, $judge, $fixture, $sameSchool, 9, 9);
+
+    $own = app(AdjudicationProgressService::class)->forVersion($version)['rooms'][0]['judges'][0]['ownStudents'];
+
+    expect($own['compared'])->toBe(1)
+        ->and($own['lean'])->toBe(-4.0);
+});
+
+test('a school the judge is not verified at does not make its students the judge\'s own', function () {
+    $version = Version::factory()->create();
+    ['fixture' => $fixture] = ownStudentRoomFixture($version, verified: false);
+
+    $own = app(AdjudicationProgressService::class)->forVersion($version)['rooms'][0]['judges'][0]['ownStudents'];
+
+    expect($own['count'])->toBe(1)
+        ->and($own['ownTeacher'])->toBe(1)
+        ->and($own['sameSchool'])->toBe(0)
+        ->and($own['lean'])->toBeNull();
+});
+
+test('judges in another Room hearing the same candidate are not co-judges', function () {
+    $version = Version::factory()->create(['score_order' => ScoreOrder::Asc]);
+    ['fixture' => $fixture] = ownStudentRoomFixture($version);
+    [$judge, $coJudge] = $fixture['judges'];
+    [$own] = $fixture['candidates'];
+
+    // A second Room hears the same voice part on its own rubric.
+    $other = progressRoomFixture($version, 0, [JudgeType::Judge1], 'Solos');
+    $other['room']->voiceParts()->attach($own->voice_part_id);
+
+    ownStudentScore($version, $judge, $fixture, $own, 3, 3);
+    ownStudentScore($version, $coJudge, $fixture, $own, 4, 4);
+    ownStudentScore($version, $other['judges'][0], $other, $own, 9, 9);
+
+    $rows = collect(app(AdjudicationProgressService::class)->forVersion($version)['rooms'])
+        ->firstWhere(fn (array $room): bool => $room['room']->is($fixture['room']))['judges'];
+
+    expect($rows[0]['ownStudents']['compared'])->toBe(1)
+        ->and($rows[0]['ownStudents']['lean'])->toBe(2.0);
 });
