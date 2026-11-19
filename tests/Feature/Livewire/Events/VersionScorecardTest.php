@@ -225,6 +225,7 @@ class VersionScorecardTest extends TestCase
             ->assertSee('Judges scoring their own students')
             ->assertSee('1 own student')
             ->assertSee('no co-judge scores to compare yet')
+            ->assertSee('Halo is how closely')
             // Not started, so also listed under the nudge section; the email is a mailto link.
             ->assertSeeHtml('href="mailto:pat.judge@example.com"');
     }
