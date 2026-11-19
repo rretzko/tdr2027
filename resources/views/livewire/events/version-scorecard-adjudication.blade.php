@@ -295,6 +295,92 @@
         </div>
     @endif
 
+    {{-- Scales vs Solo agreement --}}
+    @php
+        $agreement = $progress['agreement'];
+        $agreementStrength = $agreement['r'] === null ? null : match (true) {
+            $agreement['r'] >= 0.7 => 'closely',
+            $agreement['r'] >= 0.4 => 'moderately',
+            default => 'loosely',
+        };
+    @endphp
+    @if ($agreement['candidates'] > 0)
+        <div>
+            <flux:heading size="lg" class="mb-1">Scales vs Solo agreement</flux:heading>
+            <flux:text size="sm" class="text-zinc-500 mb-3 max-w-3xl">
+                For candidates heard in two Rooms, such as Scales and Solo: how closely their standing in one Room tracks the other.
+                Standing is a percentile within the Room, from their average total so far: 100 is the best in the Room, 0 the lowest.
+            </flux:text>
+
+            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 mb-4">
+                <flux:card class="space-y-2">
+                    <flux:heading size="sm">Agreement</flux:heading>
+                    <div class="text-3xl font-semibold tabular-nums text-zinc-800 dark:text-white">{{ $agreement['r'] === null ? '—' : number_format($agreement['r'], 2) }}</div>
+                    <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400">
+                        @if ($agreement['r'] === null)
+                            Shown once {{ \App\Services\AdjudicationProgressService::AGREEMENT_MIN_CANDIDATES }} candidates have scores in both Rooms ({{ $agreement['candidates'] }} so far).
+                        @else
+                            The two Rooms rank the {{ number_format($agreement['candidates']) }} shared candidates {{ $agreementStrength }} alike (1 = identical order).
+                        @endif
+                    </flux:text>
+                </flux:card>
+
+                <flux:card class="space-y-2">
+                    <flux:heading size="sm">Far apart</flux:heading>
+                    <div class="text-3xl font-semibold tabular-nums text-zinc-800 dark:text-white">{{ count($agreement['gaps']) }}</div>
+                    <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400">
+                        {{ \Illuminate\Support\Str::plural('candidate', count($agreement['gaps'])) }} whose standing differs by {{ \App\Services\AdjudicationProgressService::AGREEMENT_GAP_PERCENTILE }}+ points between Rooms. Their result leans heavily on one round.
+                    </flux:text>
+                </flux:card>
+            </div>
+
+            @if ($agreement['gaps'] !== [])
+                {{-- Mobile: cards --}}
+                <div class="space-y-3 md:hidden">
+                    @foreach ($agreement['gaps'] as $gap)
+                        <flux:card class="space-y-1" wire:key="m-gap-{{ $gap['candidate']->id }}">
+                            <div class="flex items-center justify-between gap-2">
+                                <flux:heading size="sm">{{ $gap['candidate']->program_name ?: $gap['candidate']->ref }}</flux:heading>
+                                <flux:badge size="sm" color="amber">{{ $gap['gap'] }} pts</flux:badge>
+                            </div>
+                            <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400">{{ $gap['candidate']->ref }} · {{ $gap['candidate']->voicePart?->name }}</flux:text>
+                            @foreach ($gap['rooms'] as $standing)
+                                <flux:text size="sm">{{ $standing['name'] }}: <span class="tabular-nums font-medium">{{ $standing['percentile'] }}</span></flux:text>
+                            @endforeach
+                        </flux:card>
+                    @endforeach
+                </div>
+
+                {{-- md+: table --}}
+                <flux:table class="hidden md:table">
+                    <flux:table.columns>
+                        <flux:table.column>Candidate</flux:table.column>
+                        <flux:table.column>Voice part</flux:table.column>
+                        <flux:table.column>Standing by Room</flux:table.column>
+                        <flux:table.column align="end">Gap</flux:table.column>
+                    </flux:table.columns>
+                    <flux:table.rows>
+                        @foreach ($agreement['gaps'] as $gap)
+                            <flux:table.row :key="'gap-'.$gap['candidate']->id">
+                                <flux:table.cell class="font-medium">
+                                    {{ $gap['candidate']->program_name ?: $gap['candidate']->ref }}
+                                    <span class="block text-xs font-normal text-zinc-500 dark:text-zinc-400">{{ $gap['candidate']->ref }}</span>
+                                </flux:table.cell>
+                                <flux:table.cell>{{ $gap['candidate']->voicePart?->name }}</flux:table.cell>
+                                <flux:table.cell class="whitespace-normal text-sm">
+                                    @foreach ($gap['rooms'] as $standing)
+                                        <span class="block">{{ $standing['name'] }}: <span class="tabular-nums font-medium">{{ $standing['percentile'] }}</span></span>
+                                    @endforeach
+                                </flux:table.cell>
+                                <flux:table.cell align="end" class="tabular-nums font-medium text-amber-600 dark:text-amber-400">{{ $gap['gap'] }}</flux:table.cell>
+                            </flux:table.row>
+                        @endforeach
+                    </flux:table.rows>
+                </flux:table>
+            @endif
+        </div>
+    @endif
+
     {{-- Rooms --}}
     <div>
         <flux:heading size="lg" class="mb-1">Rooms</flux:heading>
