@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Livewire\Events;
 
+use App\Enums\CandidateStatus;
 use App\Enums\VersionDateType;
+use App\Models\Candidate;
 use App\Models\Version;
 use App\Models\VersionDate;
 use App\Models\VersionScorecardSnapshot;
@@ -12,6 +14,7 @@ use App\Services\AdjudicationProgressService;
 use App\Services\VersionRoleAssignmentService;
 use App\Services\VersionScorecardService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -70,6 +73,7 @@ class VersionScorecard extends Component
             'metrics' => $scorecard->metricsFor($this->version),
             'rows' => $rows,
             'deadline' => $deadline,
+            'strandedPending' => $this->strandedPending(),
             // Only computed for the tab on screen; the tabs switch via wire:model.live.
             'progress' => $this->tab === 'adjudication' ? $adjudication->forVersion($this->version) : null,
         ]);
@@ -86,6 +90,47 @@ class VersionScorecard extends Component
             ->value('start_at');
 
         return $startAt !== null && Carbon::parse($startAt)->lte(Carbon::now());
+    }
+
+    /**
+     * Candidates still Pending once the Postmark Deadline has passed, grouped
+     * by teacher. They can't be adjudicated, yet Engaged Students counts
+     * them. Null before the deadline (or when none is set), when Pending is
+     * just a step on the way to Registered.
+     *
+     * @return ?array{total: int, teachers: list<array{name: string, email: string, count: int}>}
+     */
+    private function strandedPending(): ?array
+    {
+        $deadlineAt = VersionDate::where('version_id', $this->version->id)
+            ->where('date_type', VersionDateType::PostmarkDeadline)
+            ->value('start_at');
+
+        if ($deadlineAt === null || Carbon::parse($deadlineAt)->gt(Carbon::now())) {
+            return null;
+        }
+
+        $candidates = Candidate::where('version_id', $this->version->id)
+            ->where('status', CandidateStatus::Pending->value)
+            ->with('teacher.user')
+            ->get(['id', 'teacher_id']);
+
+        $teachers = $candidates
+            ->groupBy('teacher_id')
+            ->map(function (Collection $group): array {
+                $user = $group->first()?->teacher?->user;
+
+                return [
+                    'name' => $user === null ? 'Unknown teacher' : $user->name,
+                    'email' => $user === null ? '' : $user->email,
+                    'count' => $group->count(),
+                ];
+            })
+            ->sortBy(fn (array $teacher): array => [-$teacher['count'], $teacher['name']])
+            ->values()
+            ->all();
+
+        return ['total' => $candidates->count(), 'teachers' => $teachers];
     }
 
     /**
