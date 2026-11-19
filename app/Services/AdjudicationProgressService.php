@@ -68,6 +68,12 @@ final class AdjudicationProgressService
     /** An average inter-factor correlation at or above this reads as one overall impression. */
     public const HALO_HIGH = 0.80;
 
+    /** Candidates heard in two Rooms needed before the Rooms' agreement is summarized. */
+    public const AGREEMENT_MIN_CANDIDATES = 10;
+
+    /** A candidate whose percentiles in two Rooms differ by at least this many points is listed. */
+    public const AGREEMENT_GAP_PERCENTILE = 50;
+
     /** In-sitting gaps needed before a judge's own pace is trusted over the Version's. */
     private const MIN_PACE_SAMPLES = 3;
 
@@ -80,6 +86,7 @@ final class AdjudicationProgressService
      *     schedule: array{status: string, remaining: int, neededPerDay: ?int, recentPerDay: ?int, rateDays: ?int, projectedFinish: ?Carbon},
      *     rooms: list<array{room: VersionRoom, candidates: int, candidatesComplete: int, expected: int, completed: int, percent: int, flag: ?string, judgesNotStarted: int, judges: list<array<string, mixed>>}>,
      *     listeningTracked: bool,
+     *     agreement: array{candidates: int, r: ?float, gaps: list<array{candidate: Candidate, gap: int, rooms: list<array{name: string, percentile: int}>}>},
      *     daily: list<array{date: string, x: string, heading: string, saves: int}>,
      * }
      */
@@ -106,8 +113,9 @@ final class AdjudicationProgressService
 
         $roomRows = $rooms->map(fn (VersionRoom $room): array => $this->roomRow($room, $pairs, $playback, $recordingLengths, $versionPace, $now, $window['status'], $rateSince, $judgeTeachers, $higherIsBetter, $factorScores))->values();
         $completedSince = (int) $roomRows->sum('completedSince');
+        $agreement = $this->agreement($roomRows->all(), $higherIsBetter);
         $roomRows = $roomRows->map(function (array $room): array {
-            unset($room['completedSince']);
+            unset($room['completedSince'], $room['candidateMeans'], $room['candidateModels']);
 
             return $room;
         });
@@ -136,6 +144,7 @@ final class AdjudicationProgressService
             'rooms' => $roomRows->all(),
             'listeningTracked' => $playback !== [],
             'daily' => $this->daily($pairs, $window),
+            'agreement' => $agreement,
         ];
     }
 
@@ -339,7 +348,7 @@ final class AdjudicationProgressService
      * @param  array<int, list<array{id: int, type: string, seconds: int}>>  $recordingLengths
      * @param  Collection<int, Teacher>  $judgeTeachers  keyed by user_id
      * @param  array<int, array<int, array<int, int>>>  $factorScores  judge id => candidate id => factor id => score
-     * @return array{room: VersionRoom, candidates: int, candidatesComplete: int, expected: int, completed: int, completedSince: int, percent: int, flag: ?string, judgesNotStarted: int, judges: list<array<string, mixed>>}
+     * @return array{room: VersionRoom, candidates: int, candidatesComplete: int, expected: int, completed: int, completedSince: int, candidateMeans: array<int, float>, candidateModels: Collection<int, Candidate>, percent: int, flag: ?string, judgesNotStarted: int, judges: list<array<string, mixed>>}
      */
     private function roomRow(VersionRoom $room, Collection $pairs, array $playback, array $recordingLengths, ?int $versionPace, Carbon $now, string $windowStatus, ?Carbon $rateSince, Collection $judgeTeachers, bool $higherIsBetter, array $factorScores): array
     {
@@ -424,6 +433,8 @@ final class AdjudicationProgressService
             'expected' => $expected,
             'completed' => $completed,
             'completedSince' => (int) $scoring->sum('completedSince'),
+            'candidateMeans' => $this->candidateMeans($completeTotals),
+            'candidateModels' => $candidates->keyBy('id'),
             'percent' => $this->percent($completed, $expected),
             'flag' => $flag,
             'judgesNotStarted' => $notStarted,
@@ -675,6 +686,136 @@ final class AdjudicationProgressService
     private function median(array $values): int
     {
         return (int) round((float) collect($values)->median());
+    }
+
+    /**
+     * Each candidate's average full-rubric total across the Room's judges
+     * who have scored them.
+     *
+     * @param  array<int, array<int, int>>  $completeTotals  judge id => candidate id => total
+     * @return array<int, float> candidate id => mean total
+     */
+    private function candidateMeans(array $completeTotals): array
+    {
+        $sums = [];
+        $counts = [];
+        foreach ($completeTotals as $totals) {
+            foreach ($totals as $candidateId => $total) {
+                $sums[$candidateId] = ($sums[$candidateId] ?? 0) + $total;
+                $counts[$candidateId] = ($counts[$candidateId] ?? 0) + 1;
+            }
+        }
+
+        $means = [];
+        foreach ($sums as $candidateId => $sum) {
+            $means[$candidateId] = $sum / $counts[$candidateId];
+        }
+
+        return $means;
+    }
+
+    /**
+     * Do Rooms that hear the same candidates (e.g. Scales and Solo) rank
+     * them alike? Each candidate's percentile within each Room (100 = best
+     * in the Room, by their average total so far; ties share a percentile),
+     * correlated across every pair of Rooms the candidate was scored in,
+     * plus the candidates whose percentiles differ by
+     * AGREEMENT_GAP_PERCENTILE or more: their result leans on one round.
+     *
+     * @param  array<int, array{room: VersionRoom, candidateMeans: array<int, float>, candidateModels: Collection<int, Candidate>}>  $roomRows
+     * @return array{candidates: int, r: ?float, gaps: list<array{candidate: Candidate, gap: int, rooms: list<array{name: string, percentile: int}>}>}
+     */
+    private function agreement(array $roomRows, bool $higherIsBetter): array
+    {
+        // candidate id => list of [room name, percentile]
+        $byCandidate = [];
+        $models = [];
+        foreach ($roomRows as $row) {
+            foreach ($this->percentiles($row['candidateMeans'], $higherIsBetter) as $candidateId => $percentile) {
+                $byCandidate[$candidateId][] = ['name' => $row['room']->name, 'percentile' => $percentile];
+                $models[$candidateId] = $row['candidateModels']->get($candidateId);
+            }
+        }
+
+        $xs = [];
+        $ys = [];
+        $gaps = [];
+        foreach ($byCandidate as $candidateId => $rooms) {
+            if (count($rooms) < 2) {
+                continue;
+            }
+
+            $widest = 0;
+            for ($i = 0; $i < count($rooms); $i++) {
+                for ($j = $i + 1; $j < count($rooms); $j++) {
+                    $xs[] = $rooms[$i]['percentile'];
+                    $ys[] = $rooms[$j]['percentile'];
+                    $widest = max($widest, abs($rooms[$i]['percentile'] - $rooms[$j]['percentile']));
+                }
+            }
+
+            $candidate = $models[$candidateId] ?? null;
+            if ($widest >= self::AGREEMENT_GAP_PERCENTILE && $candidate instanceof Candidate) {
+                $gaps[] = ['candidate' => $candidate, 'gap' => $widest, 'rooms' => $rooms];
+            }
+        }
+
+        usort($gaps, fn (array $a, array $b): int => [$b['gap'], $a['candidate']->id] <=> [$a['gap'], $b['candidate']->id]);
+
+        $candidates = count(array_filter($byCandidate, fn (array $rooms): bool => count($rooms) >= 2));
+
+        return [
+            'candidates' => $candidates,
+            'r' => $candidates < self::AGREEMENT_MIN_CANDIDATES || $xs === [] ? null : $this->roundedCorrelation($xs, $ys),
+            'gaps' => $gaps,
+        ];
+    }
+
+    /**
+     * @param  list<int>  $xs
+     * @param  list<int>  $ys
+     */
+    private function roundedCorrelation(array $xs, array $ys): ?float
+    {
+        $r = $this->correlation($xs, $ys);
+
+        return $r === null ? null : round($r, 2);
+    }
+
+    /**
+     * Percentile within the Room, 100 = best and 0 = worst, ties sharing
+     * the average of their positions. A Room with one ranked candidate
+     * has nothing to rank against and returns nothing.
+     *
+     * @param  array<int, float>  $means  candidate id => mean total
+     * @return array<int, int> candidate id => percentile
+     */
+    private function percentiles(array $means, bool $higherIsBetter): array
+    {
+        if (count($means) < 2) {
+            return [];
+        }
+
+        // Best first.
+        $higherIsBetter ? arsort($means) : asort($means);
+        $ids = array_keys($means);
+        $values = array_values($means);
+        $last = count($values) - 1;
+
+        $percentiles = [];
+        for ($i = 0; $i <= $last;) {
+            $j = $i;
+            while ($j < $last && abs($values[$j + 1] - $values[$i]) < 1e-9) {
+                $j++;
+            }
+            $position = ($i + $j) / 2;
+            for ($k = $i; $k <= $j; $k++) {
+                $percentiles[$ids[$k]] = (int) round(100 * (1 - $position / $last));
+            }
+            $i = $j + 1;
+        }
+
+        return $percentiles;
     }
 
     /**
