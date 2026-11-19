@@ -55,6 +55,29 @@
         ->values();
     $shortThreshold = (int) round(\App\Services\AdjudicationProgressService::SHORT_LISTEN_RATIO * 100);
 
+    // Judges with their own students (or their school's) in their Room —
+    // information for the EM, not an accusation; see ownStudents() in the service.
+    $ownStudentJudges = collect($progress['rooms'])
+        ->flatMap(fn (array $room): array => array_map(fn (array $judge): array => [...$judge, 'roomName' => $room['room']->name], $room['judges']))
+        ->filter(fn (array $judge): bool => $judge['ownStudents']['count'] > 0)
+        ->sortBy(fn (array $judge): array => [$judge['roomName'], $judge['name']])
+        ->values();
+
+    $ownLabel = fn (array $own): string => $own['count'].' own '.\Illuminate\Support\Str::plural('student', $own['count']);
+
+    $leanText = function (array $own): string {
+        if ($own['lean'] === null) {
+            return 'no co-judge scores to compare yet';
+        }
+        $points = abs($own['lean']);
+        $compared = 'on '.$own['compared'].' compared';
+        if ($points < 0.05) {
+            return 'in line with co-judges '.$compared;
+        }
+
+        return number_format($points, 1).' '.(number_format($points, 1) === '1.0' ? 'point' : 'points').' '.($own['lean'] > 0 ? 'more favorable' : 'harsher').' than co-judges '.$compared;
+    };
+
     $roomFlag = [
         'stalled' => ['No judge has started', 'red'],
         'uneven' => ['Waiting on judges', 'amber'],
@@ -166,6 +189,7 @@
                             <flux:badge size="sm" :color="$statusBadge[$judge['status']][1]">{{ $judge['idle'] ? 'Idle' : $statusBadge[$judge['status']][0] }}</flux:badge>
                         </div>
                         <flux:text size="sm">{{ $judge['type'] }} · {{ $judge['roomName'] }}</flux:text>
+                        <a href="mailto:{{ $judge['email'] }}" class="block text-xs font-normal text-blue-600 dark:text-blue-400 hover:underline select-all">{{ $judge['email'] }}</a>
                         <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400">
                             {{ $judge['completed'] }} scored · {{ $judge['remaining'] }} to go · est. {{ $duration($judge['remainingMinutes']) }} · last {{ $when($judge['lastActivity']) }}
                         </flux:text>
@@ -187,7 +211,7 @@
                 <flux:table.rows>
                     @foreach ($attention as $judge)
                         <flux:table.row :key="'attn-'.$judge['judge']->id">
-                            <flux:table.cell class="font-medium">{{ $judge['name'] }}<span class="block text-xs text-zinc-500 dark:text-zinc-400">{{ $judge['type'] }}</span></flux:table.cell>
+                            <flux:table.cell class="font-medium">{{ $judge['name'] }}<a href="mailto:{{ $judge['email'] }}" class="block text-xs font-normal text-blue-600 dark:text-blue-400 hover:underline select-all">{{ $judge['email'] }}</a><span class="block text-xs text-zinc-500 dark:text-zinc-400">{{ $judge['type'] }}</span></flux:table.cell>
                             <flux:table.cell class="whitespace-normal">{{ $judge['roomName'] }}</flux:table.cell>
                             <flux:table.cell><flux:badge size="sm" :color="$statusBadge[$judge['status']][1]">{{ $judge['idle'] ? 'Idle' : $statusBadge[$judge['status']][0] }}</flux:badge></flux:table.cell>
                             <flux:table.cell align="end" class="tabular-nums">{{ $judge['completed'] }}</flux:table.cell>
@@ -214,6 +238,25 @@
                         <span class="font-medium">{{ $judge['name'] }}</span> ({{ $judge['roomName'] }}) —
                         {{ $judge['listening']['short'] }} of {{ $judge['listening']['measured'] }} measured {{ \Illuminate\Support\Str::plural('save', $judge['listening']['measured']) }},
                         {{ $judge['listening']['heardPercent'] }}% heard on average
+                    </li>
+                @endforeach
+            </ul>
+        </flux:callout>
+    @endif
+
+    {{-- Own students --}}
+    @if ($ownStudentJudges->isNotEmpty())
+        <flux:callout icon="academic-cap" color="zinc">
+            <flux:callout.heading>Judges scoring their own students</flux:callout.heading>
+            <flux:callout.text>
+                These judges have students they teach, or students from a school they teach at, in their Room. Each comparison is against the co-judges' totals for the same candidates.
+            </flux:callout.text>
+            <ul class="mt-2 space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
+                @foreach ($ownStudentJudges as $judge)
+                    <li wire:key="own-{{ $judge['judge']->id }}">
+                        <span class="font-medium">{{ $judge['name'] }}</span> ({{ $judge['roomName'] }}) —
+                        {{ $judge['ownStudents']['ownTeacher'] }} taught by them, {{ $judge['ownStudents']['sameSchool'] }} same school;
+                        {{ $leanText($judge['ownStudents']) }}
                     </li>
                 @endforeach
             </ul>
@@ -292,7 +335,11 @@
                                 <span class="font-medium text-sm text-zinc-800 dark:text-white">{{ $judge['name'] }}</span>
                                 <flux:badge size="sm" :color="$statusBadge[$judge['status']][1]">{{ $statusBadge[$judge['status']][0] }}</flux:badge>
                             </div>
+                            <a href="mailto:{{ $judge['email'] }}" class="block text-xs font-normal text-blue-600 dark:text-blue-400 hover:underline select-all">{{ $judge['email'] }}</a>
                             <flux:text size="sm">{{ $judge['type'] }} · {{ $judge['completed'] }}/{{ $room['candidates'] }} ({{ $judge['percent'] }}%)@if ($judge['idle']) · <span class="text-amber-600 dark:text-amber-400">idle</span>@endif</flux:text>
+                            @if ($judge['ownStudents']['count'] > 0)
+                                <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400">{{ $ownLabel($judge['ownStudents']) }} · {{ $leanText($judge['ownStudents']) }}</flux:text>
+                            @endif
                             <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400">
                                 {{ $judge['sittings'] }} {{ \Illuminate\Support\Str::plural('sitting', $judge['sittings']) }} · pace {{ $pace($judge['paceSeconds']) }} · est. {{ $duration($judge['remainingMinutes']) }} left
                             </flux:text>
@@ -323,7 +370,14 @@
                     <flux:table.rows>
                         @foreach ($room['judges'] as $judge)
                             <flux:table.row :key="'judge-'.$judge['judge']->id">
-                                <flux:table.cell class="font-medium">{{ $judge['name'] }}<span class="block text-xs text-zinc-500 dark:text-zinc-400">{{ $judge['type'] }}</span></flux:table.cell>
+                                <flux:table.cell class="font-medium">
+                                    {{ $judge['name'] }}<a href="mailto:{{ $judge['email'] }}" class="block text-xs font-normal text-blue-600 dark:text-blue-400 hover:underline select-all">{{ $judge['email'] }}</a><span class="block text-xs text-zinc-500 dark:text-zinc-400">{{ $judge['type'] }}</span>
+                                    @if ($judge['ownStudents']['count'] > 0)
+                                        <flux:tooltip :content="$leanText($judge['ownStudents'])">
+                                            <span class="block text-xs font-normal text-zinc-500 dark:text-zinc-400 underline decoration-dotted">{{ $ownLabel($judge['ownStudents']) }}</span>
+                                        </flux:tooltip>
+                                    @endif
+                                </flux:table.cell>
                                 <flux:table.cell>
                                     <flux:badge size="sm" :color="$statusBadge[$judge['status']][1]">{{ $statusBadge[$judge['status']][0] }}</flux:badge>
                                     @if ($judge['idle'])

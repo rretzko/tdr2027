@@ -19,5 +19,7 @@ final readonly class JudgeSave
         public int $factorsEntered,
         public Carbon $firstAt,
         public Carbon $lastAt,
+        /** Sum of the scores entered, with no multiplier applied. */
+        public int $total = 0,
     ) {}
 }

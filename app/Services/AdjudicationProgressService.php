@@ -7,12 +7,15 @@ namespace App\Services;
 use App\Enums\AdjudicationEventType;
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
+use App\Enums\ScoreOrder;
 use App\Enums\VersionDateType;
 use App\Models\AdjudicationEvent;
+use App\Models\Candidate;
 use App\Models\Recording;
 use App\Models\RoomJudge;
 use App\Models\Score;
 use App\Models\ScoreCategory;
+use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionDate;
 use App\Models\VersionRoom;
@@ -91,7 +94,10 @@ final class AdjudicationProgressService
         $playback = $this->playbackEvents($version, $pairs);
         $recordingLengths = $playback === [] ? [] : $this->recordingLengths($version);
 
-        $roomRows = $rooms->map(fn (VersionRoom $room): array => $this->roomRow($room, $pairs, $playback, $recordingLengths, $versionPace, $now, $window['status'], $rateSince))->values();
+        $judgeTeachers = $this->judgeTeachers($rooms);
+        $higherIsBetter = $version->getRawOriginal('score_order') === ScoreOrder::Desc->value;
+
+        $roomRows = $rooms->map(fn (VersionRoom $room): array => $this->roomRow($room, $pairs, $playback, $recordingLengths, $versionPace, $now, $window['status'], $rateSince, $judgeTeachers, $higherIsBetter))->values();
         $completedSince = (int) $roomRows->sum('completedSince');
         $roomRows = $roomRows->map(function (array $room): array {
             unset($room['completedSince']);
@@ -223,6 +229,7 @@ final class AdjudicationProgressService
                 DB::raw('count(*) as cnt'),
                 DB::raw('min(created_at) as first_at'),
                 DB::raw('max(updated_at) as last_at'),
+                DB::raw('sum(score) as total'),
             )
             ->groupBy('judge_id', 'candidate_id')
             ->toBase()
@@ -233,6 +240,7 @@ final class AdjudicationProgressService
                 factorsEntered: (int) $row->cnt,
                 firstAt: Carbon::parse($row->first_at),
                 lastAt: Carbon::parse($row->last_at),
+                total: (int) $row->total,
             ));
     }
 
@@ -322,11 +330,13 @@ final class AdjudicationProgressService
      * @param  Collection<int, JudgeSave>  $pairs
      * @param  array<string, list<PlaybackEvent>>  $playback
      * @param  array<int, list<array{id: int, type: string, seconds: int}>>  $recordingLengths
+     * @param  Collection<int, Teacher>  $judgeTeachers  keyed by user_id
      * @return array{room: VersionRoom, candidates: int, candidatesComplete: int, expected: int, completed: int, completedSince: int, percent: int, flag: ?string, judgesNotStarted: int, judges: list<array<string, mixed>>}
      */
-    private function roomRow(VersionRoom $room, Collection $pairs, array $playback, array $recordingLengths, ?int $versionPace, Carbon $now, string $windowStatus, ?Carbon $rateSince): array
+    private function roomRow(VersionRoom $room, Collection $pairs, array $playback, array $recordingLengths, ?int $versionPace, Carbon $now, string $windowStatus, ?Carbon $rateSince, Collection $judgeTeachers, bool $higherIsBetter): array
     {
-        $candidateIds = $this->adjudication->candidatesForRoom($room)->pluck('id')->flip();
+        $candidates = $this->adjudication->candidatesForRoom($room);
+        $candidateIds = $candidates->pluck('id')->flip();
 
         // The rubric is eager-loaded with the Rooms; AdjudicationService::factorCount()
         // would query it again for every Room.
@@ -346,10 +356,21 @@ final class AdjudicationProgressService
         }
         $candidateCount = $candidateIds->count();
 
+        // Each of this Room's judges' full-rubric totals: judge id => candidate id => total.
+        // Limited to this Room's judges, since a Candidate heard in two Rooms
+        // also has pairs from the other Room's judges on a different rubric.
+        $roomJudgeIds = $room->roomJudges->pluck('id')->flip();
+        $completeTotals = [];
+        foreach ($pairs as $pair) {
+            if ($factorCount > 0 && $pair->factorsEntered >= $factorCount && $candidateIds->has($pair->candidateId) && $roomJudgeIds->has($pair->judgeId)) {
+                $completeTotals[$pair->judgeId][$pair->candidateId] = $pair->total;
+            }
+        }
+
         $judges = $room->roomJudges
             ->sortBy(fn (RoomJudge $judge): int => $this->judgeTypeRank($judge->getRawOriginal('judge_type')))
             ->values()
-            ->map(fn (RoomJudge $judge): array => $this->judgeRow(
+            ->map(fn (RoomJudge $judge): array => [...$this->judgeRow(
                 $judge,
                 $pairs->where('judgeId', $judge->id)->filter(fn (JudgeSave $pair): bool => $candidateIds->has($pair->candidateId))->values(),
                 $candidateCount,
@@ -359,7 +380,7 @@ final class AdjudicationProgressService
                 $rateSince,
                 $playback,
                 $durations,
-            ));
+            ), 'ownStudents' => $this->ownStudents($judge, $judgeTeachers->get($judge->user_id), $candidates, $completeTotals, $higherIsBetter)]);
 
         $scoring = $judges->filter(fn (array $judge): bool => $judge['scoring']);
 
@@ -460,6 +481,7 @@ final class AdjudicationProgressService
         return [
             'judge' => $judge,
             'name' => $judge->user->name,
+            'email' => $judge->user->email,
             'type' => $judgeType->label(),
             'scoring' => $scoring,
             'status' => $status,
@@ -484,6 +506,90 @@ final class AdjudicationProgressService
             'completedSince' => $scoring && $rateSince !== null
                 ? $completedPairs->filter(fn (JudgeSave $pair): bool => $pair->firstAt->gte($rateSince))->count()
                 : 0,
+        ];
+    }
+
+    /**
+     * Each Room judge's Teacher record (when they have one), keyed by user_id,
+     * with the schools they actively and verifiably teach at: the same
+     * school_teacher gate as student access.
+     *
+     * @param  Collection<int, VersionRoom>  $rooms
+     * @return Collection<int, Teacher>
+     */
+    private function judgeTeachers(Collection $rooms): Collection
+    {
+        $userIds = $rooms->flatMap(fn (VersionRoom $room): Collection => $room->roomJudges->pluck('user_id'))->unique()->values();
+
+        if ($userIds->isEmpty()) {
+            return collect();
+        }
+
+        return Teacher::whereIn('user_id', $userIds)
+            ->with(['schools' => function ($query): void {
+                $query->wherePivot('is_active', true)->whereNotNull('school_teacher.verified_at');
+            }])
+            ->get()
+            ->keyBy('user_id');
+    }
+
+    /**
+     * Candidates in this Room taught by the judge ("own teacher") or enrolled
+     * at a school the judge teaches at ("same school"), and how the judge's
+     * totals for them compare with their co-judges' totals for the same
+     * candidates. Lean is in rubric points, positive when the judge was more
+     * favorable than the co-judges' average, whichever way the Version scores.
+     *
+     * @param  Collection<int, Candidate>  $candidates
+     * @param  array<int, array<int, int>>  $completeTotals  judge id => candidate id => total
+     * @return array{count: int, ownTeacher: int, sameSchool: int, compared: int, lean: ?float}
+     */
+    private function ownStudents(RoomJudge $judge, ?Teacher $teacher, Collection $candidates, array $completeTotals, bool $higherIsBetter): array
+    {
+        if ($teacher === null) {
+            return ['count' => 0, 'ownTeacher' => 0, 'sameSchool' => 0, 'compared' => 0, 'lean' => null];
+        }
+
+        $schoolIds = $teacher->schools->pluck('id')->map(fn (mixed $id): int => (int) $id)->flip();
+
+        $relation = [];
+        foreach ($candidates as $candidate) {
+            if ((int) $candidate->teacher_id === (int) $teacher->id) {
+                $relation[(int) $candidate->id] = 'teacher';
+            } elseif ($schoolIds->has((int) $candidate->school_id)) {
+                $relation[(int) $candidate->id] = 'school';
+            }
+        }
+
+        $diffs = [];
+        foreach (array_keys($relation) as $candidateId) {
+            $mine = $completeTotals[$judge->id][$candidateId] ?? null;
+            if ($mine === null) {
+                continue;
+            }
+
+            $others = [];
+            foreach ($completeTotals as $judgeId => $totals) {
+                if ($judgeId !== $judge->id && isset($totals[$candidateId])) {
+                    $others[] = $totals[$candidateId];
+                }
+            }
+            if ($others === []) {
+                continue;
+            }
+
+            $gap = array_sum($others) / count($others) - $mine;
+            $diffs[] = $higherIsBetter ? -$gap : $gap;
+        }
+
+        $ownTeacher = count(array_filter($relation, fn (string $kind): bool => $kind === 'teacher'));
+
+        return [
+            'count' => count($relation),
+            'ownTeacher' => $ownTeacher,
+            'sameSchool' => count($relation) - $ownTeacher,
+            'compared' => count($diffs),
+            'lean' => $diffs === [] ? null : round(array_sum($diffs) / count($diffs), 1),
         ];
     }
 

@@ -5,16 +5,21 @@ declare(strict_types=1);
 namespace Tests\Feature\Livewire\Events;
 
 use App\Enums\EventStatus;
+use App\Enums\JudgeType;
 use App\Enums\VersionDateType;
 use App\Livewire\Events\VersionScorecard;
 use App\Mail\MondayMorningScorecardMail;
+use App\Models\Candidate;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Models\RoomJudge;
+use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionDate;
 use App\Models\VersionRoom;
 use App\Models\VersionScorecardSnapshot;
+use App\Models\VoicePart;
 use App\Services\VersionRoleService;
 use App\Services\VersionScorecardService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -200,6 +205,27 @@ class VersionScorecardTest extends TestCase
             ->set('tab', 'adjudication')
             ->assertSee('No adjudication window is set')
             ->assertSee('No Rooms are set up for this Version yet');
+    }
+
+    public function test_the_adjudication_tab_lists_judges_with_their_own_students(): void
+    {
+        $version = $this->makeVersion();
+        $room = VersionRoom::create(['version_id' => $version->id, 'name' => 'Treble Solos', 'tolerance' => null, 'order_by' => 1]);
+        $voicePart = VoicePart::factory()->create();
+        $room->voiceParts()->attach($voicePart->id);
+        $judgeUser = User::factory()->create(['name' => 'Pat Judge', 'email' => 'pat.judge@example.com']);
+        RoomJudge::factory()->create(['version_id' => $version->id, 'room_id' => $room->id, 'user_id' => $judgeUser->id, 'judge_type' => JudgeType::Judge1]);
+        $teacher = Teacher::factory()->create(['user_id' => $judgeUser->id]);
+        Candidate::factory()->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'teacher_id' => $teacher->id]);
+
+        Livewire::actingAs($this->makeEventManager($version))
+            ->test(VersionScorecard::class, ['version' => $version])
+            ->set('tab', 'adjudication')
+            ->assertSee('Judges scoring their own students')
+            ->assertSee('1 own student')
+            ->assertSee('no co-judge scores to compare yet')
+            // Not started, so also listed under the nudge section; the email is a mailto link.
+            ->assertSeeHtml('href="mailto:pat.judge@example.com"');
     }
 
     public function test_the_monday_email_links_to_the_scorecard_page(): void
