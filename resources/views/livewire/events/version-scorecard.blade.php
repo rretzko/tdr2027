@@ -59,6 +59,29 @@
                 The numbers from the Monday Morning Scorecard email. The tiles below are current as of right now; the trends are captured every Monday morning.
             </flux:text>
 
+            {{-- Still Pending after the Postmark Deadline --}}
+            @if ($strandedPending !== null && $strandedPending['total'] > 0)
+                <flux:callout icon="exclamation-triangle" color="amber" class="mb-6">
+                    <flux:callout.heading>
+                        {{ number_format($strandedPending['total']) }} {{ \Illuminate\Support\Str::plural('student', $strandedPending['total']) }} still Pending after the Postmark Deadline
+                    </flux:callout.heading>
+                    <flux:callout.text>
+                        Pending students can't be adjudicated. They're still counted in Engaged Students below. By teacher:
+                    </flux:callout.text>
+                    <ul class="mt-2 space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
+                        @foreach ($strandedPending['teachers'] as $teacher)
+                            <li wire:key="stranded-{{ $loop->index }}">
+                                <span class="font-medium">{{ $teacher['name'] }}</span>
+                                @if ($teacher['email'] !== '')
+                                    (<a href="mailto:{{ $teacher['email'] }}" class="text-blue-600 dark:text-blue-400 hover:underline select-all">{{ $teacher['email'] }}</a>)
+                                @endif
+                                — {{ $teacher['count'] }} {{ \Illuminate\Support\Str::plural('student', $teacher['count']) }}
+                            </li>
+                        @endforeach
+                    </ul>
+                </flux:callout>
+            @endif
+
             {{-- Right now --}}
             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 mb-10">
                 @foreach ($groups as $heading => $tiles)

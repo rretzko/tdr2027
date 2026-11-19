@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Livewire\Events;
 
+use App\Enums\CandidateStatus;
 use App\Enums\EventStatus;
 use App\Enums\JudgeType;
 use App\Enums\VersionDateType;
@@ -226,6 +227,48 @@ class VersionScorecardTest extends TestCase
             ->assertSee('no co-judge scores to compare yet')
             // Not started, so also listed under the nudge section; the email is a mailto link.
             ->assertSeeHtml('href="mailto:pat.judge@example.com"');
+    }
+
+    private function makePostmarkDeadline(Version $version, string $at): void
+    {
+        VersionDate::create([
+            'version_id' => $version->id,
+            'date_type' => VersionDateType::PostmarkDeadline,
+            'start_at' => $at,
+            'end_at' => $at,
+        ]);
+    }
+
+    public function test_students_still_pending_after_the_postmark_deadline_are_listed_by_teacher(): void
+    {
+        $version = $this->makeVersion();
+        $this->makePostmarkDeadline($version, now()->subDay()->toDateTimeString());
+
+        $busy = Teacher::factory()->create(['user_id' => User::factory()->create(['email' => 'avery@example.com'])->id]);
+        $light = Teacher::factory()->create(['user_id' => User::factory()->create(['email' => 'blake@example.com'])->id]);
+        Candidate::factory()->count(2)->create(['version_id' => $version->id, 'teacher_id' => $busy->id, 'status' => CandidateStatus::Pending]);
+        Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $light->id, 'status' => CandidateStatus::Pending]);
+        Candidate::factory()->registered()->create(['version_id' => $version->id, 'teacher_id' => $light->id]);
+        Candidate::factory()->create(['teacher_id' => $light->id, 'status' => CandidateStatus::Pending]); // another Version
+
+        Livewire::actingAs($this->makeEventManager($version))
+            ->test(VersionScorecard::class, ['version' => $version])
+            ->set('tab', 'registration')
+            ->assertSee('3 students still Pending after the Postmark Deadline')
+            ->assertSeeInOrder(['avery@example.com', '2 students', 'blake@example.com', '1 student'])
+            ->assertSeeHtml('href="mailto:avery@example.com"');
+    }
+
+    public function test_pending_students_are_not_flagged_before_the_postmark_deadline(): void
+    {
+        $version = $this->makeVersion();
+        $this->makePostmarkDeadline($version, now()->addDay()->toDateTimeString());
+        Candidate::factory()->create(['version_id' => $version->id, 'status' => CandidateStatus::Pending]);
+
+        Livewire::actingAs($this->makeEventManager($version))
+            ->test(VersionScorecard::class, ['version' => $version])
+            ->set('tab', 'registration')
+            ->assertDontSee('still Pending after the Postmark Deadline');
     }
 
     public function test_the_monday_email_links_to_the_scorecard_page(): void
