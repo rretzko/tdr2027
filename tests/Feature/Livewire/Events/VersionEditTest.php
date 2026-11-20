@@ -162,6 +162,27 @@ test('saveGeneral persists share_results', function () {
     expect($version->fresh()->share_results)->toBeTrue();
 });
 
+test('saveGeneral persists judge_survey, which is on by default', function () {
+    $user = makeVersionEditUser();
+    $version = Version::factory()->create(['event_id' => Event::factory()->create()->id])->fresh();
+    grantVersionRole($user, $version, 'Event Manager');
+
+    Livewire::actingAs($user)
+        ->test(VersionEdit::class, ['version' => $version])
+        ->assertSet('judge_survey', true)
+        ->set('status', EventStatus::Sandbox->value)
+        ->set('application_type', ApplicationType::Pdf->value)
+        ->set('audition_type', AuditionType::Remote->value)
+        ->set('upload_type', UploadType::None->value)
+        ->set('score_order', ScoreOrder::Asc->value)
+        ->set('pitch_file_visibility', PitchFileVisibility::Both->value)
+        ->set('judge_survey', false)
+        ->call('saveGeneral')
+        ->assertHasNoErrors();
+
+    expect($version->fresh()->judge_survey)->toBeFalse();
+});
+
 test('saveGeneral persists cutoff_strategy, and treats a blank selection as null', function () {
     $user = makeVersionEditUser();
     $version = Version::factory()->create();

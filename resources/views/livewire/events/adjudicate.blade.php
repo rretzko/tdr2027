@@ -1,4 +1,5 @@
-<div>
+{{-- The screen is reported once so checkpoint answers carry the device without asking (Adjudicate::reportDevice). --}}
+<div x-data x-init="$wire.reportDevice(screen.width, screen.height, window.matchMedia('(pointer: coarse)').matches)">
     {{-- Breadcrumb --}}
     <div class="flex items-center gap-2 mb-1 text-sm text-zinc-500">
         <a href="{{ route('events.show', $version->event) }}" wire:navigate class="hover:text-zinc-800 dark:hover:text-zinc-200">{{ $version->event->name }}</a>
@@ -262,4 +263,72 @@
             @endif
         </div>
     @endif
+
+    {{-- Checkpoint popup: shown once each at ⅓, ⅔ and one-to-go, right after a save, never during playback. Closing it any way counts as "No thanks". --}}
+    <flux:modal name="judge-checkpoint" wire:model.self="showCheckpoint" @close="$wire.dismissCheckpoint()" :dismissible="false" class="w-full md:w-[32rem]">
+        @if ($checkpointCase)
+            <form wire:submit="submitCheckpoint" class="space-y-5">
+                <div>
+                    <flux:text size="sm" class="font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400">{{ $checkpointCase->label() }}</flux:text>
+                    <flux:heading size="lg">{{ $checkpointCase->heading() }}</flux:heading>
+                    <flux:text class="mt-2">{{ $checkpointMessage }}</flux:text>
+                    <flux:text size="sm" class="mt-2 text-zinc-500 dark:text-zinc-400">{{ $checkpointTip }}</flux:text>
+                </div>
+
+                <flux:separator text="Two quick questions (optional, anonymous)" />
+
+                <flux:radio.group wire:model="focus" label="How's your focus right now?" variant="pills">
+                    @foreach (\App\Enums\JudgeSurvey\JudgeFocus::cases() as $option)
+                        <flux:radio value="{{ $option->value }}" label="{{ $option->label() }}" />
+                    @endforeach
+                </flux:radio.group>
+
+                @if ($checkpointCase === \App\Enums\JudgeSurvey\JudgeCheckpoint::First)
+                    <flux:checkbox.group wire:model="obstacles" label="Anything getting in the way?" variant="pills">
+                        @foreach (\App\Enums\JudgeSurvey\JudgeObstacle::cases() as $option)
+                            <flux:checkbox value="{{ $option->value }}" label="{{ $option->label() }}" />
+                        @endforeach
+                    </flux:checkbox.group>
+                @elseif ($checkpointCase === \App\Enums\JudgeSurvey\JudgeCheckpoint::Second)
+                    <flux:radio.group wire:model="listeningDevice" label="What are you listening on?" variant="pills">
+                        @foreach (\App\Enums\JudgeSurvey\ListeningDevice::cases() as $option)
+                            <flux:radio value="{{ $option->value }}" label="{{ $option->label() }}" />
+                        @endforeach
+                    </flux:radio.group>
+                @else
+                    <flux:radio.group wire:model="overallRating" label="How would you rate the adjudication process overall?" description="1 = frustrating, 5 = excellent" variant="segmented">
+                        @foreach (range(1, 5) as $rating)
+                            <flux:radio value="{{ $rating }}" label="{{ $rating }}" />
+                        @endforeach
+                    </flux:radio.group>
+
+                    <flux:radio.group wire:model="judgeAgain" label="Would you judge for this event again?" variant="pills">
+                        @foreach (\App\Enums\JudgeSurvey\JudgeAgain::cases() as $option)
+                            <flux:radio value="{{ $option->value }}" label="{{ $option->label() }}" />
+                        @endforeach
+                    </flux:radio.group>
+                @endif
+
+                <flux:textarea
+                    wire:model="surveyComment"
+                    rows="2"
+                    :label="$checkpointCase === \App\Enums\JudgeSurvey\JudgeCheckpoint::Final ? 'One change that would have made this better?' : 'Anything else? (optional)'"
+                />
+
+                @if ($errors->any())
+                    <flux:callout variant="danger" icon="exclamation-triangle">
+                        <flux:callout.text>{{ $errors->first() }}</flux:callout.text>
+                    </flux:callout>
+                @endif
+
+                <flux:text size="xs" class="text-zinc-500 dark:text-zinc-400">Your Event Manager sees these answers only combined with other judges', never with your name.</flux:text>
+
+                <div class="flex gap-2">
+                    <flux:spacer />
+                    <flux:button type="button" variant="ghost" wire:click="dismissCheckpoint">No thanks</flux:button>
+                    <flux:button type="submit" variant="primary">Send</flux:button>
+                </div>
+            </form>
+        @endif
+    </flux:modal>
 </div>

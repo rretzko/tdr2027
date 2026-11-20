@@ -36,7 +36,7 @@ use Illuminate\Support\Collection;
     'height', 'home_address', 'judge_count',
     'max_registrants', 'max_upper_voice_registrants', 'audition_cap_per_school',
     'pitch_file_visibility',
-    'score_order', 'cutoff_strategy', 'results_released_at', 'share_results', 'mail_required', 'shirt_size', 'teacher_cell', 'upload_type',
+    'score_order', 'cutoff_strategy', 'results_released_at', 'share_results', 'judge_survey', 'mail_required', 'shirt_size', 'teacher_cell', 'upload_type',
 ])]
 #[ObservedBy(VersionObserver::class)]
 class Version extends Model
@@ -65,6 +65,7 @@ class Version extends Model
             'height' => 'boolean',
             'home_address' => 'boolean',
             'share_results' => 'boolean',
+            'judge_survey' => 'boolean',
             'mail_required' => 'boolean',
             'shirt_size' => 'boolean',
             'teacher_cell' => 'boolean',

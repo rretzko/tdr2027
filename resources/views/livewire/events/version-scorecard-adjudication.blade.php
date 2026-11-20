@@ -385,6 +385,10 @@
         </div>
     @endif
 
+    @if (($judgeSurvey ?? null) !== null)
+        @include('livewire.events.version-scorecard-judge-survey', ['survey' => $judgeSurvey])
+    @endif
+
     {{-- Rooms --}}
     <div>
         <flux:heading size="lg" class="mb-1">Rooms</flux:heading>

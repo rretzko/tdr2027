@@ -103,6 +103,8 @@ class VersionEdit extends Component
 
     public bool $share_results = false;
 
+    public bool $judge_survey = true;
+
     /**
      * Set when a Sandbox → Active save was held back by incomplete
      * readiness items (version-readiness.md §5); rendered under Status.
@@ -268,6 +270,7 @@ class VersionEdit extends Component
         $this->cutoff_strategy = $version->getRawOriginal('cutoff_strategy') ?? '';
         $this->pitch_file_visibility = $version->getRawOriginal('pitch_file_visibility');
         $this->share_results = (bool) $version->share_results;
+        $this->judge_survey = (bool) $version->judge_survey;
         $this->max_registrants = $version->max_registrants !== null ? (string) $version->max_registrants : '';
         $this->max_upper_voice_registrants = $version->max_upper_voice_registrants !== null ? (string) $version->max_upper_voice_registrants : '';
         $this->audition_cap_per_school = $version->audition_cap_per_school !== null ? (string) $version->audition_cap_per_school : '';
@@ -464,6 +467,7 @@ class VersionEdit extends Component
             'cutoff_strategy' => ['nullable', 'string', 'in:'.implode(',', array_column(CutoffStrategy::cases(), 'value'))],
             'pitch_file_visibility' => ['required', 'string', 'in:'.implode(',', array_column(PitchFileVisibility::cases(), 'value'))],
             'share_results' => ['boolean'],
+            'judge_survey' => ['boolean'],
             'max_registrants' => ['nullable', 'integer', 'min:0'],
             'max_upper_voice_registrants' => ['nullable', 'integer', 'min:0'],
             'audition_cap_per_school' => ['nullable', 'integer', 'min:0'],
@@ -491,6 +495,7 @@ class VersionEdit extends Component
             'cutoff_strategy' => ($validated['cutoff_strategy'] ?? '') ?: null,
             'pitch_file_visibility' => $validated['pitch_file_visibility'],
             'share_results' => $validated['share_results'],
+            'judge_survey' => $validated['judge_survey'],
             'max_registrants' => ($validated['max_registrants'] ?? '') !== '' && (int) $validated['max_registrants'] !== 0 ? (int) $validated['max_registrants'] : null,
             'max_upper_voice_registrants' => ($validated['max_upper_voice_registrants'] ?? '') !== '' ? (int) $validated['max_upper_voice_registrants'] : null,
             'audition_cap_per_school' => ($validated['audition_cap_per_school'] ?? '') !== '' ? (int) $validated['audition_cap_per_school'] : null,
