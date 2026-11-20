@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Events\TabRoom;
 
+use App\Enums\AuditionType;
 use App\Enums\CandidateStatus;
 use App\Models\Candidate;
 use App\Models\RoomJudge;
@@ -201,6 +202,15 @@ class AddEditScores extends Component
             ? $adjudication->scoresForCandidate($selectedRoom, $candidate)
             : collect();
 
+        // Same recordings a judge in the selected Room hears (Adjudicate.php),
+        // but play-only: no trackRecording/recordDuration, so a manager
+        // listening never shows up in the judge playback analytics.
+        $showRecordings = $this->version->getRawOriginal('audition_type') === AuditionType::Remote->value;
+
+        $recordings = ($showRecordings && $selectedRoom !== null && $candidate !== null)
+            ? $adjudication->recordingsForCandidate($selectedRoom, $candidate)
+            : collect();
+
         // Live, not cached — reflects whatever was just saved, since
         // candidateTolerances() is a fresh aggregate query every call (same
         // convention as Adjudicate.php's Room Scoring table).
@@ -218,6 +228,8 @@ class AddEditScores extends Component
             'factorOptions' => $factorOptions,
             'judgeSummary' => $judgeSummary,
             'roomScores' => $roomScores,
+            'showRecordings' => $showRecordings,
+            'recordings' => $recordings,
             'inTolerance' => $inTolerance,
             'availableVoiceParts' => $this->version->availableVoiceParts(),
             'versionIsClosed' => $this->version->isClosed(),

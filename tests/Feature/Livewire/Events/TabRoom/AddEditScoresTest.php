@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\AuditionType;
 use App\Enums\JudgeType;
 use App\Livewire\Events\TabRoom\AddEditScores;
 use App\Models\Candidate;
@@ -18,6 +19,7 @@ use App\Models\VersionRoom;
 use App\Models\VoicePart;
 use App\Services\AdjudicationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 use function Pest\Laravel\actingAs;
@@ -307,4 +309,64 @@ test('changeVoicePart is rejected on a closed version', function () {
     $component->call('changeVoicePart')->assertStatus(422);
 
     expect($candidate->fresh()->voice_part_id)->toBe($voicePart->id);
+});
+
+/**
+ * A recording for the given candidate, approved unless told otherwise.
+ * Named distinctly from AdjudicateTest's makeTrackedRecording() — Pest
+ * test-file helpers are global across the suite.
+ */
+function makeTabRoomRecording(Version $version, Candidate $candidate, string $fileType = 'Scales', bool $approved = true): Recording
+{
+    $uploader = User::factory()->create();
+
+    return Recording::create([
+        'version_id' => $version->id,
+        'candidate_id' => $candidate->id,
+        'file_type' => $fileType,
+        'uploaded_by' => $uploader->id,
+        'approved_at' => $approved ? now() : null,
+        'approved_by' => $approved ? $uploader->id : null,
+        'url' => 'recordings/'.strtolower($fileType).'.mp3',
+    ]);
+}
+
+test('the selected Room\'s approved recordings are playable for a remote audition', function () {
+    Storage::fake('s3');
+    ['manager' => $manager, 'version' => $version, 'candidate' => $candidate] = makeTabRoomScenario();
+    makeTabRoomRecording($version, $candidate);
+
+    Livewire::actingAs($manager)
+        ->withQueryParams(['selectedCandidateId' => $candidate->id])
+        ->test(AddEditScores::class, ['version' => $version])
+        ->assertSee('Recordings — Room 1')
+        ->assertSeeHtml('<audio controls')
+        ->assertSee('recordings/scales.mp3')
+        ->assertDontSeeHtml('trackRecording');
+});
+
+test('unapproved recordings and ones outside the Room\'s rubric are not shown', function () {
+    Storage::fake('s3');
+    ['manager' => $manager, 'version' => $version, 'candidate' => $candidate] = makeTabRoomScenario();
+    makeTabRoomRecording($version, $candidate, approved: false);
+    makeTabRoomRecording($version, $candidate, fileType: 'Solo');
+
+    Livewire::actingAs($manager)
+        ->withQueryParams(['selectedCandidateId' => $candidate->id])
+        ->test(AddEditScores::class, ['version' => $version])
+        ->assertSee('No approved recordings for this Room\'s score categories.', escape: false)
+        ->assertDontSeeHtml('<audio controls');
+});
+
+test('the recordings card is hidden for an in-person audition', function () {
+    Storage::fake('s3');
+    ['manager' => $manager, 'version' => $version, 'candidate' => $candidate] = makeTabRoomScenario();
+    $version->update(['audition_type' => AuditionType::InPerson]);
+    makeTabRoomRecording($version, $candidate);
+
+    Livewire::actingAs($manager)
+        ->withQueryParams(['selectedCandidateId' => $candidate->id])
+        ->test(AddEditScores::class, ['version' => $version])
+        ->assertDontSee('Recordings — Room 1')
+        ->assertDontSeeHtml('<audio controls');
 });
