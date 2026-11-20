@@ -661,6 +661,10 @@ class CandidateDetail extends Component
         $transaction = PaymentTransaction::create([
             'version_id' => $this->version->id,
             'source' => PaymentSource::Manual,
+            // The manual form only records registration fees; without this
+            // the payment is invisible to every fee_type-scoped "Paid" total
+            // (Scorecard, Director Weekly Update).
+            'fee_type' => FeeType::Registration,
             'payer_teacher_id' => $this->teacher()->id,
             'school_id' => $this->candidate->school_id,
             'amount' => $amountCents,

@@ -1825,6 +1825,7 @@ test('savePayment records a manual payment_transactions row, auto-allocated 100%
     expect($transaction->getRawOriginal('source'))->toBe('manual');
     expect($transaction->getRawOriginal('status'))->toBe('completed');
     expect($transaction->getRawOriginal('payment_type'))->toBe('check');
+    expect($transaction->getRawOriginal('fee_type'))->toBe('registration');
     expect($transaction->reference_number)->toBe('CONF-123');
     expect($transaction->comments)->toBe('Paid at registration desk');
     expect($transaction->payer_teacher_id)->toBe($teacher->id);
