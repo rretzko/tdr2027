@@ -218,6 +218,12 @@
                     </flux:field>
 
                     <flux:field>
+                        <flux:checkbox wire:model="judge_survey" label="Judge check-ins" />
+                        <flux:description>At one-third, two-thirds and one-to-go, judges get a short congratulations and up to three optional questions about focus, obstacles and their listening setup. Answers appear on the Scorecard's Adjudication tab, combined and never by judge.</flux:description>
+                        <flux:error name="judge_survey" />
+                    </flux:field>
+
+                    <flux:field>
                         <flux:label>Max Registrants</flux:label>
                         <flux:input wire:model="max_registrants" type="number" min="0" placeholder="No limit" />
                         <flux:error name="max_registrants" />

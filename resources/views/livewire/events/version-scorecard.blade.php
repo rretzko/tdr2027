@@ -50,7 +50,7 @@
 
         <flux:tab.panel name="adjudication">
             @if ($progress !== null)
-                @include('livewire.events.version-scorecard-adjudication', ['progress' => $progress])
+                @include('livewire.events.version-scorecard-adjudication', ['progress' => $progress, 'judgeSurvey' => $judgeSurvey])
             @endif
         </flux:tab.panel>
 
