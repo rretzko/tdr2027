@@ -44,6 +44,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
+use Tests\Support\FakeConfirmingSquareGateway;
 
 use function Pest\Laravel\actingAs;
 use function Pest\Laravel\get;
@@ -1762,4 +1763,37 @@ test('payForSelected starts no checkout when a selected candidate has already pa
         ->assertNoRedirect();
 
     expect(PaymentTransaction::count())->toBe(1);
+});
+
+test('on return from Square, a paid group checkout is confirmed straight away instead of waiting for the webhook', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    makeReadyForGroupPayment($version);
+    app()->bind(SquarePaymentGateway::class, fn () => new FakeConfirmingSquareGateway);
+    FakeConfirmingSquareGateway::reset();
+
+    $candidates = Candidate::factory()->count(2)->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => PaymentSource::TeacherEpayment,
+        'vendor' => Vendor::Square,
+        'vendor_transaction_id' => 'order-'.uniqid(),
+        'payer_teacher_id' => $teacher->id,
+        'school_id' => $candidates[0]->school_id,
+        'amount' => 4000,
+        'status' => PaymentTransactionStatus::Pending,
+        'fee_type' => FeeType::Registration,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->set('selectedCandidateIds', $candidates->pluck('id')->all())
+        ->assertSee('group payment being confirmed')
+        ->call('confirmPendingPayments')
+        ->assertDontSee('group payment being confirmed')
+        ->assertSee('Pay Registration Fee for Selected');
+
+    expect($transaction->refresh()->getRawOriginal('status'))->toBe('completed');
 });

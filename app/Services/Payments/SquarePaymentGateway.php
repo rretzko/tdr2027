@@ -20,14 +20,19 @@ use App\Services\Payments\Dto\CheckoutSession;
 use App\Services\Payments\Dto\WebhookEvent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Square\Checkout\PaymentLinks\Requests\CreatePaymentLinkRequest;
 use Square\Environments;
+use Square\Orders\Requests\GetOrdersRequest;
+use Square\Payments\Requests\GetPaymentsRequest;
 use Square\SquareClient;
 use Square\Types\CheckoutOptions;
 use Square\Types\Money;
+use Square\Types\Payment;
 use Square\Types\QuickPay;
 use Square\Utils\WebhooksHelper;
+use Throwable;
 
 /**
  * See epayment-integration.md §2.2. Checkout is Square's Payment Links API
@@ -36,7 +41,7 @@ use Square\Utils\WebhooksHelper;
  * the webhook signing key) come from the Version's Event, not the Version
  * itself — see EventEpaymentConfig's own docblock for why.
  */
-class SquarePaymentGateway implements PaymentGatewayContract
+class SquarePaymentGateway implements ConfirmsCheckoutOnReturn, PaymentGatewayContract
 {
     /**
      * @param  Collection<int, Candidate>  $candidates
@@ -193,6 +198,77 @@ class SquarePaymentGateway implements PaymentGatewayContract
         }
 
         return null;
+    }
+
+    /**
+     * Asks Square for the order behind this checkout and the payment on it,
+     * so the payer's return doesn't wait about two minutes for the
+     * payment.updated webhook. The order id is the vendor_transaction_id
+     * stored at link creation; a paid order has a tender carrying the
+     * payment id. Any Square error is logged and answered with null, leaving
+     * the webhook to settle the row as before.
+     */
+    public function confirmCheckout(PaymentTransaction $transaction): ?WebhookEvent
+    {
+        $orderId = $transaction->vendor_transaction_id;
+        $config = $transaction->version?->eventEpaymentConfig();
+
+        if ($orderId === null || $orderId === '' || $config === null || $config->secret === null) {
+            return null;
+        }
+
+        try {
+            $client = $this->client($config);
+            $order = $client->orders->get(new GetOrdersRequest(['orderId' => $orderId]))->getOrder();
+
+            foreach ($order?->getTenders() ?? [] as $tender) {
+                $paymentId = $tender->getPaymentId();
+                if ($paymentId === null) {
+                    continue;
+                }
+
+                $payment = $client->payments->get(new GetPaymentsRequest(['paymentId' => $paymentId]))->getPayment();
+                if ($payment === null) {
+                    continue;
+                }
+
+                $event = $this->eventFromPayment($payment, $orderId);
+                if ($event->status !== PaymentTransactionStatus::Pending) {
+                    return $event;
+                }
+            }
+        } catch (Throwable $exception) {
+            Log::warning('SquarePaymentGateway: return confirmation failed; leaving it to the webhook', [
+                'payment_transaction_id' => $transaction->id,
+                'order_id' => $orderId,
+                'message' => $exception->getMessage(),
+            ]);
+        }
+
+        return null;
+    }
+
+    /**
+     * A Square Payment as the WebhookEvent parseWebhookEvent() would build
+     * from the same payment's payment.updated webhook — same status mapping.
+     */
+    public function eventFromPayment(Payment $payment, string $orderId): WebhookEvent
+    {
+        return new WebhookEvent(
+            vendorTransactionId: $orderId,
+            status: match ($payment->getStatus()) {
+                'COMPLETED' => PaymentTransactionStatus::Completed,
+                'FAILED', 'CANCELED' => PaymentTransactionStatus::Failed,
+                default => PaymentTransactionStatus::Pending,
+            },
+            amountCents: (int) ($payment->getAmountMoney()?->getAmount() ?? 0),
+            rawPayload: [
+                'confirmed_on_return' => true,
+                'order_id' => $orderId,
+                'payment_id' => $payment->getId(),
+                'status' => $payment->getStatus(),
+            ],
+        );
     }
 
     /**

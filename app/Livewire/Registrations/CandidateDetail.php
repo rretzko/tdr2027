@@ -33,6 +33,7 @@ use App\Services\CandidateService;
 use App\Services\CoTeacherAccessService;
 use App\Services\Payments\CheckoutInProgressGuard;
 use App\Services\Payments\PaymentGatewayFactory;
+use App\Services\Payments\PendingCheckoutConfirmer;
 use App\Services\RecordingReviewService;
 use App\Support\CandidateApplicationData;
 use Flux\Flux;
@@ -711,6 +712,22 @@ class CandidateDetail extends Component
             'housingFeeDue' => $housingFeeDue,
             'overpaymentCents' => $overpaymentCents,
         ];
+    }
+
+    /**
+     * Called when the page loads and every 10 seconds while a checkout is
+     * being confirmed: asks the vendor directly rather than waiting for its
+     * webhook (PendingCheckoutConfirmer).
+     */
+    public function confirmPendingPayments(CheckoutInProgressGuard $guard, PendingCheckoutConfirmer $confirmer): void
+    {
+        foreach (FeeType::cases() as $feeType) {
+            $pending = $guard->forCandidate($this->candidate, $feeType);
+
+            if ($pending !== null && $confirmer->confirm($pending)) {
+                Flux::toast("{$feeType->label()} payment confirmed.", variant: 'success');
+            }
+        }
     }
 
     public function recordPayment(): void
