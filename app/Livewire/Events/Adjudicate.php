@@ -6,9 +6,16 @@ namespace App\Livewire\Events;
 
 use App\Enums\AdjudicationEventType;
 use App\Enums\AuditionType;
+use App\Enums\JudgeSurvey\JudgeAgain;
+use App\Enums\JudgeSurvey\JudgeCheckpoint;
+use App\Enums\JudgeSurvey\JudgeDeviceType;
+use App\Enums\JudgeSurvey\JudgeFocus;
+use App\Enums\JudgeSurvey\JudgeObstacle;
+use App\Enums\JudgeSurvey\ListeningDevice;
 use App\Enums\VersionDateType;
 use App\Models\AdjudicationEvent;
 use App\Models\Candidate;
+use App\Models\JudgeSurveyResponse;
 use App\Models\Recording;
 use App\Models\RoomJudge;
 use App\Models\ScoreCategory;
@@ -17,6 +24,7 @@ use App\Models\VersionDate;
 use App\Services\AdjudicationService;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -42,6 +50,36 @@ class Adjudicate extends Component
      * @var array<int, int|string>
      */
     public array $scores = [];
+
+    /**
+     * Detected once per page load by reportDevice(); stored on any
+     * checkpoint row so the device mix is known without asking.
+     */
+    public ?string $deviceType = null;
+
+    public ?int $screenWidth = null;
+
+    /** The open checkpoint popup (a JudgeCheckpoint value), if any. */
+    public ?string $checkpoint = null;
+
+    public bool $showCheckpoint = false;
+
+    public string $checkpointMessage = '';
+
+    public string $checkpointTip = '';
+
+    public ?string $focus = null;
+
+    /** @var list<string> */
+    public array $obstacles = [];
+
+    public ?string $listeningDevice = null;
+
+    public ?int $overallRating = null;
+
+    public ?string $judgeAgain = null;
+
+    public string $surveyComment = '';
 
     public function mount(Version $version, VersionRoleAssignmentService $roles, AdjudicationService $adjudication): void
     {
@@ -101,9 +139,198 @@ class Adjudicate extends Component
             'scores.*.in' => 'Select a valid score for every factor before saving.',
         ]);
 
+        $candidates = $adjudication->candidatesForRoom($this->roomJudge->room);
+        $factorCount = $factors->count();
+        $completionBefore = $adjudication->judgeCompletionFor($this->roomJudge, $candidates->pluck('id'), $factorCount);
+
         $adjudication->saveScores($this->roomJudge, $candidate, $this->version, $this->scores);
 
+        // Re-saving a candidate already scored (a correction) is never a
+        // milestone, so only a first full score sheet moves the count. The
+        // save above always writes every factor (validated), so this
+        // candidate is now complete.
+        if (! ($completionBefore[$candidate->id] ?? false)) {
+            $completed = count(array_filter($completionBefore)) + 1;
+
+            if ($completed === $candidates->count()) {
+                Flux::toast(
+                    text: JudgeCheckpoint::fill(JudgeCheckpoint::completionMessage(), $this->messageValues($completed, $candidates->count())),
+                    heading: 'Scores saved.',
+                    duration: 10000,
+                    variant: 'success',
+                );
+
+                return;
+            }
+
+            if ($this->openCheckpoint($completed, $candidates->count())) {
+                return;
+            }
+        }
+
         Flux::toast('Scores saved.');
+    }
+
+    /**
+     * The browser's screen, reported once on page load. Renderless: nothing
+     * on screen depends on it.
+     */
+    #[Renderless]
+    public function reportDevice(int $screenWidth, int $screenHeight, bool $coarsePointer): void
+    {
+        if ($screenWidth < 1 || $screenHeight < 1 || $screenWidth > 20000 || $screenHeight > 20000) {
+            return;
+        }
+
+        $this->deviceType = JudgeDeviceType::detect($screenWidth, $screenHeight, $coarsePointer)->value;
+        $this->screenWidth = $screenWidth;
+    }
+
+    public function submitCheckpoint(): void
+    {
+        $response = $this->openResponse();
+
+        if ($response === null) {
+            $this->closeCheckpoint();
+
+            return;
+        }
+
+        /** @var array{focus: ?string, obstacles: list<string>, listeningDevice: ?string, overallRating: ?int, judgeAgain: ?string, surveyComment: ?string} $validated */
+        $validated = $this->validate([
+            'focus' => ['nullable', Rule::enum(JudgeFocus::class)],
+            'obstacles' => ['array'],
+            'obstacles.*' => [Rule::enum(JudgeObstacle::class)],
+            'listeningDevice' => ['nullable', Rule::enum(ListeningDevice::class)],
+            'overallRating' => ['nullable', 'integer', 'between:1,5'],
+            'judgeAgain' => ['nullable', Rule::enum(JudgeAgain::class)],
+            'surveyComment' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $checkpoint = JudgeCheckpoint::from((string) $response->getRawOriginal('checkpoint'));
+        $obstacles = array_values(array_unique($validated['obstacles']));
+        $comment = trim((string) $validated['surveyComment']);
+
+        // Each checkpoint asks its own question; anything else is ignored.
+        $answers = [
+            'focus' => $validated['focus'],
+            'obstacles' => $checkpoint === JudgeCheckpoint::First && $obstacles !== [] ? $obstacles : null,
+            'listening_device' => $checkpoint === JudgeCheckpoint::Second ? $validated['listeningDevice'] : null,
+            'overall_rating' => $checkpoint === JudgeCheckpoint::Final ? $validated['overallRating'] : null,
+            'judge_again' => $checkpoint === JudgeCheckpoint::Final ? $validated['judgeAgain'] : null,
+            'comment' => $comment !== '' ? $comment : null,
+        ];
+
+        // Submitting a blank form is a dismissal, not a response.
+        if (array_filter($answers, fn (mixed $answer): bool => $answer !== null) === []) {
+            $this->dismissCheckpoint();
+
+            return;
+        }
+
+        $response->update([...$answers, 'submitted_at' => now()]);
+
+        $this->closeCheckpoint();
+        Flux::toast('Thank you. Back to the music.');
+    }
+
+    /**
+     * "No thanks", the close button or Escape. A dismissed checkpoint is
+     * never shown again; an already-submitted one is left alone.
+     */
+    public function dismissCheckpoint(): void
+    {
+        $response = $this->openResponse();
+
+        if ($response !== null && $response->submitted_at === null && $response->dismissed_at === null) {
+            $response->update(['dismissed_at' => now()]);
+        }
+
+        $this->closeCheckpoint();
+    }
+
+    /**
+     * Records the checkpoint as shown (so it's shown once, even if the
+     * judge reloads or closes the tab) and opens the popup.
+     */
+    private function openCheckpoint(int $completed, int $total): bool
+    {
+        if (! $this->version->judge_survey) {
+            return false;
+        }
+
+        $checkpoint = JudgeCheckpoint::reachedAt($completed, $total);
+
+        if ($checkpoint === null) {
+            return false;
+        }
+
+        $response = JudgeSurveyResponse::firstOrCreate(
+            ['room_judge_id' => $this->roomJudge->id, 'checkpoint' => $checkpoint->value],
+            [
+                'version_id' => $this->version->id,
+                'completed_count' => $completed,
+                'roster_count' => $total,
+                'device_type' => $this->deviceType,
+                'screen_width' => $this->screenWidth,
+            ],
+        );
+
+        if (! $response->wasRecentlyCreated) {
+            return false;
+        }
+
+        $values = $this->messageValues($completed, $total);
+
+        $this->reset('focus', 'obstacles', 'listeningDevice', 'overallRating', 'judgeAgain', 'surveyComment');
+        $this->resetValidation();
+        $this->checkpoint = $checkpoint->value;
+        $this->checkpointMessage = JudgeCheckpoint::fill(Arr::random($checkpoint->messages()), $values);
+        $this->checkpointTip = Arr::random($checkpoint->tips());
+        $this->showCheckpoint = true;
+
+        return true;
+    }
+
+    private function judgeFirstName(): string
+    {
+        $user = $this->roomJudge->user;
+        $first = trim((string) $user->first_name);
+
+        return $first !== '' ? $first : $user->name;
+    }
+
+    private function openResponse(): ?JudgeSurveyResponse
+    {
+        $checkpoint = $this->checkpoint !== null ? JudgeCheckpoint::tryFrom($this->checkpoint) : null;
+
+        if ($checkpoint === null) {
+            return null;
+        }
+
+        return JudgeSurveyResponse::where('room_judge_id', $this->roomJudge->id)
+            ->where('checkpoint', $checkpoint->value)
+            ->first();
+    }
+
+    private function closeCheckpoint(): void
+    {
+        $this->checkpoint = null;
+        $this->showCheckpoint = false;
+    }
+
+    /**
+     * @return array<string, string|int>
+     */
+    private function messageValues(int $completed, int $total): array
+    {
+        return [
+            'name' => $this->judgeFirstName(),
+            'done' => $completed,
+            'total' => $total,
+            'remaining' => $total - $completed,
+            'room' => $this->roomJudge->room->name,
+        ];
     }
 
     /**
@@ -295,6 +522,7 @@ class Adjudicate extends Component
             'recordings' => $recordings,
             'adjudicationWindow' => $adjudicationWindow,
             'hasRubric' => $factorCount > 0,
+            'checkpointCase' => $this->checkpoint !== null ? JudgeCheckpoint::tryFrom($this->checkpoint) : null,
         ]);
     }
 }
