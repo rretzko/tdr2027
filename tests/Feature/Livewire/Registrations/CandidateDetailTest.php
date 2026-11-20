@@ -8,7 +8,10 @@ use App\Enums\CandidateStatus;
 use App\Enums\CandidateUploadStatus;
 use App\Enums\EmergencyContactRelationship;
 use App\Enums\EventStatus;
+use App\Enums\FeeType;
 use App\Enums\ObligationDecision;
+use App\Enums\PaymentSource;
+use App\Enums\PaymentTransactionStatus;
 use App\Enums\UploadType;
 use App\Enums\Vendor;
 use App\Enums\VersionApplicationStatus;
@@ -1947,4 +1950,73 @@ test('the payment panel lists a waived fee as waived by the event', function () 
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->assertSee('Registration Fee: waived by the event')
         ->assertDontSee('Private reason text');
+});
+
+/**
+ * A Version whose teacher Pay Now is ready for registration fees, and one
+ * of this teacher's candidates on it.
+ *
+ * @return array{version: Version, candidate: Candidate}
+ */
+function candidateDetailPayableCandidate(Teacher $teacher): array
+{
+    $version = Version::factory()->create(['status' => EventStatus::Active]);
+    VersionEpaymentConfig::create(['version_id' => $version->id, 'epayment_student' => false, 'epayment_teacher' => true]);
+    EventEpaymentConfig::create(['event_id' => $version->event_id, 'vendor' => Vendor::Square, 'vendor_account_id' => 'loc-123', 'secret' => 'token-123']);
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+
+    $candidate = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+
+    return ['version' => $version, 'candidate' => $candidate];
+}
+
+function candidateDetailCheckoutRow(Version $version, Candidate $candidate, PaymentTransactionStatus $status): PaymentTransaction
+{
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => PaymentSource::CandidateEpayment,
+        'vendor' => Vendor::Square,
+        'vendor_transaction_id' => 'order-'.uniqid(),
+        'payer_teacher_id' => $candidate->teacher_id,
+        'school_id' => $candidate->school_id,
+        'amount' => 2000,
+        'status' => $status,
+        'fee_type' => FeeType::Registration,
+        'paid_at' => $status === PaymentTransactionStatus::Completed ? now() : null,
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $transaction->id, 'candidate_id' => $candidate->id, 'amount' => 2000, 'allocated_at' => now()]);
+
+    return $transaction;
+}
+
+test('while a teacher checkout is still being confirmed, the Pay button is replaced and payNow starts no second checkout', function () {
+    $teacher = makeCandidateDetailTeacher();
+    actingAs($teacher->user);
+    ['version' => $version, 'candidate' => $candidate] = candidateDetailPayableCandidate($teacher);
+    candidateDetailCheckoutRow($version, $candidate, PaymentTransactionStatus::Pending);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->assertSee('Registration payment being confirmed')
+        ->assertDontSee('Pay Registration Fee')
+        ->call('payNow', 'registration')
+        ->assertNoRedirect();
+
+    expect(PaymentTransaction::count())->toBe(1);
+});
+
+test('teacher payNow starts no checkout once the fee is paid in full, even from a stale page', function () {
+    $teacher = makeCandidateDetailTeacher();
+    actingAs($teacher->user);
+    ['version' => $version, 'candidate' => $candidate] = candidateDetailPayableCandidate($teacher);
+
+    $component = Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->assertSee('Pay Registration Fee');
+
+    candidateDetailCheckoutRow($version, $candidate, PaymentTransactionStatus::Completed);
+
+    $component->call('payNow', 'registration')->assertNoRedirect();
+
+    expect(PaymentTransaction::count())->toBe(1);
 });

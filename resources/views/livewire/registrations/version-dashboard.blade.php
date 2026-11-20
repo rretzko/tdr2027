@@ -337,9 +337,14 @@
                                  Version closes, so up to two show side by side. --}}
                             <div class="flex items-center gap-2">
                                 @foreach ($activeFeeTypes as $feeType)
-                                    <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payForSelected('{{ $feeType->value }}')">
-                                        Pay {{ $feeType->label() }} for Selected
-                                    </flux:button>
+                                    @if (in_array($feeType->value, $confirmingFeeTypes, true))
+                                        {{-- Refresh until the vendor's webhook confirms the payment. --}}
+                                        <flux:badge size="sm" color="sky" icon="clock" wire:poll.10s>{{ $feeType->label() }} group payment being confirmed</flux:badge>
+                                    @else
+                                        <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payForSelected('{{ $feeType->value }}')">
+                                            Pay {{ $feeType->label() }} for Selected
+                                        </flux:button>
+                                    @endif
                                 @endforeach
                             </div>
                         @endif

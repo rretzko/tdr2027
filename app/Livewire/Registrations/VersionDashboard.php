@@ -24,10 +24,12 @@ use App\Models\Version;
 use App\Models\VersionInvitation;
 use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VoicePart;
+use App\Services\CandidateFeeCalculator;
 use App\Services\CandidateService;
 use App\Services\CoTeacherAccessService;
 use App\Services\CoTeacherConsolidationService;
 use App\Services\PaymentAllocationService;
+use App\Services\Payments\CheckoutInProgressGuard;
 use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\VersionInvitationEligibilityService;
 use Carbon\Carbon;
@@ -204,7 +206,7 @@ class VersionDashboard extends Component
      * covering every selected Candidate's total, unallocated until
      * reconciled. See epayment-integration.md §1.1/§3.
      */
-    public function payForSelected(PaymentGatewayFactory $factory, CoTeacherAccessService $coTeacherAccess, string $feeType): void
+    public function payForSelected(PaymentGatewayFactory $factory, CoTeacherAccessService $coTeacherAccess, CheckoutInProgressGuard $guard, CandidateFeeCalculator $feeCalculator, string $feeType): void
     {
         $feeType = FeeType::from($feeType);
 
@@ -260,10 +262,69 @@ class VersionDashboard extends Component
             return;
         }
 
+        // Students already paid in full are still selectable, so stop rather
+        // than charge again. Not dropped silently: the redirect to the vendor
+        // follows immediately, so a "skipped" notice would never be seen.
+        $alreadyPaid = $this->alreadyPaid($candidates, $feeType, $feeCalculator);
+        if ($alreadyPaid->isNotEmpty()) {
+            Flux::toast(
+                "Already paid: {$alreadyPaid->pluck('program_name')->implode(', ')}. Deselect them to pay for the rest.",
+                variant: 'warning',
+            );
+
+            return;
+        }
+
+        // A group checkout that's paid but not yet confirmed by the vendor's
+        // webhook — see CheckoutInProgressGuard.
+        $pending = $guard->forTeacherGroup($this->version, $this->teacher(), $feeType);
+        if ($pending !== null) {
+            Flux::toast(
+                "Your last group payment is still being confirmed. If the payment page was closed without paying, you can try again after {$guard->retryAfter($pending)->forDisplay()->format('g:i A')}.",
+                variant: 'warning',
+            );
+
+            return;
+        }
+
         $gateway = $factory->make($this->version);
         $session = $gateway->createCheckoutSession($this->version, $candidates, $this->teacher(), $feeType);
 
         $this->redirect($session->redirectUrl, navigate: false);
+    }
+
+    /**
+     * Selected candidates with nothing left to pay for this fee: the same
+     * balance math as CandidateDetail's Pay button — registration and
+     * participation share one balance, housing has its own.
+     *
+     * @param  Collection<int, Candidate>  $candidates
+     * @return Collection<int, Candidate>
+     */
+    private function alreadyPaid(Collection $candidates, FeeType $feeType, CandidateFeeCalculator $feeCalculator): Collection
+    {
+        $paid = PaymentAllocation::whereIn('candidate_id', $candidates->pluck('id'))
+            ->whereHas('paymentTransaction', function ($q) use ($feeType): void {
+                $q->where('status', PaymentTransactionStatus::Completed->value);
+                if ($feeType === FeeType::Housing) {
+                    $q->where('fee_type', FeeType::Housing->value);
+                }
+            })
+            ->groupBy('candidate_id')
+            ->selectRaw('candidate_id, sum(amount) as paid')
+            ->pluck('paid', 'candidate_id');
+
+        return $candidates->filter(function (Candidate $candidate) use ($paid, $feeType, $feeCalculator): bool {
+            $due = $feeType === FeeType::Housing
+                ? $feeCalculator->feeCents($this->version, $candidate, FeeType::Housing)
+                : $feeCalculator->combinedDueCents($this->version, $candidate);
+
+            $paidCents = (int) ($paid[$candidate->id] ?? 0);
+
+            // Paid something that covers the balance. A candidate with no
+            // fee configured at all is left to the gateway's own check.
+            return $paidCents > 0 && $due - $paidCents <= 0;
+        })->values();
     }
 
     /**
@@ -638,13 +699,22 @@ class VersionDashboard extends Component
 
         $paymentRegisterRows = self::paymentRegisterRows($this->version, $teacher);
 
+        // An active fee whose group checkout is paid but not yet confirmed
+        // shows "being confirmed" instead of its Pay button.
+        $guard = app(CheckoutInProgressGuard::class);
+        $confirmingFeeTypes = $activeFeeTypes
+            ->filter(fn (FeeType $type): bool => $guard->forTeacherGroup($this->version, $teacher, $type) !== null)
+            ->map(fn (FeeType $type): string => $type->value)
+            ->values()
+            ->all();
+
         $showOrientation = Auth::user()->dismissed_registration_orientation_at === null;
 
         return view('livewire.registrations.version-dashboard', compact(
             'teacher', 'myCandidates', 'filteredCandidates', 'paidByCandidateId', 'voicePartCounts', 'voicePartTotal',
             'statusCounts', 'statusTotal', 'statusOptions', 'schoolOptions',
             'upcomingDates', 'voiceParts', 'checklistDefs',
-            'activeFeeTypes', 'feeEligibleStatuses', 'epaymentStudentEnabled', 'epaymentOptedIn', 'unreconciledPayments', 'pendingPayments',
+            'activeFeeTypes', 'confirmingFeeTypes', 'feeEligibleStatuses', 'epaymentStudentEnabled', 'epaymentOptedIn', 'unreconciledPayments', 'pendingPayments',
             'paymentRegisterRows', 'showOrientation', 'coTeacherPairings',
         ));
     }
