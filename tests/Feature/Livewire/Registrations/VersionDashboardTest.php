@@ -1700,3 +1700,66 @@ test('payForSelected does not start a checkout when every selected candidate has
 
     expect(PaymentTransaction::count())->toBe(0);
 });
+
+test('while a group checkout is still being confirmed, Pay for Selected is replaced and starts no second checkout', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    makeReadyForGroupPayment($version);
+
+    $candidates = Candidate::factory()->count(2)->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => PaymentSource::TeacherEpayment,
+        'vendor' => Vendor::Square,
+        'vendor_transaction_id' => 'order-'.uniqid(),
+        'payer_teacher_id' => $teacher->id,
+        'school_id' => $candidates[0]->school_id,
+        'amount' => 4000,
+        'status' => PaymentTransactionStatus::Pending,
+        'fee_type' => FeeType::Registration,
+    ]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->set('selectedCandidateIds', $candidates->pluck('id')->all())
+        ->assertSee('Registration Fee group payment being confirmed')
+        ->assertDontSee('Pay Registration Fee for Selected')
+        ->call('payForSelected', 'registration')
+        ->assertNoRedirect();
+
+    expect(PaymentTransaction::count())->toBe(1);
+});
+
+test('payForSelected starts no checkout when a selected candidate has already paid in full', function () {
+    $teacher = makeRegistrationTeacher();
+    $version = Version::factory()->create();
+    actingAs($teacher->user);
+    inviteRegistrationTeacher($teacher, $version);
+    makeReadyForGroupPayment($version);
+    VersionFee::create(['version_id' => $version->id, 'registration' => 2000]);
+
+    $paid = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id, 'program_name' => 'Paid Already']);
+    $unpaid = Candidate::factory()->create(['version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => PaymentSource::CandidateEpayment,
+        'vendor' => Vendor::Square,
+        'vendor_transaction_id' => 'order-'.uniqid(),
+        'school_id' => $paid->school_id,
+        'amount' => 2000,
+        'status' => PaymentTransactionStatus::Completed,
+        'fee_type' => FeeType::Registration,
+        'paid_at' => now(),
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $transaction->id, 'candidate_id' => $paid->id, 'amount' => 2000, 'allocated_at' => now()]);
+
+    Livewire::actingAs($teacher->user)
+        ->test(VersionDashboard::class, ['version' => $version])
+        ->set('selectedCandidateIds', [$paid->id, $unpaid->id])
+        ->call('payForSelected', 'registration')
+        ->assertNoRedirect();
+
+    expect(PaymentTransaction::count())->toBe(1);
+});

@@ -26,6 +26,7 @@ use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VersionUploadFile;
 use App\Services\CandidateFeeCalculator;
 use App\Services\CandidateService;
+use App\Services\Payments\CheckoutInProgressGuard;
 use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\RecordingReviewService;
 use App\Support\CandidateApplicationData;
@@ -286,7 +287,7 @@ class Show extends Component
      * gates, mirroring CandidateDetail::payNow() (teacher-initiated), which
      * likewise isn't wrapped in that guard.
      */
-    public function payNow(PaymentGatewayFactory $factory, string $feeType): void
+    public function payNow(PaymentGatewayFactory $factory, CheckoutInProgressGuard $guard, string $feeType): void
     {
         abort_if($this->isEventManagerPreviewSession(), 403);
 
@@ -324,6 +325,26 @@ class Show extends Component
         // A waived fee is never charged (docs/plans/student-fee-waivers.md) —
         // paymentView() already hides the button; this is the server-side guard.
         abort_if($this->candidate->hasFeeWaived($feeType), 422, 'This fee has been waived by the event.');
+
+        // A stale page or second tab can still post here after the fee is
+        // paid; the balance paymentView() hides the button on is the guard.
+        if (! $this->paymentView()[$this->feeDueKey($feeType)]) {
+            Flux::toast("Nothing is due for the {$feeType->label()}.");
+
+            return;
+        }
+
+        // A checkout that's paid but not yet confirmed by the vendor's
+        // webhook — see CheckoutInProgressGuard.
+        $pending = $guard->forCandidate($this->candidate, $feeType);
+        if ($pending !== null) {
+            Flux::toast(
+                "Your payment is still being confirmed. If you closed the payment page without paying, you can try again after {$guard->retryAfter($pending)->forDisplay()->format('g:i A')}.",
+                variant: 'warning',
+            );
+
+            return;
+        }
 
         $gateway = $factory->make($this->version);
         $session = $gateway->createCheckoutSession($this->version, collect([$this->candidate]), $this->candidate->student, $feeType);
@@ -693,6 +714,20 @@ class Show extends Component
     }
 
     /**
+     * The paymentView() flag that says whether this fee is due.
+     *
+     * @return 'registrationFeeDue'|'participationFeeDue'|'housingFeeDue'
+     */
+    private function feeDueKey(FeeType $feeType): string
+    {
+        return match ($feeType) {
+            FeeType::Registration => 'registrationFeeDue',
+            FeeType::Participation => 'participationFeeDue',
+            FeeType::Housing => 'housingFeeDue',
+        };
+    }
+
+    /**
      * §5.7's three-part gate (epaymentStudentEnabled, this candidate's own
      * teacher opted in, the relevant fee's timing) plus the same due/paid
      * balance math CandidateDetail::render() already does per fee type —
@@ -701,7 +736,7 @@ class Show extends Component
      * drift no differently than any other Livewire-component duplication in
      * this codebase (e.g. isLocked()'s own status-cast comment).
      *
-     * @return array{registrationFeeDue: bool, participationFeeDue: bool, housingFeeDue: bool, overpaymentCents: int, waivedFeeLabels: list<string>, candidatePayments: Collection<int, PaymentTransaction>}
+     * @return array{registrationFeeDue: bool, participationFeeDue: bool, housingFeeDue: bool, confirmingFeeTypes: list<string>, overpaymentCents: int, waivedFeeLabels: list<string>, candidatePayments: Collection<int, PaymentTransaction>}
      */
     private function paymentView(): array
     {
@@ -745,10 +780,21 @@ class Show extends Component
             && $candidateStatus === CandidateStatus::Accepted
             && $housingBalanceDue;
 
+        // A due fee whose checkout is paid but not yet confirmed shows
+        // "being confirmed" instead of its Pay button (CheckoutInProgressGuard).
+        $guard = app(CheckoutInProgressGuard::class);
+        $confirmingFeeTypes = [];
+        foreach ([FeeType::Registration->value => $registrationFeeDue, FeeType::Participation->value => $participationFeeDue, FeeType::Housing->value => $housingFeeDue] as $type => $due) {
+            if ($due && $guard->forCandidate($this->candidate, FeeType::from($type)) !== null) {
+                $confirmingFeeTypes[] = $type;
+            }
+        }
+
         return [
             'registrationFeeDue' => $registrationFeeDue,
             'participationFeeDue' => $participationFeeDue,
             'housingFeeDue' => $housingFeeDue,
+            'confirmingFeeTypes' => $confirmingFeeTypes,
             'overpaymentCents' => $overpaymentCents,
             // Waived fees the Version actually charges — shown in place of a
             // Pay button. The waiver reason is EM/RM-only, never shown here.

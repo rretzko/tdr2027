@@ -299,21 +299,44 @@
                              housing can both be due at once once the Version
                              closes — independent @if blocks, not @elseif. --}}
                         @if ($registrationFeeDue)
-                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('registration')" :disabled="$previewSession">Pay Registration Fee</flux:button>
+                            @if (in_array('registration', $confirmingFeeTypes, true))
+                                <flux:badge size="sm" color="sky" icon="clock">Registration payment being confirmed</flux:badge>
+                            @else
+                                <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('registration')" :disabled="$previewSession">Pay Registration Fee</flux:button>
+                            @endif
                         @endif
                         @if ($participationFeeDue)
-                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('participation')" :disabled="$previewSession">Pay Participation Fee</flux:button>
+                            @if (in_array('participation', $confirmingFeeTypes, true))
+                                <flux:badge size="sm" color="sky" icon="clock">Participation payment being confirmed</flux:badge>
+                            @else
+                                <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('participation')" :disabled="$previewSession">Pay Participation Fee</flux:button>
+                            @endif
                         @endif
                         @if ($housingFeeDue)
-                            <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('housing')" :disabled="$previewSession">Pay Housing Fee</flux:button>
+                            @if (in_array('housing', $confirmingFeeTypes, true))
+                                <flux:badge size="sm" color="sky" icon="clock">Housing payment being confirmed</flux:badge>
+                            @else
+                                <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payNow('housing')" :disabled="$previewSession">Pay Housing Fee</flux:button>
+                            @endif
                         @endif
                     </div>
+                @endif
+
+                @if ($confirmingFeeTypes !== [])
+                    {{-- Refresh until the vendor's webhook confirms the payment. --}}
+                    <div wire:poll.10s class="sr-only">Checking for payment confirmation</div>
                 @endif
 
                 @if ($previewSession && ($registrationFeeDue || $participationFeeDue || $housingFeeDue))
                     <flux:text size="sm" class="text-zinc-500 mt-1">Payment is disabled while previewing as this student.</flux:text>
                 @endif
             </div>
+
+            @if ($confirmingFeeTypes !== [])
+                <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400 mb-2">
+                    We're waiting for the payment service to confirm your payment. This usually takes a couple of minutes, so there's no need to pay again.
+                </flux:text>
+            @endif
 
             @if ($candidatePayments->isNotEmpty())
                 <div class="space-y-2">
