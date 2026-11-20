@@ -28,6 +28,7 @@ use App\Services\CandidateFeeCalculator;
 use App\Services\CandidateService;
 use App\Services\Payments\CheckoutInProgressGuard;
 use App\Services\Payments\PaymentGatewayFactory;
+use App\Services\Payments\PendingCheckoutConfirmer;
 use App\Services\RecordingReviewService;
 use App\Support\CandidateApplicationData;
 use Flux\Flux;
@@ -350,6 +351,23 @@ class Show extends Component
         $session = $gateway->createCheckoutSession($this->version, collect([$this->candidate]), $this->candidate->student, $feeType);
 
         $this->redirect($session->redirectUrl, navigate: false);
+    }
+
+    /**
+     * Called when the page loads and every 10 seconds while a checkout is
+     * being confirmed: asks the vendor directly rather than waiting for its
+     * webhook (PendingCheckoutConfirmer). Only this candidate's own pending
+     * checkouts are checked.
+     */
+    public function confirmPendingPayments(CheckoutInProgressGuard $guard, PendingCheckoutConfirmer $confirmer): void
+    {
+        foreach (FeeType::cases() as $feeType) {
+            $pending = $guard->forCandidate($this->candidate, $feeType);
+
+            if ($pending !== null && $confirmer->confirm($pending)) {
+                Flux::toast("Your {$feeType->label()} payment is confirmed. Thank you!", variant: 'success');
+            }
+        }
     }
 
     public function uploadRecording(int $versionUploadFileId): void

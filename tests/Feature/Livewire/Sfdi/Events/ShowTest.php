@@ -50,6 +50,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use Tests\Support\FakeConfirmingSquareGateway;
 
 use function Pest\Laravel\actingAs;
 
@@ -1688,4 +1689,25 @@ test('payNow starts no checkout once the fee is paid in full, even from a stale 
     $component->call('payNow', 'registration')->assertNoRedirect();
 
     expect(PaymentTransaction::count())->toBe(1);
+});
+
+test('on return from Square, a paid checkout is confirmed straight away instead of waiting for the webhook', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    app()->bind(SquarePaymentGateway::class, fn () => new FakeConfirmingSquareGateway);
+    FakeConfirmingSquareGateway::reset();
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    $transaction = sfdiCheckoutRow($version, $candidate, PaymentTransactionStatus::Pending);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertSeeHtml('wire:init="confirmPendingPayments"')
+        ->call('confirmPendingPayments')
+        ->assertDontSee('payment being confirmed')
+        ->assertDontSee('Pay Registration Fee');
+
+    expect($transaction->refresh()->getRawOriginal('status'))->toBe('completed');
 });

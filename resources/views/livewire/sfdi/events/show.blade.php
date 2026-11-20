@@ -323,8 +323,8 @@
                 @endif
 
                 @if ($confirmingFeeTypes !== [])
-                    {{-- Refresh until the vendor's webhook confirms the payment. --}}
-                    <div wire:poll.10s class="sr-only">Checking for payment confirmation</div>
+                    {{-- Ask the vendor on arrival, then every 10 seconds, until the payment is confirmed. --}}
+                    <div wire:init="confirmPendingPayments" wire:poll.10s="confirmPendingPayments" class="sr-only">Checking for payment confirmation</div>
                 @endif
 
                 @if ($previewSession && ($registrationFeeDue || $participationFeeDue || $housingFeeDue))

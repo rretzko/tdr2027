@@ -31,6 +31,7 @@ use App\Services\CoTeacherConsolidationService;
 use App\Services\PaymentAllocationService;
 use App\Services\Payments\CheckoutInProgressGuard;
 use App\Services\Payments\PaymentGatewayFactory;
+use App\Services\Payments\PendingCheckoutConfirmer;
 use App\Services\VersionInvitationEligibilityService;
 use Carbon\Carbon;
 use Flux\Flux;
@@ -291,6 +292,22 @@ class VersionDashboard extends Component
         $session = $gateway->createCheckoutSession($this->version, $candidates, $this->teacher(), $feeType);
 
         $this->redirect($session->redirectUrl, navigate: false);
+    }
+
+    /**
+     * Called when the page loads and every 10 seconds while a group
+     * checkout is being confirmed: asks the vendor directly rather than
+     * waiting for its webhook (PendingCheckoutConfirmer).
+     */
+    public function confirmPendingPayments(CheckoutInProgressGuard $guard, PendingCheckoutConfirmer $confirmer): void
+    {
+        foreach (FeeType::cases() as $feeType) {
+            $pending = $guard->forTeacherGroup($this->version, $this->teacher(), $feeType);
+
+            if ($pending !== null && $confirmer->confirm($pending)) {
+                Flux::toast("{$feeType->label()} group payment confirmed. Allocate it to your students under Unreconciled Payments.", variant: 'success');
+            }
+        }
     }
 
     /**
