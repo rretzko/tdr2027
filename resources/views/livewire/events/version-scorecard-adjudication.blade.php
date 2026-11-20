@@ -335,6 +335,10 @@
             </div>
 
             @if ($agreement['gaps'] !== [])
+                @if (collect($agreement['gaps'])->flatMap(fn (array $gap): array => $gap['rooms'])->contains(fn (array $standing): bool => $standing['judges'] < $standing['of']))
+                    <flux:text size="sm" class="mb-3 text-zinc-500 dark:text-zinc-400">A standing from fewer than all of a Room's judges may move as the rest finish scoring.</flux:text>
+                @endif
+
                 {{-- Mobile: cards --}}
                 <div class="space-y-3 md:hidden">
                     @foreach ($agreement['gaps'] as $gap)
@@ -345,7 +349,7 @@
                             </div>
                             <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400">{{ $gap['candidate']->ref }} · {{ $gap['candidate']->voicePart?->name }}</flux:text>
                             @foreach ($gap['rooms'] as $standing)
-                                <flux:text size="sm">{{ $standing['name'] }}: <span class="tabular-nums font-medium">{{ $standing['percentile'] }}</span></flux:text>
+                                <flux:text size="sm">{{ $standing['name'] }}: <span class="tabular-nums font-medium">{{ $standing['percentile'] }}</span> <span class="tabular-nums text-zinc-500 dark:text-zinc-400">· {{ $standing['judges'] }} of {{ $standing['of'] }} {{ \Illuminate\Support\Str::plural('judge', $standing['of']) }}</span></flux:text>
                             @endforeach
                         </flux:card>
                     @endforeach
@@ -369,7 +373,7 @@
                                 <flux:table.cell>{{ $gap['candidate']->voicePart?->name }}</flux:table.cell>
                                 <flux:table.cell class="whitespace-normal text-sm">
                                     @foreach ($gap['rooms'] as $standing)
-                                        <span class="block">{{ $standing['name'] }}: <span class="tabular-nums font-medium">{{ $standing['percentile'] }}</span></span>
+                                        <span class="block">{{ $standing['name'] }}: <span class="tabular-nums font-medium">{{ $standing['percentile'] }}</span> <span class="tabular-nums text-zinc-500 dark:text-zinc-400">· {{ $standing['judges'] }} of {{ $standing['of'] }} {{ \Illuminate\Support\Str::plural('judge', $standing['of']) }}</span></span>
                                     @endforeach
                                 </flux:table.cell>
                                 <flux:table.cell align="end" class="tabular-nums font-medium text-amber-600 dark:text-amber-400">{{ $gap['gap'] }}</flux:table.cell>
