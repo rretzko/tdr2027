@@ -1606,3 +1606,86 @@ test('a waived fee shows as waived instead of a Pay button', function () {
         ->assertDontSee('Pay Registration Fee')
         ->assertDontSee('Private reason text');
 });
+
+/**
+ * A single-candidate checkout row as SquarePaymentGateway writes it:
+ * allocated 100% to the candidate at creation.
+ */
+function sfdiCheckoutRow(Version $version, Candidate $candidate, PaymentTransactionStatus $status, int $amount = 2000): PaymentTransaction
+{
+    $transaction = PaymentTransaction::create([
+        'version_id' => $version->id,
+        'source' => PaymentSource::CandidateEpayment,
+        'vendor' => Vendor::Square,
+        'vendor_transaction_id' => 'order-'.uniqid(),
+        'payer_student_id' => $candidate->student_id,
+        'school_id' => $candidate->school_id,
+        'amount' => $amount,
+        'status' => $status,
+        'fee_type' => FeeType::Registration,
+        'paid_at' => $status === PaymentTransactionStatus::Completed ? now() : null,
+    ]);
+    PaymentAllocation::create(['payment_transaction_id' => $transaction->id, 'candidate_id' => $candidate->id, 'amount' => $amount, 'allocated_at' => now()]);
+
+    return $transaction;
+}
+
+test('while a checkout is still being confirmed, the Pay button is replaced and a second payNow starts no checkout', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    app()->bind(SquarePaymentGateway::class, fn () => new FakeSfdiSquareGateway);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    sfdiCheckoutRow($version, $candidate, PaymentTransactionStatus::Pending);
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertSee('Registration payment being confirmed')
+        ->assertSee('no need to pay again')
+        ->assertDontSee('Pay Registration Fee')
+        ->call('payNow', 'registration')
+        ->assertNoRedirect();
+
+    expect(PaymentTransaction::count())->toBe(1);
+});
+
+test('a checkout abandoned for longer than the confirming window no longer blocks paying', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    app()->bind(SquarePaymentGateway::class, fn () => new FakeSfdiSquareGateway);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    sfdiCheckoutRow($version, $candidate, PaymentTransactionStatus::Pending);
+
+    Carbon::setTestNow(now()->addMinutes(31));
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['candidate' => $candidate])
+        ->assertSee('Pay Registration Fee')
+        ->call('payNow', 'registration')
+        ->assertRedirect('https://fake.example/checkout');
+
+    expect(PaymentTransaction::count())->toBe(2);
+});
+
+test('payNow starts no checkout once the fee is paid in full, even from a stale page', function () {
+    $user = makeSfdiEventsShowUser();
+    $teacher = Teacher::factory()->create();
+    $version = makeSfdiPayableVersion($teacher->id);
+    app()->bind(SquarePaymentGateway::class, fn () => new FakeSfdiSquareGateway);
+
+    actingAs($user);
+    $candidate = Candidate::factory()->create(['student_id' => $user->student->id, 'version_id' => $version->id, 'teacher_id' => $teacher->id]);
+    $component = Livewire::actingAs($user)->test(Show::class, ['candidate' => $candidate])->assertSee('Pay Registration Fee');
+
+    // Paid in another tab after this page loaded.
+    sfdiCheckoutRow($version, $candidate, PaymentTransactionStatus::Completed);
+
+    $component->call('payNow', 'registration')->assertNoRedirect();
+
+    expect(PaymentTransaction::count())->toBe(1);
+});

@@ -31,6 +31,7 @@ use App\Services\AuditionCapService;
 use App\Services\CandidateFeeCalculator;
 use App\Services\CandidateService;
 use App\Services\CoTeacherAccessService;
+use App\Services\Payments\CheckoutInProgressGuard;
 use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\RecordingReviewService;
 use App\Support\CandidateApplicationData;
@@ -586,7 +587,7 @@ class CandidateDetail extends Component
      * FeeType's own timing/eligibility gate — registration and participation
      * are never combined into one checkout amount.
      */
-    public function payNow(PaymentGatewayFactory $factory, string $feeType): void
+    public function payNow(PaymentGatewayFactory $factory, CheckoutInProgressGuard $guard, string $feeType): void
     {
         $feeType = FeeType::from($feeType);
 
@@ -611,10 +612,105 @@ class CandidateDetail extends Component
         // render() already hides the button; this is the server-side guard.
         abort_if($this->candidate->hasFeeWaived($feeType), 422, 'This fee has been waived by the event.');
 
+        // A stale page or second tab can still post here after the fee is
+        // paid; the same balance render() hides the button on is the guard.
+        $due = $this->feeDueFlags();
+        if (! match ($feeType) {
+            FeeType::Registration => $due['registrationFeeDue'],
+            FeeType::Participation => $due['participationFeeDue'],
+            FeeType::Housing => $due['housingFeeDue'],
+        }) {
+            Flux::toast("Nothing is due for the {$feeType->label()}.");
+
+            return;
+        }
+
+        // A checkout that's paid but not yet confirmed by the vendor's
+        // webhook — see CheckoutInProgressGuard.
+        $pending = $guard->forCandidate($this->candidate, $feeType);
+        if ($pending !== null) {
+            Flux::toast(
+                "This payment is still being confirmed. If the payment page was closed without paying, you can try again after {$guard->retryAfter($pending)->forDisplay()->format('g:i A')}.",
+                variant: 'warning',
+            );
+
+            return;
+        }
+
         $gateway = $factory->make($this->version);
         $session = $gateway->createCheckoutSession($this->version, collect([$this->candidate]), $this->teacher(), $feeType);
 
         $this->redirect($session->redirectUrl, navigate: false);
+    }
+
+    /**
+     * Which fees this Candidate's Pay buttons are offered for, and any
+     * overpayment — shared by render() and payNow()'s server-side guard.
+     *
+     * @return array{registrationFeeDue: bool, participationFeeDue: bool, housingFeeDue: bool, overpaymentCents: int}
+     */
+    private function feeDueFlags(): array
+    {
+        $epaymentTeacherReady = $this->version->epaymentTeacherReady();
+
+        // getRawOriginal(), not the magic-cast property — Larastan can't
+        // infer the enum cast through this method-based casts() return here
+        // (cataloged Larastan quirk; see PHPStan-quirks memory).
+        $candidateStatus = CandidateStatus::from((string) $this->candidate->getRawOriginal('status'));
+
+        // Balance due mirrors PaymentReconciliation::baseRows() — due accrues
+        // the registration fee once fee-eligible, plus the participation fee
+        // once that window opens and the candidate was Accepted; paid is
+        // every Completed allocation on this candidate regardless of which
+        // fee it satisfied (registration/participation are never both
+        // payable at once — see FeeType). A zero or negative balance
+        // (fully paid, or an overpayment) suppresses the button.
+        // Net of per-student fee waivers — see CandidateFeeCalculator.
+        $feeCalculator = app(CandidateFeeCalculator::class);
+        $dueCents = $feeCalculator->combinedDueCents($this->version, $this->candidate);
+        $paidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
+            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
+            ->sum('amount');
+        $balanceDue = $dueCents - $paidCents > 0;
+        $overpaymentCents = max(0, $paidCents - $dueCents);
+
+        $registrationFeeDue = $epaymentTeacherReady
+            && $this->version->registrationFeePayable()
+            && in_array($candidateStatus, CandidateStatus::registrationFeeEligibleStates(), true)
+            && $balanceDue;
+
+        $participationFeeDue = $epaymentTeacherReady
+            && $this->version->participationFeePayable()
+            && $candidateStatus === CandidateStatus::Accepted
+            && $balanceDue;
+
+        // Housing deliberately stays OUTSIDE the combined registration+
+        // participation balance above (confirmed with the product owner,
+        // studentfolder-module.md §0 second pass, 2026-08-18 — the
+        // already-confirmed reconciliation formula, epayment-integration.md
+        // §5, does not change) — it gets its own independent due/paid pair,
+        // matched via payment_transactions.fee_type (written only by the
+        // electronic gateways at checkout; a manually recorded payment
+        // isn't attributable to a specific fee type, so it can't satisfy
+        // this balance — flag if that gap needs closing later).
+        $housingCents = $feeCalculator->feeCents($this->version, $this->candidate, FeeType::Housing);
+        $housingPaidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
+            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value)
+                ->where('fee_type', FeeType::Housing->value))
+            ->sum('amount');
+        $housingBalanceDue = $housingCents - $housingPaidCents > 0;
+
+        $housingFeeDue = $epaymentTeacherReady
+            && $this->version->housingFeePayable()
+            && $candidateStatus === CandidateStatus::Accepted
+            && $housingBalanceDue;
+
+        return [
+            'registrationFeeDue' => $registrationFeeDue,
+            'participationFeeDue' => $participationFeeDue,
+            'housingFeeDue' => $housingFeeDue,
+            'overpaymentCents' => $overpaymentCents,
+        ];
     }
 
     public function recordPayment(): void
@@ -720,59 +816,18 @@ class CandidateDetail extends Component
             ? app(AuditionCapService::class)->auditionGroupEnsembleNames($this->version, $this->candidate->voicePart)
             : collect();
 
-        $epaymentTeacherReady = $this->version->epaymentTeacherReady();
-
-        // getRawOriginal(), not the magic-cast property — Larastan can't
-        // infer the enum cast through this method-based casts() return here
-        // (cataloged Larastan quirk; see PHPStan-quirks memory).
-        $candidateStatus = CandidateStatus::from((string) $this->candidate->getRawOriginal('status'));
-
-        // Balance due mirrors PaymentReconciliation::baseRows() — due accrues
-        // the registration fee once fee-eligible, plus the participation fee
-        // once that window opens and the candidate was Accepted; paid is
-        // every Completed allocation on this candidate regardless of which
-        // fee it satisfied (registration/participation are never both
-        // payable at once — see FeeType). A zero or negative balance
-        // (fully paid, or an overpayment) suppresses the button.
-        // Net of per-student fee waivers — see CandidateFeeCalculator.
+        ['registrationFeeDue' => $registrationFeeDue, 'participationFeeDue' => $participationFeeDue, 'housingFeeDue' => $housingFeeDue, 'overpaymentCents' => $overpaymentCents] = $this->feeDueFlags();
         $feeCalculator = app(CandidateFeeCalculator::class);
-        $dueCents = $feeCalculator->combinedDueCents($this->version, $this->candidate);
-        $paidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
-            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
-            ->sum('amount');
-        $balanceDue = $dueCents - $paidCents > 0;
-        $overpaymentCents = max(0, $paidCents - $dueCents);
 
-        $registrationFeeDue = $epaymentTeacherReady
-            && $this->version->registrationFeePayable()
-            && in_array($candidateStatus, CandidateStatus::registrationFeeEligibleStates(), true)
-            && $balanceDue;
-
-        $participationFeeDue = $epaymentTeacherReady
-            && $this->version->participationFeePayable()
-            && $candidateStatus === CandidateStatus::Accepted
-            && $balanceDue;
-
-        // Housing deliberately stays OUTSIDE the combined registration+
-        // participation balance above (confirmed with the product owner,
-        // studentfolder-module.md §0 second pass, 2026-08-18 — the
-        // already-confirmed reconciliation formula, epayment-integration.md
-        // §5, does not change) — it gets its own independent due/paid pair,
-        // matched via payment_transactions.fee_type (written only by the
-        // electronic gateways at checkout; a manually recorded payment
-        // isn't attributable to a specific fee type, so it can't satisfy
-        // this balance — flag if that gap needs closing later).
-        $housingCents = $feeCalculator->feeCents($this->version, $this->candidate, FeeType::Housing);
-        $housingPaidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
-            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value)
-                ->where('fee_type', FeeType::Housing->value))
-            ->sum('amount');
-        $housingBalanceDue = $housingCents - $housingPaidCents > 0;
-
-        $housingFeeDue = $epaymentTeacherReady
-            && $this->version->housingFeePayable()
-            && $candidateStatus === CandidateStatus::Accepted
-            && $housingBalanceDue;
+        // A due fee whose checkout is paid but not yet confirmed shows
+        // "being confirmed" instead of its Pay button (CheckoutInProgressGuard).
+        $guard = app(CheckoutInProgressGuard::class);
+        $confirmingFeeTypes = [];
+        foreach ([FeeType::Registration->value => $registrationFeeDue, FeeType::Participation->value => $participationFeeDue, FeeType::Housing->value => $housingFeeDue] as $type => $due) {
+            if ($due && $guard->forCandidate($this->candidate, FeeType::from($type)) !== null) {
+                $confirmingFeeTypes[] = $type;
+            }
+        }
 
         return view('livewire.registrations.candidate-detail', [
             'checklistDefs' => $checklistDefs,
@@ -787,6 +842,7 @@ class CandidateDetail extends Component
             'registrationFeeDue' => $registrationFeeDue,
             'participationFeeDue' => $participationFeeDue,
             'housingFeeDue' => $housingFeeDue,
+            'confirmingFeeTypes' => $confirmingFeeTypes,
             'overpaymentCents' => $overpaymentCents,
             // Waived fees the Version actually charges (docs/plans/
             // student-fee-waivers.md). The reason stays EM/RM-only.
