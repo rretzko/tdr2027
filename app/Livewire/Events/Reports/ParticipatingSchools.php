@@ -6,6 +6,7 @@ namespace App\Livewire\Events\Reports;
 
 use App\Concerns\ScopesReports;
 use App\Enums\CandidateStatus;
+use App\Enums\FeeType;
 use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
 use App\Enums\PaymentType;
@@ -157,6 +158,9 @@ class ParticipatingSchools extends Component
         PaymentTransaction::create([
             'version_id' => $this->version->id,
             'source' => PaymentSource::Manual,
+            // Lump sums recorded here are registration fees; without this
+            // they never reach the fee_type-scoped "Paid" totals once allocated.
+            'fee_type' => FeeType::Registration,
             'payer_teacher_id' => $this->paymentTeacherId,
             'school_id' => $this->paymentSchoolId,
             'amount' => (int) round(((float) $validated['amount']) * 100),

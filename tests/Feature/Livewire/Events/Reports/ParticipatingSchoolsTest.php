@@ -221,6 +221,7 @@ test('savePayment records an unallocated payment_transactions row with the actin
     expect($payment->reference_number)->toBe('CHK-1001');
     expect($payment->recorded_by_user_id)->toBe($founder->id);
     expect($payment->getRawOriginal('source'))->toBe('manual');
+    expect($payment->getRawOriginal('fee_type'))->toBe('registration');
     expect($payment->allocations)->toHaveCount(0);
 });
 

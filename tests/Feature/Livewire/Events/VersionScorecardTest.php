@@ -280,4 +280,29 @@ class VersionScorecardTest extends TestCase
 
         $mail->assertSeeInHtml(route('events.versions.scorecard', $version));
     }
+
+    public function test_the_registration_tab_compares_schools_with_the_previous_version(): void
+    {
+        $version = $this->makeVersion();
+        $version->update(['senior_class_of' => 2027]);
+        $prior = Version::factory()->create(['event_id' => $version->event_id, 'senior_class_of' => 2026, 'name' => 'Last Year Choir']);
+        Candidate::factory()->create(['version_id' => $prior->id, 'status' => CandidateStatus::Accepted]);
+
+        Livewire::actingAs($this->makeEventManager($version))
+            ->test(VersionScorecard::class, ['version' => $version])
+            ->assertSee('School retention')
+            ->assertSee('Compared with Last Year Choir')
+            ->set('tab', 'adjudication')
+            ->assertDontSee('School retention');
+    }
+
+    public function test_the_retention_panel_is_left_out_without_a_previous_version(): void
+    {
+        $version = $this->makeVersion();
+
+        Livewire::actingAs($this->makeEventManager($version))
+            ->test(VersionScorecard::class, ['version' => $version])
+            ->assertOk()
+            ->assertDontSee('School retention');
+    }
 }
