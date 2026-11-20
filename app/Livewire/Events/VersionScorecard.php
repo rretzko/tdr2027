@@ -11,6 +11,7 @@ use App\Models\Version;
 use App\Models\VersionDate;
 use App\Models\VersionScorecardSnapshot;
 use App\Services\AdjudicationProgressService;
+use App\Services\SchoolRetentionService;
 use App\Services\VersionRoleAssignmentService;
 use App\Services\VersionScorecardService;
 use Illuminate\Support\Carbon;
@@ -47,7 +48,7 @@ class VersionScorecard extends Component
         }
     }
 
-    public function render(VersionScorecardService $scorecard, AdjudicationProgressService $adjudication): View
+    public function render(VersionScorecardService $scorecard, AdjudicationProgressService $adjudication, SchoolRetentionService $retention): View
     {
         $snapshots = $this->version->scorecardSnapshots()->orderBy('captured_on')->get();
         $deadline = $this->postmarkDeadline();
@@ -76,6 +77,7 @@ class VersionScorecard extends Component
             'strandedPending' => $this->strandedPending(),
             // Only computed for the tab on screen; the tabs switch via wire:model.live.
             'progress' => $this->tab === 'adjudication' ? $adjudication->forVersion($this->version) : null,
+            'retention' => $this->tab === 'registration' ? $retention->forVersion($this->version) : null,
         ]);
     }
 
