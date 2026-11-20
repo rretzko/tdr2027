@@ -39,11 +39,13 @@ use App\Models\VersionObligation;
 use App\Models\VersionObligationResponse;
 use App\Models\VersionUploadFile;
 use App\Models\VoicePart;
+use App\Services\Payments\SquarePaymentGateway;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use Tests\Support\FakeConfirmingSquareGateway;
 
 use function Pest\Laravel\actingAs;
 
@@ -2019,4 +2021,22 @@ test('teacher payNow starts no checkout once the fee is paid in full, even from 
     $component->call('payNow', 'registration')->assertNoRedirect();
 
     expect(PaymentTransaction::count())->toBe(1);
+});
+
+test('on return from Square, a paid teacher checkout is confirmed straight away instead of waiting for the webhook', function () {
+    $teacher = makeCandidateDetailTeacher();
+    actingAs($teacher->user);
+    ['version' => $version, 'candidate' => $candidate] = candidateDetailPayableCandidate($teacher);
+    app()->bind(SquarePaymentGateway::class, fn () => new FakeConfirmingSquareGateway);
+    FakeConfirmingSquareGateway::reset();
+    $transaction = candidateDetailCheckoutRow($version, $candidate, PaymentTransactionStatus::Pending);
+
+    Livewire::actingAs($teacher->user)
+        ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
+        ->assertSeeHtml('wire:init="confirmPendingPayments"')
+        ->call('confirmPendingPayments')
+        ->assertDontSee('payment being confirmed')
+        ->assertDontSee('Pay Registration Fee');
+
+    expect($transaction->refresh()->getRawOriginal('status'))->toBe('completed');
 });

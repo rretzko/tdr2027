@@ -341,8 +341,8 @@
             </div>
 
             @if ($confirmingFeeTypes !== [])
-                {{-- Refresh until the vendor's webhook confirms the payment. --}}
-                <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400 mb-2" wire:poll.10s>
+                {{-- Ask the vendor on arrival, then every 10 seconds, until the payment is confirmed. --}}
+                <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400 mb-2" wire:init="confirmPendingPayments" wire:poll.10s="confirmPendingPayments">
                     Waiting for the payment service to confirm this payment. This usually takes a couple of minutes, so there's no need to pay again.
                 </flux:text>
             @endif
