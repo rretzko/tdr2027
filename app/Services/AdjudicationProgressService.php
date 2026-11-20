@@ -86,7 +86,7 @@ final class AdjudicationProgressService
      *     schedule: array{status: string, remaining: int, neededPerDay: ?int, recentPerDay: ?int, rateDays: ?int, projectedFinish: ?Carbon},
      *     rooms: list<array{room: VersionRoom, candidates: int, candidatesComplete: int, expected: int, completed: int, percent: int, flag: ?string, judgesNotStarted: int, judges: list<array<string, mixed>>}>,
      *     listeningTracked: bool,
-     *     agreement: array{candidates: int, r: ?float, gaps: list<array{candidate: Candidate, gap: int, rooms: list<array{name: string, percentile: int}>}>},
+     *     agreement: array{candidates: int, r: ?float, gaps: list<array{candidate: Candidate, gap: int, rooms: list<array{name: string, percentile: int, judges: int, of: int}>}>},
      *     daily: list<array{date: string, x: string, heading: string, saves: int}>,
      * }
      */
@@ -115,7 +115,7 @@ final class AdjudicationProgressService
         $completedSince = (int) $roomRows->sum('completedSince');
         $agreement = $this->agreement($roomRows->all(), $higherIsBetter);
         $roomRows = $roomRows->map(function (array $room): array {
-            unset($room['completedSince'], $room['candidateMeans'], $room['candidateModels']);
+            unset($room['completedSince'], $room['candidateMeans'], $room['candidateJudges'], $room['scoringJudges'], $room['candidateModels']);
 
             return $room;
         });
@@ -348,7 +348,7 @@ final class AdjudicationProgressService
      * @param  array<int, list<array{id: int, type: string, seconds: int}>>  $recordingLengths
      * @param  Collection<int, Teacher>  $judgeTeachers  keyed by user_id
      * @param  array<int, array<int, array<int, int>>>  $factorScores  judge id => candidate id => factor id => score
-     * @return array{room: VersionRoom, candidates: int, candidatesComplete: int, expected: int, completed: int, completedSince: int, candidateMeans: array<int, float>, candidateModels: Collection<int, Candidate>, percent: int, flag: ?string, judgesNotStarted: int, judges: list<array<string, mixed>>}
+     * @return array{room: VersionRoom, candidates: int, candidatesComplete: int, expected: int, completed: int, completedSince: int, candidateMeans: array<int, float>, candidateJudges: array<int, int>, scoringJudges: int, candidateModels: Collection<int, Candidate>, percent: int, flag: ?string, judgesNotStarted: int, judges: list<array<string, mixed>>}
      */
     private function roomRow(VersionRoom $room, Collection $pairs, array $playback, array $recordingLengths, ?int $versionPace, Carbon $now, string $windowStatus, ?Carbon $rateSince, Collection $judgeTeachers, bool $higherIsBetter, array $factorScores): array
     {
@@ -434,6 +434,10 @@ final class AdjudicationProgressService
             'completed' => $completed,
             'completedSince' => (int) $scoring->sum('completedSince'),
             'candidateMeans' => $this->candidateMeans($completeTotals),
+            // How many judges' full sheets each mean rests on, so a gap row
+            // can say "1 of 3 judges" while the Room is still scoring.
+            'candidateJudges' => array_count_values(array_merge(...array_map(array_keys(...), array_values($completeTotals)))),
+            'scoringJudges' => $scoring->count(),
             'candidateModels' => $candidates->keyBy('id'),
             'percent' => $this->percent($completed, $expected),
             'flag' => $flag,
@@ -721,9 +725,11 @@ final class AdjudicationProgressService
      * correlated across every pair of Rooms the candidate was scored in,
      * plus the candidates whose percentiles differ by
      * AGREEMENT_GAP_PERCENTILE or more: their result leans on one round.
+     * Each standing carries how many of the Room's scoring judges it rests
+     * on, since a standing from one judge can move as the rest score.
      *
-     * @param  array<int, array{room: VersionRoom, candidateMeans: array<int, float>, candidateModels: Collection<int, Candidate>}>  $roomRows
-     * @return array{candidates: int, r: ?float, gaps: list<array{candidate: Candidate, gap: int, rooms: list<array{name: string, percentile: int}>}>}
+     * @param  array<int, array{room: VersionRoom, candidateMeans: array<int, float>, candidateJudges: array<int, int>, scoringJudges: int, candidateModels: Collection<int, Candidate>}>  $roomRows
+     * @return array{candidates: int, r: ?float, gaps: list<array{candidate: Candidate, gap: int, rooms: list<array{name: string, percentile: int, judges: int, of: int}>}>}
      */
     private function agreement(array $roomRows, bool $higherIsBetter): array
     {
@@ -732,7 +738,12 @@ final class AdjudicationProgressService
         $models = [];
         foreach ($roomRows as $row) {
             foreach ($this->percentiles($row['candidateMeans'], $higherIsBetter) as $candidateId => $percentile) {
-                $byCandidate[$candidateId][] = ['name' => $row['room']->name, 'percentile' => $percentile];
+                $byCandidate[$candidateId][] = [
+                    'name' => $row['room']->name,
+                    'percentile' => $percentile,
+                    'judges' => $row['candidateJudges'][$candidateId] ?? 0,
+                    'of' => $row['scoringJudges'],
+                ];
                 $models[$candidateId] = $row['candidateModels']->get($candidateId);
             }
         }

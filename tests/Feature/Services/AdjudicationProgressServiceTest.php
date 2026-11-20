@@ -626,8 +626,8 @@ test('candidates whose standing differs widely between Rooms are listed, widest 
         ->and(collect($agreement['gaps'])->take(2)->map(fn (array $gap): int => $gap['candidate']->id)->sort()->values()->all())
         ->toBe(collect([$candidates[0]->id, $candidates[9]->id])->sort()->values()->all())
         ->and(collect($agreement['gaps'])->firstWhere(fn (array $gap): bool => $gap['candidate']->is($candidates[0]))['rooms'])->toBe([
-            ['name' => 'Scales', 'percentile' => 100],
-            ['name' => 'Solos', 'percentile' => 0],
+            ['name' => 'Scales', 'percentile' => 100, 'judges' => 1, 'of' => 1],
+            ['name' => 'Solos', 'percentile' => 0, 'judges' => 1, 'of' => 1],
         ]);
 });
 
@@ -649,7 +649,7 @@ test('agreement needs enough shared candidates, ties share a percentile, and hig
 
     expect($agreement['candidates'])->toBe(3)
         ->and($agreement['r'])->toBeNull()
-        ->and($rooms[$high->id])->toBe([['name' => 'Scales', 'percentile' => 100], ['name' => 'Solos', 'percentile' => 0]])
+        ->and($rooms[$high->id])->toBe([['name' => 'Scales', 'percentile' => 100, 'judges' => 1, 'of' => 1], ['name' => 'Solos', 'percentile' => 0, 'judges' => 1, 'of' => 1]])
         // Tied for last in Scales: both at the average of positions 1 and 2.
         ->and($rooms[$tied->id][0]['percentile'])->toBe(25)
         ->and($rooms[$tied->id][1]['percentile'])->toBe(100);
@@ -675,4 +675,36 @@ test('the Adjudication tab shows the Rooms\' agreement and lists candidates far 
         ->toContain('-1.00')
         ->toContain('loosely alike')
         ->toContain('Robin Leaning');
+});
+
+test('each standing on a gap row says how many of the Room judges it rests on', function () {
+    $version = Version::factory()->create(['score_order' => ScoreOrder::Asc]);
+    $scales = progressRoomFixture($version, 10, [JudgeType::Judge1, JudgeType::Judge2], 'Scales');
+    $solos = progressRoomFixture($version, 0, [JudgeType::Judge1, JudgeType::Judge2, JudgeType::Judge3], 'Solos');
+    $solos['room']->voiceParts()->attach($scales['candidates'][0]->voice_part_id);
+    $candidates = $scales['candidates'];
+
+    // Scales: both judges score everyone. Solos: only the first judge has
+    // started, in the reverse order, so candidate 0 rests on 1 of 3 there.
+    foreach ($candidates as $i => $candidate) {
+        foreach ($scales['judges'] as $judge) {
+            ownStudentScore($version, $judge, $scales, $candidate, min($i + 1, 9), $i === 9 ? 2 : 1);
+        }
+        $reverse = 9 - $i;
+        ownStudentScore($version, $solos['judges'][0], $solos, $candidate, min($reverse + 1, 9), $reverse === 9 ? 2 : 1);
+    }
+
+    $progress = app(AdjudicationProgressService::class)->forVersion($version);
+    $gap = collect($progress['agreement']['gaps'])->firstWhere(fn (array $gap): bool => $gap['candidate']->is($candidates[0]));
+
+    expect($gap['rooms'])->toBe([
+        ['name' => 'Scales', 'percentile' => 100, 'judges' => 2, 'of' => 2],
+        ['name' => 'Solos', 'percentile' => 0, 'judges' => 1, 'of' => 3],
+    ]);
+
+    $html = view('livewire.events.version-scorecard-adjudication', ['progress' => $progress])->render();
+
+    expect($html)->toContain('2 of 2 judges')
+        ->toContain('1 of 3 judges')
+        ->toContain('may move as the rest finish scoring');
 });
