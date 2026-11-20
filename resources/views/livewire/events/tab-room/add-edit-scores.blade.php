@@ -147,6 +147,28 @@
             @endif
         </flux:card>
 
+        @if ($selectedRoom && $showRecordings)
+            {{-- Recordings: the same approved, rubric-matched set a judge in the selected Room hears. Play-only — not logged to judge analytics. --}}
+            <flux:card class="mb-4">
+                <flux:heading size="lg" class="mb-2">Recordings — {{ $selectedRoom->name }}</flux:heading>
+
+                @if ($recordings->isEmpty())
+                    <flux:text size="sm" class="text-zinc-500">No approved recordings for this Room's score categories.</flux:text>
+                @else
+                    <div @class(['grid grid-cols-1 gap-3', 'lg:grid-cols-2' => $recordings->count() > 1])>
+                        @foreach ($recordings as $recording)
+                            <div wire:key="tab-room-recording-{{ $recording->id }}">
+                                <flux:text class="font-medium capitalize">{{ $recording->file_type }}</flux:text>
+                                <audio controls preload="metadata" class="w-full">
+                                    <source src="{{ \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($recording->url, now()->addHour()) }}">
+                                </audio>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+            </flux:card>
+        @endif
+
         @if ($selectedRoom)
             {{-- Judge selection + score form --}}
             <flux:card>
