@@ -99,6 +99,11 @@
                 @endforeach
             </div>
 
+            {{-- Year-over-year school retention --}}
+            @if ($retention !== null)
+                @include('livewire.events.version-scorecard-retention', ['retention' => $retention])
+            @endif
+
             {{-- Weekly trends --}}
             <flux:heading size="lg" class="mb-1">Weekly trends</flux:heading>
 
