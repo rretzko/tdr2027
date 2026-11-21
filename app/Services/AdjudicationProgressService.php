@@ -86,7 +86,7 @@ final class AdjudicationProgressService
      *     schedule: array{status: string, remaining: int, neededPerDay: ?int, recentPerDay: ?int, rateDays: ?int, projectedFinish: ?Carbon},
      *     rooms: list<array{room: VersionRoom, candidates: int, candidatesComplete: int, expected: int, completed: int, percent: int, flag: ?string, judgesNotStarted: int, judges: list<array<string, mixed>>}>,
      *     listeningTracked: bool,
-     *     agreement: array{candidates: int, r: ?float, gaps: list<array{candidate: Candidate, gap: int, rooms: list<array{name: string, percentile: int, judges: int, of: int}>}>},
+     *     agreement: array{candidates: int, r: ?float, gaps: list<array{candidate: Candidate, gap: int, rooms: list<array{name: string, percentile: int, mean: float, judges: int, of: int}>}>},
      *     daily: list<array{date: string, x: string, heading: string, saves: int}>,
      * }
      */
@@ -729,11 +729,11 @@ final class AdjudicationProgressService
      * on, since a standing from one judge can move as the rest score.
      *
      * @param  array<int, array{room: VersionRoom, candidateMeans: array<int, float>, candidateJudges: array<int, int>, scoringJudges: int, candidateModels: Collection<int, Candidate>}>  $roomRows
-     * @return array{candidates: int, r: ?float, gaps: list<array{candidate: Candidate, gap: int, rooms: list<array{name: string, percentile: int, judges: int, of: int}>}>}
+     * @return array{candidates: int, r: ?float, gaps: list<array{candidate: Candidate, gap: int, rooms: list<array{name: string, percentile: int, mean: float, judges: int, of: int}>}>}
      */
     private function agreement(array $roomRows, bool $higherIsBetter): array
     {
-        // candidate id => list of [room name, percentile]
+        // candidate id => list of [room name, percentile, average total, judges]
         $byCandidate = [];
         $models = [];
         foreach ($roomRows as $row) {
@@ -741,6 +741,7 @@ final class AdjudicationProgressService
                 $byCandidate[$candidateId][] = [
                     'name' => $row['room']->name,
                     'percentile' => $percentile,
+                    'mean' => round($row['candidateMeans'][$candidateId], 2),
                     'judges' => $row['candidateJudges'][$candidateId] ?? 0,
                     'of' => $row['scoringJudges'],
                 ];
