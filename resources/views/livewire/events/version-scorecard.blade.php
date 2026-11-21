@@ -104,6 +104,11 @@
                 @include('livewire.events.version-scorecard-retention', ['retention' => $retention])
             @endif
 
+            {{-- Registrations by day, relative to the deadlines --}}
+            @if ($registrationTiming !== null)
+                @include('livewire.events.version-scorecard-registration-timing', ['timing' => $registrationTiming])
+            @endif
+
             {{-- Weekly trends --}}
             <flux:heading size="lg" class="mb-1">Weekly trends</flux:heading>
 
