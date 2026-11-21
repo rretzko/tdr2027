@@ -196,6 +196,9 @@ test('the Judge Summary Table flags an out-of-tolerance room after saving a scor
 });
 
 test('changeVoicePart removes existing scores and non-relevant recordings, then re-derives rooms for the new voice part', function () {
+    // The recordings card renders S3 temporary URLs for the approved recording below.
+    Storage::fake('s3');
+
     ['manager' => $manager, 'version' => $version, 'room' => $room, 'roomJudge' => $roomJudge, 'factor' => $factor, 'candidate' => $candidate] = makeTabRoomScenario();
 
     app(AdjudicationService::class)->saveScores($roomJudge, $candidate, $version, [$factor->id => 4]);
