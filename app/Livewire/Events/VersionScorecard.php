@@ -12,6 +12,7 @@ use App\Models\VersionDate;
 use App\Models\VersionScorecardSnapshot;
 use App\Services\AdjudicationProgressService;
 use App\Services\JudgeSurveySummaryService;
+use App\Services\RegistrationTimingService;
 use App\Services\SchoolRetentionService;
 use App\Services\VersionRoleAssignmentService;
 use App\Services\VersionScorecardService;
@@ -49,7 +50,7 @@ class VersionScorecard extends Component
         }
     }
 
-    public function render(VersionScorecardService $scorecard, AdjudicationProgressService $adjudication, SchoolRetentionService $retention, JudgeSurveySummaryService $judgeSurvey): View
+    public function render(VersionScorecardService $scorecard, AdjudicationProgressService $adjudication, SchoolRetentionService $retention, JudgeSurveySummaryService $judgeSurvey, RegistrationTimingService $registrationTiming): View
     {
         $snapshots = $this->version->scorecardSnapshots()->orderBy('captured_on')->get();
         $deadline = $this->postmarkDeadline();
@@ -80,6 +81,7 @@ class VersionScorecard extends Component
             'progress' => $this->tab === 'adjudication' ? $adjudication->forVersion($this->version) : null,
             'judgeSurvey' => $this->tab === 'adjudication' ? $judgeSurvey->forVersion($this->version) : null,
             'retention' => $this->tab === 'registration' ? $retention->forVersion($this->version) : null,
+            'registrationTiming' => $this->tab === 'registration' ? $registrationTiming->forVersion($this->version) : null,
         ]);
     }
 
