@@ -365,8 +365,8 @@
                     <flux:table.columns>
                         <flux:table.column>Candidate</flux:table.column>
                         <flux:table.column>Voice part</flux:table.column>
-                        <flux:table.column>Standing by Room</flux:table.column>
                         <flux:table.column align="end">Gap (pts)</flux:table.column>
+                        <flux:table.column>Standing by Room</flux:table.column>
                     </flux:table.columns>
                     <flux:table.rows>
                         @foreach ($agreement['gaps'] as $gap)
@@ -376,12 +376,12 @@
                                     <span class="block text-xs font-normal text-zinc-500 dark:text-zinc-400">{{ $gap['candidate']->ref }}</span>
                                 </flux:table.cell>
                                 <flux:table.cell>{{ $gap['candidate']->voicePart?->name }}</flux:table.cell>
+                                <flux:table.cell align="end" class="tabular-nums font-medium text-amber-600 dark:text-amber-400">{{ $gap['gap'] }}</flux:table.cell>
                                 <flux:table.cell class="whitespace-normal text-sm">
                                     @foreach ($gap['rooms'] as $standing)
                                         <span class="block">{{ $standing['name'] }}: <span class="tabular-nums font-medium">{{ $ordinal($standing['percentile']) }}</span> percentile <span class="tabular-nums text-zinc-500 dark:text-zinc-400">· avg {{ number_format($standing['mean'], 1) }} · {{ $standing['judges'] }} of {{ $standing['of'] }} {{ \Illuminate\Support\Str::plural('judge', $standing['of']) }}</span></span>
                                     @endforeach
                                 </flux:table.cell>
-                                <flux:table.cell align="end" class="tabular-nums font-medium text-amber-600 dark:text-amber-400">{{ $gap['gap'] }}</flux:table.cell>
                             </flux:table.row>
                         @endforeach
                     </flux:table.rows>
