@@ -272,6 +272,7 @@
                                 </div>
                             @endif
 
+                            @if (! $teacherChangesClosed)
                             <div class="flex flex-wrap gap-2">
                                 <flux:button size="sm" variant="ghost" icon="arrow-up-tray" wire:click="uploadRecording({{ $slot->id }})">
                                     {{ $upload !== null ? 'Replace' : 'Upload' }}
@@ -298,9 +299,16 @@
                                     </flux:button>
                                 @endif
                             </div>
+                            @endif
                         </div>
                     @endforeach
                 </div>
+
+                @if ($teacherChangesClosed)
+                    <flux:text size="sm" class="mt-4 text-zinc-500 dark:text-zinc-400">
+                        The deadline for teacher changes has passed, so recordings can't be uploaded, replaced, approved or removed. Contact the event coordinators if a recording needs to be corrected.
+                    </flux:text>
+                @endif
             </flux:card>
         @endif
 
@@ -417,7 +425,7 @@
                 </flux:field>
             </div>
 
-            @if ($edit_voice_part_invalid_name !== null && ! $voicePartLocked)
+            @if ($edit_voice_part_invalid_name !== null && ! $teacherChangesClosed)
                 <flux:callout variant="warning" icon="exclamation-triangle">
                     <flux:callout.text>
                         This candidate is currently registered as <strong>{{ $edit_voice_part_invalid_name }}</strong>,
@@ -427,7 +435,7 @@
                 </flux:callout>
             @endif
 
-            @if ($voicePartLocked)
+            @if ($teacherChangesClosed)
                 <flux:field>
                     <flux:label>Voice Part</flux:label>
                     <flux:input :value="$candidate->voicePart->name ?? 'None'" readonly disabled />

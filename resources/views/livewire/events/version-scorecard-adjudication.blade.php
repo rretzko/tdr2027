@@ -304,12 +304,17 @@
             default => 'loosely',
         };
     @endphp
+    @php
+        // 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st, 100th.
+        $ordinal = fn (int $n): string => $n.(in_array($n % 100, [11, 12, 13], true) ? 'th' : (['th', 'st', 'nd', 'rd'][$n % 10] ?? 'th'));
+    @endphp
     @if ($agreement['candidates'] > 0)
         <div>
             <flux:heading size="lg" class="mb-1">Scales vs Solo agreement</flux:heading>
             <flux:text size="sm" class="text-zinc-500 mb-3 max-w-3xl">
                 For candidates heard in two Rooms, such as Scales and Solo: how closely their standing in one Room tracks the other.
-                Standing is a percentile within the Room, from their average total so far: 100 is the best in the Room, 0 the lowest.
+                Standing is a percentile within the Room, from the candidate's average total across judges so far: 100th is the best in the Room, 0th the lowest.
+                Averages can't be compared between Rooms, since each Room's rubric has its own factors; the percentile puts them on one scale.
             </flux:text>
 
             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 mb-4">
@@ -349,7 +354,7 @@
                             </div>
                             <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400">{{ $gap['candidate']->ref }} · {{ $gap['candidate']->voicePart?->name }}</flux:text>
                             @foreach ($gap['rooms'] as $standing)
-                                <flux:text size="sm">{{ $standing['name'] }}: <span class="tabular-nums font-medium">{{ $standing['percentile'] }}</span> <span class="tabular-nums text-zinc-500 dark:text-zinc-400">· {{ $standing['judges'] }} of {{ $standing['of'] }} {{ \Illuminate\Support\Str::plural('judge', $standing['of']) }}</span></flux:text>
+                                <flux:text size="sm">{{ $standing['name'] }}: <span class="tabular-nums font-medium">{{ $ordinal($standing['percentile']) }}</span> percentile <span class="tabular-nums text-zinc-500 dark:text-zinc-400">· avg {{ number_format($standing['mean'], 1) }} · {{ $standing['judges'] }} of {{ $standing['of'] }} {{ \Illuminate\Support\Str::plural('judge', $standing['of']) }}</span></flux:text>
                             @endforeach
                         </flux:card>
                     @endforeach
@@ -360,8 +365,8 @@
                     <flux:table.columns>
                         <flux:table.column>Candidate</flux:table.column>
                         <flux:table.column>Voice part</flux:table.column>
+                        <flux:table.column align="end">Gap (pts)</flux:table.column>
                         <flux:table.column>Standing by Room</flux:table.column>
-                        <flux:table.column align="end">Gap</flux:table.column>
                     </flux:table.columns>
                     <flux:table.rows>
                         @foreach ($agreement['gaps'] as $gap)
@@ -371,12 +376,12 @@
                                     <span class="block text-xs font-normal text-zinc-500 dark:text-zinc-400">{{ $gap['candidate']->ref }}</span>
                                 </flux:table.cell>
                                 <flux:table.cell>{{ $gap['candidate']->voicePart?->name }}</flux:table.cell>
+                                <flux:table.cell align="end" class="tabular-nums font-medium text-amber-600 dark:text-amber-400">{{ $gap['gap'] }}</flux:table.cell>
                                 <flux:table.cell class="whitespace-normal text-sm">
                                     @foreach ($gap['rooms'] as $standing)
-                                        <span class="block">{{ $standing['name'] }}: <span class="tabular-nums font-medium">{{ $standing['percentile'] }}</span> <span class="tabular-nums text-zinc-500 dark:text-zinc-400">· {{ $standing['judges'] }} of {{ $standing['of'] }} {{ \Illuminate\Support\Str::plural('judge', $standing['of']) }}</span></span>
+                                        <span class="block">{{ $standing['name'] }}: <span class="tabular-nums font-medium">{{ $ordinal($standing['percentile']) }}</span> percentile <span class="tabular-nums text-zinc-500 dark:text-zinc-400">· avg {{ number_format($standing['mean'], 1) }} · {{ $standing['judges'] }} of {{ $standing['of'] }} {{ \Illuminate\Support\Str::plural('judge', $standing['of']) }}</span></span>
                                     @endforeach
                                 </flux:table.cell>
-                                <flux:table.cell align="end" class="tabular-nums font-medium text-amber-600 dark:text-amber-400">{{ $gap['gap'] }}</flux:table.cell>
                             </flux:table.row>
                         @endforeach
                     </flux:table.rows>

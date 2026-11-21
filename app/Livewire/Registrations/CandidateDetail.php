@@ -420,6 +420,11 @@ class CandidateDetail extends Component
 
     public function uploadRecording(int $versionUploadFileId): void
     {
+        // Past the teacher cut-off recordings are read-only, same as the
+        // voice part: changing them changes what judges hear and can drop a
+        // Registered candidate to Pending with no way back.
+        abort_if($this->version->registrationClosedToTeachers(), 403);
+
         $this->uploadingVersionUploadFileId = $versionUploadFileId;
         $this->newRecordingFile = null;
         $this->resetErrorBag('newRecordingFile');
@@ -428,6 +433,11 @@ class CandidateDetail extends Component
 
     public function saveRecording(CandidateService $candidates, RecordingReviewService $review): void
     {
+        // Past the teacher cut-off recordings are read-only, same as the
+        // voice part: changing them changes what judges hear and can drop a
+        // Registered candidate to Pending with no way back.
+        abort_if($this->version->registrationClosedToTeachers(), 403);
+
         $this->validate([
             // extensions:, not mimes: — a real .m4a file's detected MIME
             // type is frequently video/mp4 (it shares the ISO-BMFF/MP4
@@ -508,6 +518,11 @@ class CandidateDetail extends Component
 
     public function approveRecording(int $candidateUploadFileId, CandidateService $candidates): void
     {
+        // Past the teacher cut-off recordings are read-only, same as the
+        // voice part: changing them changes what judges hear and can drop a
+        // Registered candidate to Pending with no way back.
+        abort_if($this->version->registrationClosedToTeachers(), 403);
+
         $upload = CandidateUploadFile::where('id', $candidateUploadFileId)
             ->where('candidate_id', $this->candidate->id)
             ->first();
@@ -550,6 +565,11 @@ class CandidateDetail extends Component
 
     public function rejectRecording(int $candidateUploadFileId, CandidateService $candidates): void
     {
+        // Past the teacher cut-off recordings are read-only, same as the
+        // voice part: changing them changes what judges hear and can drop a
+        // Registered candidate to Pending with no way back.
+        abort_if($this->version->registrationClosedToTeachers(), 403);
+
         $upload = CandidateUploadFile::where('id', $candidateUploadFileId)
             ->where('candidate_id', $this->candidate->id)
             ->first();
@@ -864,7 +884,7 @@ class CandidateDetail extends Component
             'checklistDefs' => $checklistDefs,
             'overAuditionCap' => $overAuditionCap,
             'registrationClosed' => $registrationClosed,
-            'voicePartLocked' => $this->version->registrationClosedToTeachers(),
+            'teacherChangesClosed' => $this->version->registrationClosedToTeachers(),
             'registrationCutoff' => $registrationClosed ? $this->version->teacherChangesCutoff()?->forDisplay() : null,
             'checklistComplete' => $checklistComplete,
             'auditionCapEnsembleNames' => $auditionCapEnsembleNames,

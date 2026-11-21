@@ -626,8 +626,8 @@ test('candidates whose standing differs widely between Rooms are listed, widest 
         ->and(collect($agreement['gaps'])->take(2)->map(fn (array $gap): int => $gap['candidate']->id)->sort()->values()->all())
         ->toBe(collect([$candidates[0]->id, $candidates[9]->id])->sort()->values()->all())
         ->and(collect($agreement['gaps'])->firstWhere(fn (array $gap): bool => $gap['candidate']->is($candidates[0]))['rooms'])->toBe([
-            ['name' => 'Scales', 'percentile' => 100, 'judges' => 1, 'of' => 1],
-            ['name' => 'Solos', 'percentile' => 0, 'judges' => 1, 'of' => 1],
+            ['name' => 'Scales', 'percentile' => 100, 'mean' => 2.0, 'judges' => 1, 'of' => 1],
+            ['name' => 'Solos', 'percentile' => 0, 'mean' => 11.0, 'judges' => 1, 'of' => 1],
         ]);
 });
 
@@ -649,7 +649,7 @@ test('agreement needs enough shared candidates, ties share a percentile, and hig
 
     expect($agreement['candidates'])->toBe(3)
         ->and($agreement['r'])->toBeNull()
-        ->and($rooms[$high->id])->toBe([['name' => 'Scales', 'percentile' => 100, 'judges' => 1, 'of' => 1], ['name' => 'Solos', 'percentile' => 0, 'judges' => 1, 'of' => 1]])
+        ->and($rooms[$high->id])->toBe([['name' => 'Scales', 'percentile' => 100, 'mean' => 18.0, 'judges' => 1, 'of' => 1], ['name' => 'Solos', 'percentile' => 0, 'mean' => 2.0, 'judges' => 1, 'of' => 1]])
         // Tied for last in Scales: both at the average of positions 1 and 2.
         ->and($rooms[$tied->id][0]['percentile'])->toBe(25)
         ->and($rooms[$tied->id][1]['percentile'])->toBe(100);
@@ -674,7 +674,13 @@ test('the Adjudication tab shows the Rooms\' agreement and lists candidates far 
     expect($html)->toContain('Scales vs Solo agreement')
         ->toContain('-1.00')
         ->toContain('loosely alike')
-        ->toContain('Robin Leaning');
+        ->toContain('Robin Leaning')
+        // Robin: best in Scales (1 + 1), last in Solos (9 + 2).
+        ->toContain('100th</span> percentile')
+        ->toContain('avg 2.0')
+        ->toContain('0th</span> percentile')
+        ->toContain('avg 11.0')
+        ->toContain('89th</span> percentile');
 });
 
 test('each standing on a gap row says how many of the Room judges it rests on', function () {
@@ -698,8 +704,8 @@ test('each standing on a gap row says how many of the Room judges it rests on', 
     $gap = collect($progress['agreement']['gaps'])->firstWhere(fn (array $gap): bool => $gap['candidate']->is($candidates[0]));
 
     expect($gap['rooms'])->toBe([
-        ['name' => 'Scales', 'percentile' => 100, 'judges' => 2, 'of' => 2],
-        ['name' => 'Solos', 'percentile' => 0, 'judges' => 1, 'of' => 3],
+        ['name' => 'Scales', 'percentile' => 100, 'mean' => 2.0, 'judges' => 2, 'of' => 2],
+        ['name' => 'Solos', 'percentile' => 0, 'mean' => 11.0, 'judges' => 1, 'of' => 3],
     ]);
 
     $html = view('livewire.events.version-scorecard-adjudication', ['progress' => $progress])->render();
