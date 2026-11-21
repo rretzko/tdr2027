@@ -49,6 +49,20 @@
         </flux:callout>
     @endif
 
+    @if ($registrationClosed)
+        <flux:callout variant="warning" icon="lock-closed" class="mb-6">
+            <flux:callout.heading>Registration closed {{ $registrationCutoff?->format('l, F j \a\t g:i A') }}</flux:callout.heading>
+            <flux:callout.text>
+                @if ($checklistComplete)
+                    This candidate's checklist is complete, but it was finished after the deadline for teacher changes, so they can't be marked Registered.
+                @else
+                    The deadline for teacher changes has passed, so this candidate can't be marked Registered, even if the checklist is completed.
+                @endif
+                Contact the event coordinators if this candidate should be admitted as an exception.
+            </flux:callout.text>
+        </flux:callout>
+    @endif
+
     {{-- Checklist summary --}}
     <flux:card class="mb-6">
         <flux:heading size="sm" class="mb-3">Registration Checklist</flux:heading>
@@ -403,7 +417,7 @@
                 </flux:field>
             </div>
 
-            @if ($edit_voice_part_invalid_name !== null)
+            @if ($edit_voice_part_invalid_name !== null && ! $voicePartLocked)
                 <flux:callout variant="warning" icon="exclamation-triangle">
                     <flux:callout.text>
                         This candidate is currently registered as <strong>{{ $edit_voice_part_invalid_name }}</strong>,
@@ -413,15 +427,23 @@
                 </flux:callout>
             @endif
 
-            <flux:field>
-                <flux:label>Voice Part</flux:label>
-                <flux:select wire:model="edit_voice_part_id" placeholder="Select a voice part...">
-                    @foreach ($voiceParts as $voicePart)
-                        <flux:select.option value="{{ $voicePart->id }}">{{ $voicePart->name }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-                <flux:error name="edit_voice_part_id" />
-            </flux:field>
+            @if ($voicePartLocked)
+                <flux:field>
+                    <flux:label>Voice Part</flux:label>
+                    <flux:input :value="$candidate->voicePart->name ?? 'None'" readonly disabled />
+                    <flux:description>The deadline for teacher changes has passed, so the voice part can't be changed. Contact the event coordinators if it needs to be corrected.</flux:description>
+                </flux:field>
+            @else
+                <flux:field>
+                    <flux:label>Voice Part</flux:label>
+                    <flux:select wire:model="edit_voice_part_id" placeholder="Select a voice part...">
+                        @foreach ($voiceParts as $voicePart)
+                            <flux:select.option value="{{ $voicePart->id }}">{{ $voicePart->name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                    <flux:error name="edit_voice_part_id" />
+                </flux:field>
+            @endif
 
             <flux:field>
                 <flux:label>Birthday</flux:label>
