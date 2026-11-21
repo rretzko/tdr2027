@@ -141,9 +141,15 @@ class CandidateService
      * Registered but aren't counted as milestones, so a gate that's true on
      * enrollment doesn't bump an untouched Candidate to Pending.
      *
+     * Once the Version's teacherChangesCutoff() has passed, an Eligible or
+     * Pending candidate can no longer become Registered — a checklist
+     * completed late holds at Pending (same as the audition cap). Existing
+     * Registered candidates are unaffected. $ignoreTeacherCutoff is for
+     * Event Manager / Founder tools (VoicePartAuditService) only.
+     *
      * @param  list<array{label: string, check: \Closure(Candidate): bool, gate?: bool}>  $checklistDefs
      */
-    public function recalculateStatus(Candidate $candidate, array $checklistDefs): void
+    public function recalculateStatus(Candidate $candidate, array $checklistDefs, bool $ignoreTeacherCutoff = false): void
     {
         $currentRaw = $candidate->getRawOriginal('status');
 
@@ -186,6 +192,15 @@ class CandidateService
         // Registered — see AuditionCapService and CandidateDetail's cap
         // banner, which explains the hold to the teacher.
         if ($newStatus === CandidateStatus::Registered->value && ! app(AuditionCapService::class)->isWithinCap($candidate)) {
+            $newStatus = CandidateStatus::Pending->value;
+        }
+
+        // Past the teacher cut-off, only a candidate already Registered stays
+        // Registered; nobody new gets in.
+        if ($newStatus === CandidateStatus::Registered->value
+            && $currentRaw !== CandidateStatus::Registered->value
+            && ! $ignoreTeacherCutoff
+            && $candidate->version?->registrationClosedToTeachers()) {
             $newStatus = CandidateStatus::Pending->value;
         }
 
