@@ -191,10 +191,17 @@ class CandidateDetail extends Component
 
     public function saveStudent(CandidateService $candidates): void
     {
+        // Past the teacher cut-off the voice part is read-only: changing it
+        // moves the candidate to another Room's roster. Event Managers fix
+        // voice parts through Voice Part Audit or Tab Room instead.
+        $voicePartLocked = $this->version->registrationClosedToTeachers();
+
         $this->validate([
             'edit_first_name' => ['required', 'string', 'max:255', "regex:/^[\pL\s'-]+$/u"],
             'edit_last_name' => ['required', 'string', 'max:255', "regex:/^[\pL\s'-]+$/u"],
-            'edit_voice_part_id' => ['required', 'integer', Rule::in($this->version->availableVoicePartsForGrade($this->candidate->student->grade)->pluck('id')->all())],
+            ...($voicePartLocked ? [] : [
+                'edit_voice_part_id' => ['required', 'integer', Rule::in($this->version->availableVoicePartsForGrade($this->candidate->student->grade)->pluck('id')->all())],
+            ]),
             'edit_birthday' => [
                 'nullable', 'date',
                 'before_or_equal:'.now()->subYears(9)->format('Y-m-d'),
@@ -213,7 +220,9 @@ class CandidateDetail extends Component
             'height' => $this->edit_height !== '' ? (int) $this->edit_height : null,
         ]);
 
-        $this->candidate->update(['voice_part_id' => (int) $this->edit_voice_part_id]);
+        if (! $voicePartLocked) {
+            $this->candidate->update(['voice_part_id' => (int) $this->edit_voice_part_id]);
+        }
 
         $candidates->recalculateStatus(
             $this->candidate->refresh(),
@@ -833,6 +842,11 @@ class CandidateDetail extends Component
             ? app(AuditionCapService::class)->auditionGroupEnsembleNames($this->version, $this->candidate->voicePart)
             : collect();
 
+        // Past the teacher cut-off an Eligible or Pending candidate can't
+        // become Registered — see CandidateService::recalculateStatus().
+        $registrationClosed = in_array($this->candidate->getRawOriginal('status'), [CandidateStatus::Eligible->value, CandidateStatus::Pending->value], true)
+            && $this->version->registrationClosedToTeachers();
+
         ['registrationFeeDue' => $registrationFeeDue, 'participationFeeDue' => $participationFeeDue, 'housingFeeDue' => $housingFeeDue, 'overpaymentCents' => $overpaymentCents] = $this->feeDueFlags();
         $feeCalculator = app(CandidateFeeCalculator::class);
 
@@ -849,6 +863,10 @@ class CandidateDetail extends Component
         return view('livewire.registrations.candidate-detail', [
             'checklistDefs' => $checklistDefs,
             'overAuditionCap' => $overAuditionCap,
+            'registrationClosed' => $registrationClosed,
+            'voicePartLocked' => $this->version->registrationClosedToTeachers(),
+            'registrationCutoff' => $registrationClosed ? $this->version->teacherChangesCutoff()?->forDisplay() : null,
+            'checklistComplete' => $checklistComplete,
             'auditionCapEnsembleNames' => $auditionCapEnsembleNames,
             'relationships' => EmergencyContactRelationship::cases(),
             'voiceParts' => $this->version->availableVoicePartsForGrade($this->candidate->student->grade),

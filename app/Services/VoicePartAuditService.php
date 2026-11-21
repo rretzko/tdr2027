@@ -138,7 +138,9 @@ class VoicePartAuditService
         }
 
         $candidate->update(['voice_part_id' => $to->id]);
-        $this->candidates->recalculateStatus($candidate->refresh(), $checklistDefs);
+        // An Event Manager / Founder fix, not a teacher change, so the
+        // teacher cut-off doesn't apply.
+        $this->candidates->recalculateStatus($candidate->refresh(), $checklistDefs, ignoreTeacherCutoff: true);
 
         return ['from' => $from, 'to' => $to];
     }

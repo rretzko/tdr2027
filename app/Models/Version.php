@@ -323,6 +323,34 @@ class Version extends Model
     }
 
     /**
+     * The last moment a teacher's changes can register a candidate: the
+     * Final Teacher Changes date, falling back to the Postmark Deadline when
+     * no Final Teacher Changes date is configured. Null means no cutoff.
+     * Enforced in CandidateService::recalculateStatus().
+     */
+    public function teacherChangesCutoff(): ?CarbonInterface
+    {
+        $finalTeacherChanges = $this->dates->firstWhere('date_type', VersionDateType::FinalTeacherChanges);
+
+        if ($finalTeacherChanges?->start_at !== null) {
+            return $finalTeacherChanges->start_at;
+        }
+
+        return $this->dates->firstWhere('date_type', VersionDateType::PostmarkDeadline)?->start_at;
+    }
+
+    /**
+     * True once teacherChangesCutoff() has passed: Eligible and Pending
+     * candidates can no longer become Registered.
+     */
+    public function registrationClosedToTeachers(): bool
+    {
+        $cutoff = $this->teacherChangesCutoff();
+
+        return $cutoff !== null && ! $cutoff->isFuture();
+    }
+
+    /**
      * Pitch Files + student Registration fee window: opens with the
      * Candidate window, closes at candidateReferenceCutoff().
      */
