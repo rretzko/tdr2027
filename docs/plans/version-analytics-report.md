@@ -65,3 +65,10 @@ Performance: `ListeningEstimate` reads every tracked event for the Version. A sy
 - **Delivery.** Email the PDF to Event Managers when the Version closes (like the platform invoice), offer it as a download on the Scorecard, or both.
 - **PowerPoint.** A .pptx version is possible. Start with PDF unless Event Managers ask for slides.
 - **Comparison groups.** Which earlier Versions count as comparable: same Event in earlier years, other Events of the same audition type, or both.
+
+## To-dos
+
+- **Consider an Event Manager option for judge reminders** (raised 2026-11-22; for now, reminding judges is left to Event Managers). This would be a Version setting, with a matching `ReadinessCatalog` item, that emails judges who haven't started, or have only sampled their Room, a set number of days into the adjudication window. A second reminder could go out shortly before the window closes. In Version 93 the late starters did most of the rushing:
+  - In the final 36 hours, 9 judges made 21% of all saves. Average heard fell from 92% to 81%, short listens rose from 10% to 25%, and median pace went from 59s to 47s. Agreement with co-judges did not get worse.
+  - One judge who hadn't started by the last weekend scored all 83 of their Room's candidates in a single 85-minute sitting. They heard 87% of each recording in the first quarter of that sitting and about 54% after that.
+  - Points to settle: the default timing (time of day should follow the 9 am–1 pm and 7–9 pm Eastern peaks above), whether the reminder goes to judges only or also copies the Event Manager, and reuse of the Scorecard's existing `not_started` / `just_started` statuses from `AdjudicationProgressService` so the email and the Scorecard agree on who needs a nudge.
