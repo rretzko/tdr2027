@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Livewire\Events\TabRoom;
 
 use App\Enums\CandidateStatus;
+use App\Enums\CutoffStrategy;
 use App\Enums\EventStatus;
 use App\Enums\PdfExportStatus;
+use App\Jobs\CaptureVersionAnalyticsSnapshotJob;
 use App\Jobs\GenerateCombinedScoresPdfJob;
 use App\Mail\AuditionResultsAvailableMail;
 use App\Models\Candidate;
@@ -53,6 +55,15 @@ class CloseAudition extends Component
 
     public bool $emailTeachers = false;
 
+    /**
+     * Why the last Close attempt was refused (see undecidedProblems()),
+     * shown under the Close button until the next attempt. Empty when the
+     * last attempt went through, or none has been made.
+     *
+     * @var list<string>
+     */
+    public array $closeProblems = [];
+
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
     {
         abort_unless($roles->canManageTabRoom(Auth::user(), $version), 403);
@@ -64,12 +75,24 @@ class CloseAudition extends Component
     {
         abort_unless($this->version->getRawOriginal('status') === EventStatus::Active->value, 422);
 
+        $this->closeProblems = $this->undecidedProblems();
+
+        if ($this->closeProblems !== []) {
+            Flux::toast(text: "{$this->version->name} wasn't closed — some candidates don't have a result yet.", variant: 'danger');
+
+            return;
+        }
+
         $this->version->update([
             'status' => EventStatus::Closed->value,
             'results_released_at' => now(),
         ]);
 
         $history->recordCurrentSeason($this->version, $cutoffs);
+
+        // Freeze this Version's end-of-cycle analytics (docs/plans/version-analytics-report.md).
+        // A re-Close after a Reopen replaces the snapshot, since reopening is for corrections.
+        CaptureVersionAnalyticsSnapshotJob::dispatch($this->version->id, Auth::id(), now()->toIso8601String());
 
         if ($this->version->share_results) {
             $this->queueSharedScoresPdf();
@@ -146,9 +169,48 @@ class CloseAudition extends Component
 
     public function render(): View
     {
+        $rawStrategy = $this->version->getRawOriginal('cutoff_strategy');
+
         return view('livewire.events.tab-room.close-audition', [
             'notifiableTeacherCount' => $this->notifiableTeacherEmails()->count(),
+            'needsFinalize' => $rawStrategy !== null && CutoffStrategy::from($rawStrategy)->needsPerEnsembleCutoff(),
         ]);
+    }
+
+    /**
+     * One line per Voice Part that still has Registered (undecided)
+     * Candidates — empty when Close may proceed. Closing with any left
+     * releases results that silently omit those students (every teacher-
+     * facing results view lists only Accepted/NotAccepted/NoShow/
+     * Incomplete) and shows them as "err" on the Tab Room reports. The
+     * usual cause is a per-Ensemble strategy whose Finalize was never run
+     * (v93, 2026-11-22: 87 candidates left Registered). Only enforced once
+     * a cut-off strategy is configured: legacy imported Versions were
+     * closed with Registered candidates and no strategy, and must stay
+     * re-closable.
+     *
+     * @return list<string>
+     */
+    private function undecidedProblems(): array
+    {
+        if ($this->version->getRawOriginal('cutoff_strategy') === null) {
+            return [];
+        }
+
+        return Candidate::where('version_id', $this->version->id)
+            ->where('status', CandidateStatus::Registered)
+            ->with('voicePart')
+            ->get()
+            ->groupBy('voice_part_id')
+            ->sortBy(fn (Collection $group): int => (int) ($group->first()?->voicePart->sort_order ?? PHP_INT_MAX))
+            ->map(function (Collection $group): string {
+                $label = $group->first()?->voicePart->abbr ?? 'No voice part';
+                $count = $group->count();
+
+                return "{$label}: {$count} ".str('candidate')->plural($count).' still undecided.';
+            })
+            ->values()
+            ->all();
     }
 
     /**

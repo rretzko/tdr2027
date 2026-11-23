@@ -38,19 +38,31 @@
         <span>Scorecard</span>
     </div>
 
-    <div class="mb-4">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <flux:heading size="xl">Scorecard</flux:heading>
+        @if ($hasAnalyticsSnapshot)
+            <flux:button size="sm" icon="arrow-down-tray" href="{{ route('events.versions.scorecard.analytics-report', $version) }}">
+                Download analytics report
+            </flux:button>
+        @endif
     </div>
 
     <flux:tab.group>
         <flux:tabs wire:model.live="tab">
             <flux:tab name="registration" icon="user-group">Registration</flux:tab>
             <flux:tab name="adjudication" icon="musical-note">Adjudication</flux:tab>
+            <flux:tab name="selection" icon="trophy">Selection</flux:tab>
         </flux:tabs>
+
+        <flux:tab.panel name="selection">
+            @if ($tab === 'selection')
+                @include('livewire.events.version-scorecard-selection', ['selection' => $selection, 'pieCharts' => $pieCharts])
+            @endif
+        </flux:tab.panel>
 
         <flux:tab.panel name="adjudication">
             @if ($progress !== null)
-                @include('livewire.events.version-scorecard-adjudication', ['progress' => $progress, 'judgeSurvey' => $judgeSurvey])
+                @include('livewire.events.version-scorecard-adjudication', ['progress' => $progress, 'judgeSurvey' => $judgeSurvey, 'judgeMeasures' => $judgeMeasures])
             @endif
         </flux:tab.panel>
 

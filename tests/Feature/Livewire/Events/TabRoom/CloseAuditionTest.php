@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\CandidateStatus;
 use App\Enums\PdfExportStatus;
 use App\Enums\PlatformInvoiceStatus;
+use App\Jobs\CaptureVersionAnalyticsSnapshotJob;
 use App\Jobs\GenerateCombinedScoresPdfJob;
 use App\Livewire\Events\TabRoom\CloseAudition;
 use App\Mail\AuditionResultsAvailableMail;
@@ -16,6 +17,7 @@ use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionPlatformInvoice;
+use App\Models\VoicePart;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
@@ -237,4 +239,99 @@ test('close schedules the platform invoice 24 hours out and reopen holds it', fu
         ->call('reopen');
 
     expect($invoice->fresh()->statusEnum())->toBe(PlatformInvoiceStatus::Held);
+});
+
+test('close is refused while a per-Ensemble Version still has undecided Registered candidates', function () {
+    Mail::fake();
+
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active', 'cutoff_strategy' => 'grade_segmented_ensembles']);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    $voicePart = VoicePart::factory()->create(['abbr' => 'S1']);
+    Candidate::factory()->count(2)->registered()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id]);
+    Candidate::factory()->create(['version_id' => $version->id, 'voice_part_id' => $voicePart->id, 'status' => CandidateStatus::Accepted]);
+
+    Livewire::actingAs($manager)
+        ->test(CloseAudition::class, ['version' => $version])
+        ->set('emailTeachers', true)
+        ->call('close')
+        ->assertSet('closeProblems', ['S1: 2 candidates still undecided.'])
+        ->assertSee('Finalize — reject remaining');
+
+    $version->refresh();
+    expect($version->getRawOriginal('status'))->toBe('active');
+    expect($version->results_released_at)->toBeNull();
+    expect(VersionPlatformInvoice::where('version_id', $version->id)->exists())->toBeFalse();
+    Mail::assertNothingSent();
+});
+
+test('close is refused under a shared-cutoff strategy with undecided candidates, pointing at applying cutoffs instead', function () {
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active', 'cutoff_strategy' => 'alternating_ensemble_assignment']);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    Candidate::factory()->registered()->create(['version_id' => $version->id]);
+
+    Livewire::actingAs($manager)
+        ->test(CloseAudition::class, ['version' => $version])
+        ->call('close')
+        ->assertSee('apply a cutoff in each voice part listed')
+        ->assertDontSee('Finalize — reject remaining');
+
+    expect($version->refresh()->getRawOriginal('status'))->toBe('active');
+});
+
+test('close proceeds once every candidate under a cut-off strategy has a decision', function () {
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active', 'cutoff_strategy' => 'grade_segmented_ensembles']);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    Candidate::factory()->create(['version_id' => $version->id, 'status' => CandidateStatus::Accepted]);
+    Candidate::factory()->create(['version_id' => $version->id, 'status' => CandidateStatus::NotAccepted]);
+
+    Livewire::actingAs($manager)
+        ->test(CloseAudition::class, ['version' => $version])
+        ->call('close')
+        ->assertSet('closeProblems', []);
+
+    expect($version->refresh()->getRawOriginal('status'))->toBe('closed');
+});
+
+test('close is not guarded on a Version with no cut-off strategy (legacy imports)', function () {
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active', 'cutoff_strategy' => null]);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    Candidate::factory()->registered()->create(['version_id' => $version->id]);
+
+    Livewire::actingAs($manager)
+        ->test(CloseAudition::class, ['version' => $version])
+        ->call('close');
+
+    expect($version->refresh()->getRawOriginal('status'))->toBe('closed');
+});
+
+test('close queues the analytics snapshot capture', function () {
+    Queue::fake();
+
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    Livewire::actingAs($manager)
+        ->test(CloseAudition::class, ['version' => $version])
+        ->call('close');
+
+    Queue::assertPushed(CaptureVersionAnalyticsSnapshotJob::class, 1);
 });

@@ -7,15 +7,22 @@ namespace App\Livewire\Events;
 use App\Enums\CandidateStatus;
 use App\Enums\VersionDateType;
 use App\Models\Candidate;
+use App\Models\Ensemble;
 use App\Models\Version;
+use App\Models\VersionAnalyticsSnapshot;
 use App\Models\VersionDate;
 use App\Models\VersionScorecardSnapshot;
+use App\Models\VoicePart;
 use App\Services\AdjudicationProgressService;
+use App\Services\EnsembleCutoffService;
+use App\Services\JudgeMeasuresService;
 use App\Services\JudgeSurveySummaryService;
 use App\Services\RegistrationTimingService;
 use App\Services\SchoolRetentionService;
+use App\Services\SelectionAnalysisService;
 use App\Services\VersionRoleAssignmentService;
 use App\Services\VersionScorecardService;
+use App\Support\Charts\EnsemblePieCharts;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -35,7 +42,7 @@ class VersionScorecard extends Component
 {
     public Version $version;
 
-    /** registration | adjudication */
+    /** registration | adjudication | selection */
     #[Url(as: 'tab')]
     public string $tab = '';
 
@@ -45,12 +52,16 @@ class VersionScorecard extends Component
 
         $this->version = $version;
 
-        if (! in_array($this->tab, ['registration', 'adjudication'], true)) {
-            $this->tab = $this->adjudicationHasBegun() ? 'adjudication' : 'registration';
+        if (! in_array($this->tab, ['registration', 'adjudication', 'selection'], true)) {
+            $this->tab = match (true) {
+                $version->isClosed() => 'selection',
+                $this->adjudicationHasBegun() => 'adjudication',
+                default => 'registration',
+            };
         }
     }
 
-    public function render(VersionScorecardService $scorecard, AdjudicationProgressService $adjudication, SchoolRetentionService $retention, JudgeSurveySummaryService $judgeSurvey, RegistrationTimingService $registrationTiming): View
+    public function render(VersionScorecardService $scorecard, AdjudicationProgressService $adjudication, SchoolRetentionService $retention, JudgeSurveySummaryService $judgeSurvey, RegistrationTimingService $registrationTiming, SelectionAnalysisService $selection, EnsembleCutoffService $cutoffs, JudgeMeasuresService $judgeMeasures): View
     {
         $snapshots = $this->version->scorecardSnapshots()->orderBy('captured_on')->get();
         $deadline = $this->postmarkDeadline();
@@ -80,9 +91,33 @@ class VersionScorecard extends Component
             // Only computed for the tab on screen; the tabs switch via wire:model.live.
             'progress' => $this->tab === 'adjudication' ? $adjudication->forVersion($this->version) : null,
             'judgeSurvey' => $this->tab === 'adjudication' ? $judgeSurvey->forVersion($this->version) : null,
+            'judgeMeasures' => $this->tab === 'adjudication' ? $judgeMeasures->forVersion($this->version) : [],
             'retention' => $this->tab === 'registration' ? $retention->forVersion($this->version) : null,
             'registrationTiming' => $this->tab === 'registration' ? $registrationTiming->forVersion($this->version) : null,
+            'selection' => $this->tab === 'selection' ? $selection->forVersion($this->version) : null,
+            'hasAnalyticsSnapshot' => VersionAnalyticsSnapshot::where('version_id', $this->version->id)->exists(),
+            'pieCharts' => $this->tab === 'selection' ? $this->pieCharts($cutoffs) : collect(),
         ]);
+    }
+
+    /**
+     * The Selection tab's per-Ensemble pies: the same pies and Voice Part
+     * colors as Ensemble Cut-offs' "Ensemble Breakdown" card.
+     *
+     * @return Collection<int, array{ensemble: Ensemble, total: int, slices: list<array{voicePart: VoicePart, count: int, percent: string, color: string, path: string, labelX: float, labelY: float, showLabel: bool, labelColor: string}>}>
+     */
+    private function pieCharts(EnsembleCutoffService $cutoffs): Collection
+    {
+        $counts = [];
+        foreach ($cutoffs->acceptedCounts($this->version) as $row) {
+            $counts[$row['ensemble']->id][$row['voice_part_id']] = $row['count'];
+        }
+
+        return EnsemblePieCharts::build(
+            $this->version->ensembleOrder->map(fn ($order): Ensemble => $order->ensemble),
+            $this->version->availableVoiceParts(),
+            $counts,
+        );
     }
 
     /**
