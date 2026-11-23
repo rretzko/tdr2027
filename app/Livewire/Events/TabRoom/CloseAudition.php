@@ -10,6 +10,7 @@ use App\Enums\EventStatus;
 use App\Enums\PdfExportStatus;
 use App\Jobs\CaptureVersionAnalyticsSnapshotJob;
 use App\Jobs\GenerateCombinedScoresPdfJob;
+use App\Jobs\GenerateEnsembleParticipantsCsvJob;
 use App\Mail\AuditionResultsAvailableMail;
 use App\Models\Candidate;
 use App\Models\CombinedScoresPdfExport;
@@ -93,6 +94,10 @@ class CloseAudition extends Component
         // Freeze this Version's end-of-cycle analytics (docs/plans/version-analytics-report.md).
         // A re-Close after a Reopen replaces the snapshot, since reopening is for corrections.
         CaptureVersionAnalyticsSnapshotJob::dispatch($this->version->id, Auth::id(), now()->toIso8601String());
+
+        // One Ensemble Participants CSV per Ensemble for Reports → Downloads,
+        // rebuilt on every Close so a corrected re-Close is reflected.
+        GenerateEnsembleParticipantsCsvJob::dispatch($this->version->id, Auth::id());
 
         if ($this->version->share_results) {
             $this->queueSharedScoresPdf();
