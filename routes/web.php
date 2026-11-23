@@ -5,6 +5,7 @@ use App\Http\Controllers\CandidateApplicationPdfController;
 use App\Http\Controllers\CandidateScoreReportPdfController;
 use App\Http\Controllers\DirectorUploadTemplateController;
 use App\Http\Controllers\EmailUnsubscribeController;
+use App\Http\Controllers\EnsembleParticipantsCsvController;
 use App\Http\Controllers\EstimateFormPdfController;
 use App\Http\Controllers\Founder\PlatformInvoicePdfController as FounderPlatformInvoicePdfController;
 use App\Http\Controllers\PaymentRegisterCsvController;
@@ -356,6 +357,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/reports/registration-cards', RegistrationCards::class)->name('events.versions.reports.registration-cards');
         Route::get('/events/versions/{version}/reports/registration-cards/export.pdf', RegistrationCardsPdfController::class)->name('events.versions.reports.registration-cards.pdf');
         Route::get('/events/versions/{version}/reports/downloads', ReportsDownloads::class)->name('events.versions.reports.downloads');
+        Route::get('/events/versions/{version}/reports/downloads/ensemble-participants/{ensemble}.csv', EnsembleParticipantsCsvController::class)->name('events.versions.reports.downloads.ensemble-participants');
         Route::get('/events/versions/{version}/reports/downloads/{topic}.csv', VersionDataDownloadController::class)->whereIn('topic', VersionDataDownloadService::TOPICS)->name('events.versions.reports.downloads.export');
     });
 
