@@ -39,7 +39,8 @@ use InvalidArgumentException;
 final class VersionAnalyticsSnapshotService
 {
     /** Bump when a section's shape changes. */
-    public const SCHEMA_VERSION = 1;
+    // 2: selection.analysis (SelectionAnalysisService) added 2026-11-23.
+    public const SCHEMA_VERSION = 2;
 
     public function __construct(
         private readonly VersionScorecardService $scorecard,
@@ -49,6 +50,7 @@ final class VersionAnalyticsSnapshotService
         private readonly AdjudicationProgressService $adjudication,
         private readonly JudgeSurveySummaryService $survey,
         private readonly EnsembleCutoffService $cutoffs,
+        private readonly SelectionAnalysisService $selectionAnalysis,
     ) {}
 
     public function capture(Version $version, ?User $capturedBy = null, ?Carbon $at = null): VersionAnalyticsSnapshot
@@ -268,6 +270,7 @@ final class VersionAnalyticsSnapshotService
             'accepted' => $accepted,
             'cutoffs' => $cutoffs,
             'results' => $results,
+            'analysis' => $this->selectionAnalysis->forVersion($version),
         ]);
     }
 

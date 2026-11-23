@@ -12,6 +12,7 @@ use App\Models\VoicePart;
 use App\Services\EnsembleCutoffService;
 use App\Services\EnsembleHistoryService;
 use App\Services\VersionRoleAssignmentService;
+use App\Support\Charts\EnsemblePieCharts;
 use Flux\Flux;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -241,7 +242,7 @@ class EnsembleCutoffs extends Component
         // the one place the mapping is computed, shared by both the
         // summary table and the ranked score list below so an Ensemble's
         // color stays consistent across the whole page.
-        $palette = ['#3b82f6', '#f97316', '#22c55e', '#a855f7', '#ef4444', '#14b8a6'];
+        $palette = EnsemblePieCharts::PALETTE;
         $ensembleColors = $ensembles->mapWithKeys(fn (Ensemble $ensemble, int $index): array => [
             $ensemble->id => $ensemble->color ?? $palette[$index % count($palette)],
         ]);
@@ -307,22 +308,7 @@ class EnsembleCutoffs extends Component
             $countsByEnsembleVoicePart[$row['ensemble']->id][$row['voice_part_id']] = $row['count'];
         }
 
-        // The same 8-slot categorical palette used for Ensembles above, but
-        // assigned to Voice Parts instead — a different dimension, so its
-        // own fixed order (Voice Part sort_order) rather than reusing
-        // ensembleOrder. Validated on the "adjacent" pairlist (see
-        // references/palette.md); slices carry a legend + hover readout
-        // rather than relying on hue alone, per the accessibility pass.
-        $voicePartColors = $voiceParts->values()->mapWithKeys(fn (VoicePart $voicePart, int $index): array => [
-            $voicePart->id => $palette[$index % count($palette)],
-        ]);
-
-        $pieCharts = $ensembles->map(fn (Ensemble $ensemble): array => $this->buildPieChart(
-            $ensemble,
-            $voiceParts,
-            $voicePartColors,
-            $countsByEnsembleVoicePart[$ensemble->id] ?? [],
-        ));
+        $pieCharts = EnsemblePieCharts::build($ensembles, $voiceParts, $countsByEnsembleVoicePart);
 
         $priorSeasonYears = $history->priorSeasonYears($this->version);
 
@@ -337,112 +323,5 @@ class EnsembleCutoffs extends Component
             'pieCharts' => $pieCharts,
             'priorSeasonYears' => $priorSeasonYears,
         ]);
-    }
-
-    /**
-     * SVG pie-slice geometry for one Ensemble's accepted-candidate
-     * breakdown by Voice Part — a 200×200 viewBox, center (100,100),
-     * radius 80. Zero-count Voice Parts are skipped (no 0° slice). Each
-     * slice carries a 2px surface-color stroke as the separating gap
-     * between touching marks, not a border (see marks-and-anatomy.md) — the
-     * actual stroke color is applied in the Blade view via a CSS variable
-     * so it can swap for light/dark without recomputing geometry here.
-     *
-     * Slices are direct-labeled with the Voice Part's abbr, per
-     * marks-and-anatomy.md's "label inside a colored fill" exception —
-     * skipped on slices too small to hold text (< 8% share) rather than
-     * clipped, per "measure first, don't clip." The exact count/percent for
-     * every slice, labeled or not, stays reachable via hover/focus and the
-     * Accepted Candidates table above, so nothing is gated behind the label.
-     *
-     * @param  Collection<int, VoicePart>  $voiceParts
-     * @param  Collection<int, string>  $voicePartColors
-     * @param  array<int, int>  $counts  voice_part_id => count
-     * @return array{ensemble: Ensemble, total: int, slices: list<array{voicePart: VoicePart, count: int, percent: string, color: string, path: string, labelX: float, labelY: float, showLabel: bool, labelColor: string}>}
-     */
-    private function buildPieChart(Ensemble $ensemble, Collection $voiceParts, Collection $voicePartColors, array $counts): array
-    {
-        $total = array_sum($counts);
-        $cx = 100.0;
-        $cy = 100.0;
-        $r = 80.0;
-        $labelRadius = $r * 0.62;
-        $angle = -M_PI / 2; // start at 12 o'clock, sweep clockwise
-        $slices = [];
-
-        if ($total > 0) {
-            foreach ($voiceParts as $voicePart) {
-                $count = $counts[$voicePart->id] ?? 0;
-
-                if ($count <= 0) {
-                    continue;
-                }
-
-                $share = $count / $total;
-                $sweep = $share * 2 * M_PI;
-                $endAngle = $angle + $sweep;
-                $midAngle = $angle + $sweep / 2;
-
-                // A single 100%-share Voice Part has no second point to arc
-                // to — draw a full circle instead of a degenerate M-L-A-Z path.
-                if ($count === $total) {
-                    $path = sprintf(
-                        'M %.2f,%.2f m -%.2f,0 a %.2f,%.2f 0 1,1 %.2f,0 a %.2f,%.2f 0 1,1 -%.2f,0 Z',
-                        $cx, $cy, $r, $r, $r, $r * 2, $r, $r, $r * 2,
-                    );
-                } else {
-                    $x1 = $cx + $r * cos($angle);
-                    $y1 = $cy + $r * sin($angle);
-                    $x2 = $cx + $r * cos($endAngle);
-                    $y2 = $cy + $r * sin($endAngle);
-                    $largeArc = $sweep > M_PI ? 1 : 0;
-
-                    $path = sprintf(
-                        'M %.2f,%.2f L %.2f,%.2f A %.2f,%.2f 0 %d,1 %.2f,%.2f Z',
-                        $cx, $cy, $x1, $y1, $r, $r, $largeArc, $x2, $y2,
-                    );
-                }
-
-                $color = $voicePartColors[$voicePart->id];
-
-                $slices[] = [
-                    'voicePart' => $voicePart,
-                    'count' => $count,
-                    'percent' => number_format($share * 100, 1),
-                    'color' => $color,
-                    'path' => $path,
-                    'labelX' => $cx + $labelRadius * cos($midAngle),
-                    'labelY' => $cy + $labelRadius * sin($midAngle),
-                    'showLabel' => $share >= 0.08,
-                    'labelColor' => $this->contrastTextColor($color),
-                ];
-
-                $angle = $endAngle;
-            }
-        }
-
-        return [
-            'ensemble' => $ensemble,
-            'total' => $total,
-            'slices' => $slices,
-        ];
-    }
-
-    /**
-     * White or near-black text, whichever clears contrast against $hex —
-     * the "label inside a colored fill" exception in marks-and-anatomy.md,
-     * computed rather than assumed so it stays correct if the palette
-     * changes. Relative luminance per WCAG's sRGB coefficients.
-     */
-    private function contrastTextColor(string $hex): string
-    {
-        $hex = ltrim($hex, '#');
-        $r = hexdec(substr($hex, 0, 2)) / 255;
-        $g = hexdec(substr($hex, 2, 2)) / 255;
-        $b = hexdec(substr($hex, 4, 2)) / 255;
-
-        $luminance = 0.2126 * $r + 0.7152 * $g + 0.0722 * $b;
-
-        return $luminance > 0.55 ? '#0b0b0b' : '#ffffff';
     }
 }
