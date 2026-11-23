@@ -51,13 +51,13 @@
 
         <flux:tab.panel name="selection">
             @if ($tab === 'selection')
-                @include('livewire.events.version-scorecard-selection', ['selection' => $selection, 'selectionLine' => $selectionLine, 'pieCharts' => $pieCharts])
+                @include('livewire.events.version-scorecard-selection', ['selection' => $selection, 'pieCharts' => $pieCharts])
             @endif
         </flux:tab.panel>
 
         <flux:tab.panel name="adjudication">
             @if ($progress !== null)
-                @include('livewire.events.version-scorecard-adjudication', ['progress' => $progress, 'judgeSurvey' => $judgeSurvey])
+                @include('livewire.events.version-scorecard-adjudication', ['progress' => $progress, 'judgeSurvey' => $judgeSurvey, 'judgeMeasures' => $judgeMeasures])
             @endif
         </flux:tab.panel>
 

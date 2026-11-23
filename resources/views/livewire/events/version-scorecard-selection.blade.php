@@ -21,7 +21,6 @@
     @php
         $outcomes = $selection['outcomes'];
         $lines = collect($selection['lines']);
-        $charted = $lines->firstWhere('key', $selectionLine) ?? $lines->first();
         $tied = $lines->filter(fn (array $line): bool => $line['tiedMissed'] > 0);
         $derivedLines = $lines->contains(fn (array $line): bool => $line['lineSource'] === 'lowest_accepted');
         $betterWord = $selection['higherIsBetter'] ? 'higher' : 'lower';
@@ -161,60 +160,72 @@
             </flux:table.rows>
         </flux:table>
 
-        {{-- Score distribution for one line --}}
-        <div class="flex flex-wrap items-end justify-between gap-3 mb-3">
-            <div>
-                <flux:heading size="lg" class="mb-1">Score distribution</flux:heading>
-                <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400 max-w-3xl">
-                    Totals in {{ $lineName($charted) }}, left to right from lowest to highest. The line is {{ $charted['line'] }}: bars on the {{ $selection['higherIsBetter'] ? 'right' : 'left' }} of it were accepted.
-                </flux:text>
-            </div>
-            <div class="w-full sm:w-72">
-                <flux:select wire:model.live="selectionLine" label="Cut-off line">
-                    @foreach ($lines as $line)
-                        <flux:select.option value="{{ $line['key'] }}">{{ $lineName($line) }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-            </div>
-        </div>
+        {{-- Score distribution: one row per cut-off line on a shared score axis --}}
+        @php
+            $ends = $lines->flatMap(fn (array $line): array => array_merge($line['acceptedRange'] ?? [], $line['missedRange'] ?? [], [$line['line']]));
+            $span = max(1, (int) $ends->max() - (int) $ends->min());
+            $step = collect([1, 2, 5, 10, 20, 25, 50, 100, 200, 500])->first(fn (int $candidate): bool => $span / $candidate <= 8) ?? 1000;
+            $axisMin = intdiv((int) $ends->min(), $step) * $step;
+            $axisMax = (int) (ceil((int) $ends->max() / $step) * $step);
+            $axisSpan = max(1, $axisMax - $axisMin);
+            $pos = fn (int $value): float => round(($value - $axisMin) / $axisSpan * 100, 3);
+            $ticks = range($axisMin, $axisMax, $step);
+        @endphp
 
-        <flux:card class="space-y-3 mb-10" wire:key="sel-chart-{{ $charted['key'] }}">
+        <flux:heading size="lg" class="mb-1">Score distribution</flux:heading>
+        <flux:text size="sm" class="text-zinc-500 dark:text-zinc-400 max-w-3xl mb-3">
+            Each bar runs from the lowest to the highest total on that side of the line, and the dark mark is the cut-off.
+            {{ ucfirst($betterWord) }} totals are better, so accepted candidates sit to the {{ $selection['higherIsBetter'] ? 'right' : 'left' }}.
+        </flux:text>
+
+        <flux:card class="mb-10 space-y-4">
             <div class="flex flex-wrap gap-x-6 gap-y-2">
-                @foreach ($seriesColors as $field => $series)
+                @foreach ($seriesColors as $series)
                     <div class="flex items-center gap-2">
-                        <span class="inline-block size-2.5 rounded-full {{ $series['dot'] }}"></span>
+                        <span class="inline-block h-2.5 w-5 rounded-sm {{ $series['dot'] }}"></span>
                         <span class="text-sm text-zinc-500 dark:text-zinc-400">{{ $series['label'] }}</span>
-                        <span class="text-sm font-semibold tabular-nums text-zinc-800 dark:text-white">{{ $charted[$field] }}</span>
                     </div>
                 @endforeach
+                <div class="flex items-center gap-2">
+                    <span class="inline-block h-4 w-0.5 bg-zinc-800 dark:bg-white"></span>
+                    <span class="text-sm text-zinc-500 dark:text-zinc-400">Cut-off</span>
+                </div>
             </div>
 
-            <flux:chart :value="$charted['histogram']" class="aspect-[3/1]">
-                <flux:chart.svg>
-                    <flux:chart.stack>
-                        @foreach ($seriesColors as $field => $series)
-                            <flux:chart.bar :field="$field" :class="$series['bar']" />
+            <div class="space-y-3 md:space-y-2">
+                @foreach ($lines as $line)
+                    @php
+                        $describe = $lineName($line).': cut-off '.$line['line']
+                            .($line['acceptedRange'] !== null ? '; accepted '.$line['accepted'].' from '.$line['acceptedRange'][0].' to '.$line['acceptedRange'][1] : '')
+                            .($line['missedRange'] !== null ? '; not accepted '.$line['missed'].' from '.$line['missedRange'][0].' to '.$line['missedRange'][1] : '; none not accepted');
+                    @endphp
+                    <div wire:key="sel-range-{{ $line['key'] }}" class="grid grid-cols-1 md:grid-cols-[12rem_1fr] md:items-center gap-x-3 gap-y-1" title="{{ $describe }}">
+                        <div class="text-sm text-zinc-600 dark:text-zinc-300 truncate">{{ $lineName($line) }}</div>
+                        <div class="relative h-7" role="img" aria-label="{{ $describe }}">
+                            <div class="absolute inset-0 rounded bg-zinc-100 dark:bg-zinc-800"></div>
+                            @if ($line['acceptedRange'] !== null)
+                                <div class="absolute top-1 h-2.5 rounded-sm bg-[#2a78d6] dark:bg-[#3987e5]"
+                                     style="left: {{ $pos($line['acceptedRange'][0]) }}%; width: max(3px, {{ $pos($line['acceptedRange'][1]) - $pos($line['acceptedRange'][0]) }}%);"></div>
+                            @endif
+                            @if ($line['missedRange'] !== null)
+                                <div class="absolute bottom-1 h-2.5 rounded-sm bg-[#eb6834] dark:bg-[#d95926]"
+                                     style="left: {{ $pos($line['missedRange'][0]) }}%; width: max(3px, {{ $pos($line['missedRange'][1]) - $pos($line['missedRange'][0]) }}%);"></div>
+                            @endif
+                            <div class="absolute -top-0.5 -bottom-0.5 w-0.5 -translate-x-1/2 bg-zinc-800 dark:bg-white" style="left: {{ $pos($line['line']) }}%;"></div>
+                        </div>
+                    </div>
+                @endforeach
+
+                {{-- Shared score axis --}}
+                <div class="grid grid-cols-1 md:grid-cols-[12rem_1fr] gap-x-3">
+                    <div class="hidden md:block"></div>
+                    <div class="relative h-5 border-t border-zinc-300 dark:border-zinc-600">
+                        @foreach ($ticks as $tick)
+                            <span class="absolute top-1 -translate-x-1/2 text-xs tabular-nums text-zinc-500 dark:text-zinc-400" style="left: {{ $pos($tick) }}%;">{{ $tick }}</span>
                         @endforeach
-                    </flux:chart.stack>
-                    <flux:chart.axis axis="x" field="x">
-                        <flux:chart.axis.line />
-                        <flux:chart.axis.tick />
-                    </flux:chart.axis>
-                    <flux:chart.axis axis="y" :format="['maximumFractionDigits' => 0]">
-                        <flux:chart.axis.grid />
-                        <flux:chart.axis.tick />
-                    </flux:chart.axis>
-                    <flux:chart.cursor />
-                </flux:chart.svg>
-                <flux:chart.tooltip>
-                    <flux:chart.tooltip.heading field="heading" />
-                    @foreach ($seriesColors as $field => $series)
-                        <flux:chart.tooltip.value :field="$field" :label="$series['label']">
-                            <flux:chart.legend.indicator :class="$series['dot']" />
-                        </flux:chart.tooltip.value>
-                    @endforeach
-                </flux:chart.tooltip>
-            </flux:chart>
+                    </div>
+                </div>
+            </div>
         </flux:card>
     @endif
 @endif

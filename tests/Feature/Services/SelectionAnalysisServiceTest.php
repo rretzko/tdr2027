@@ -101,11 +101,8 @@ test('a shared-cutoff line is the worst accepted total, with margins measured fr
         ])
         ->and($analysis['ensembles'])->toBe([['id' => $ensemble->id, 'name' => 'Treble', 'accepted' => 3, 'priorYear' => $version->senior_class_of - 1, 'prior' => null]]);
 
-    // Every bar is wholly on one side of the line, and the bars account for everyone.
-    $histogram = collect($line['histogram']);
-    expect($histogram->every(fn (array $bar): bool => $bar['accepted'] === 0 || $bar['missed'] === 0))->toBeTrue()
-        ->and($histogram->sum('accepted'))->toBe(3)
-        ->and($histogram->sum('missed'))->toBe(3);
+    expect($line['acceptedRange'])->toBe([80, 100])
+        ->and($line['missedRange'])->toBe([101, 120]);
 });
 
 test('per-Ensemble lines use the stored cutoff and leave candidates accepted elsewhere out of the pool', function () {
@@ -153,7 +150,7 @@ test('a Version with decisions but no recorded totals gets outcomes and no lines
         ->and($analysis['lines'] ?? null)->toBe([]);
 });
 
-test('the Scorecard opens on the Selection tab for a closed Version and charts the chosen line', function () {
+test('the Scorecard opens on the Selection tab for a closed Version and draws a range bar per line', function () {
     $event = Event::factory()->create(['organization_id' => Organization::factory()->create()->id]);
     $version = Version::factory()->create(['event_id' => $event->id, 'status' => EventStatus::Closed, 'cutoff_strategy' => CutoffStrategy::AlternatingEnsembleAssignment->value]);
     $manager = User::factory()->create();
@@ -171,8 +168,28 @@ test('the Scorecard opens on the Selection tab for a closed Version and charts t
         ->test(VersionScorecard::class, ['version' => $version])
         ->assertSet('tab', 'selection')
         ->assertSee('How close the cut-offs were')
-        ->assertSee('Totals in Sop')
         ->assertSee('Treble Choir accepted candidates by voice part')
-        ->set('selectionLine', $alto->id.':all')
-        ->assertSee('Totals in Alto');
+        ->assertSee('Sop: cut-off 80; accepted 1 from 80 to 80; none not accepted')
+        ->assertSee('Alto: cut-off 90; accepted 1 from 90 to 90; not accepted 1 from 95 to 95');
+});
+
+test('lines are grouped by Ensemble order, then Voice Part order', function () {
+    $version = Version::factory()->create(['event_id' => Event::factory()->create()->id, 'score_order' => 'desc', 'cutoff_strategy' => CutoffStrategy::SequentialEnsembleFill->value]);
+    $low = VoicePart::factory()->create(['abbr' => 'Low', 'sort_order' => 1]);
+    $high = VoicePart::factory()->create(['abbr' => 'High', 'sort_order' => 2]);
+    $first = selectionAnalysisEnsemble($version, $low, 'First', 1);
+    $first->voiceParts()->attach($high->id);
+    $second = selectionAnalysisEnsemble($version, $low, 'Second', 2);
+    $second->voiceParts()->attach($high->id);
+
+    foreach ([$low, $high] as $voicePart) {
+        selectionAnalysisCandidate($version, $voicePart, CandidateStatus::Accepted, 90, $first);
+        selectionAnalysisCandidate($version, $voicePart, CandidateStatus::Accepted, 80, $second);
+    }
+
+    $order = collect(app(SelectionAnalysisService::class)->forVersion($version)['lines'] ?? [])
+        ->map(fn (array $line): string => $line['ensemble']['name'].' '.$line['voicePart']['abbr'])
+        ->all();
+
+    expect($order)->toBe(['First Low', 'First High', 'Second Low', 'Second High']);
 });

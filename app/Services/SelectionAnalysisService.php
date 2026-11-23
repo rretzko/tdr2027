@@ -23,7 +23,7 @@ use Illuminate\Support\Collection;
  * (docs/plans/version-analytics-report.md § Selection). For each line:
  * how many were accepted and missed, how close the closest miss was, how
  * many candidates sat within a few points either side, and a score
- * histogram split at the line. Plus Ensemble totals against last season
+ * range of accepted and not-accepted totals. Plus Ensemble totals against last season
  * (EnsembleHistory) and a Version-wide outcome tally.
  *
  * Totals come from audition_results, written whenever Ensemble Cut-offs
@@ -45,9 +45,6 @@ final class SelectionAnalysisService
     /** "Near the line" is within this share of the line's own score, at least 1 point. */
     public const NEAR_RATIO = 0.03;
 
-    /** Target number of histogram bars per line. */
-    private const HISTOGRAM_BINS = 16;
-
     public function __construct(
         private readonly EnsembleCutoffService $cutoffs,
         private readonly EnsembleHistoryService $history,
@@ -62,7 +59,7 @@ final class SelectionAnalysisService
      *     perEnsemble: bool,
      *     higherIsBetter: bool,
      *     outcomes: array{decided: int, accepted: int, notAccepted: int, noShow: int, incomplete: int, declined: int, acceptRate: int},
-     *     lines: list<array{key: string, voicePart: array{id: int, abbr: string, name: string}, ensemble: ?array{id: int, name: string, abbreviation: ?string}, line: int, lineSource: string, near: int, pool: int, accepted: int, missed: int, acceptRate: int, closestMiss: ?int, nearAccepted: int, nearMissed: int, tiedMissed: int, acceptedMedian: ?float, missedMedian: ?float, histogram: list<array{x: string, heading: string, accepted: int, missed: int}>}>,
+     *     lines: list<array{key: string, voicePart: array{id: int, abbr: string, name: string}, ensemble: ?array{id: int, name: string, abbreviation: ?string}, line: int, lineSource: string, near: int, pool: int, accepted: int, missed: int, acceptRate: int, closestMiss: ?int, nearAccepted: int, nearMissed: int, tiedMissed: int, acceptedMedian: ?float, missedMedian: ?float, acceptedRange: ?array{int, int}, missedRange: ?array{int, int}}>,
      *     ensembles: list<array{id: int, name: string, accepted: int, priorYear: int, prior: ?int}>,
      * }
      */
@@ -120,6 +117,15 @@ final class SelectionAnalysisService
             }
         }
 
+        // Group by Ensemble (the Version's Ensemble order), keeping Voice
+        // Part order within each; the lines were built in Voice Part order
+        // and usort is stable. Shared-cutoff lines have no Ensemble and
+        // stay in Voice Part order.
+        $ensembleRank = $version->ensembleOrder->values()
+            ->mapWithKeys(fn ($order, int $index): array => [(int) $order->ensemble_id => $index])
+            ->all();
+        usort($lines, fn (array $a, array $b): int => ($ensembleRank[$a['ensemble']['id'] ?? 0] ?? -1) <=> ($ensembleRank[$b['ensemble']['id'] ?? 0] ?? -1));
+
         return [
             'strategy' => $rawStrategy,
             'strategyLabel' => $strategy?->label(),
@@ -147,7 +153,7 @@ final class SelectionAnalysisService
 
     /**
      * @param  Collection<int, array{candidate: Candidate, total: int}>  $pool
-     * @return ?array{key: string, voicePart: array{id: int, abbr: string, name: string}, ensemble: ?array{id: int, name: string, abbreviation: ?string}, line: int, lineSource: string, near: int, pool: int, accepted: int, missed: int, acceptRate: int, closestMiss: ?int, nearAccepted: int, nearMissed: int, tiedMissed: int, acceptedMedian: ?float, missedMedian: ?float, histogram: list<array{x: string, heading: string, accepted: int, missed: int}>}
+     * @return ?array{key: string, voicePart: array{id: int, abbr: string, name: string}, ensemble: ?array{id: int, name: string, abbreviation: ?string}, line: int, lineSource: string, near: int, pool: int, accepted: int, missed: int, acceptRate: int, closestMiss: ?int, nearAccepted: int, nearMissed: int, tiedMissed: int, acceptedMedian: ?float, missedMedian: ?float, acceptedRange: ?array{int, int}, missedRange: ?array{int, int}}
      */
     private function lineRow(VoicePart $voicePart, ?Ensemble $ensemble, Collection $pool, ?int $storedLine, bool $higherIsBetter): ?array
     {
@@ -189,49 +195,10 @@ final class SelectionAnalysisService
             'tiedMissed' => $missed->filter($meets)->count(),
             'acceptedMedian' => $this->median($accepted),
             'missedMedian' => $this->median($missed),
-            'histogram' => $this->histogram($accepted, $missed, $line, $higherIsBetter),
+            // Lowest and highest total on each side, for the Scorecard's range bars.
+            'acceptedRange' => $accepted->isEmpty() ? null : [(int) $accepted->min(), (int) $accepted->max()],
+            'missedRange' => $missed->isEmpty() ? null : [(int) $missed->min(), (int) $missed->max()],
         ];
-    }
-
-    /**
-     * Bars of equal width over the pool's range, split exactly at the line
-     * so no bar mixes the accepted side with the missed side. Left to right
-     * is low to high total, whichever way the Version scores.
-     *
-     * @param  Collection<int, int>  $accepted
-     * @param  Collection<int, int>  $missed
-     * @return list<array{x: string, heading: string, accepted: int, missed: int}>
-     */
-    private function histogram(Collection $accepted, Collection $missed, int $line, bool $higherIsBetter): array
-    {
-        $all = $accepted->merge($missed);
-        $min = (int) $all->min();
-        $max = (int) $all->max();
-        $width = max(1, (int) ceil(($max - $min + 1) / self::HISTOGRAM_BINS));
-
-        // The bar boundary sits between the line and the next-worse total:
-        // ascending (lower is better) bars start at line + 1; descending at line.
-        $origin = $higherIsBetter ? $line : $line + 1;
-        $bin = fn (int $total): int => (int) floor(($total - $origin) / $width);
-
-        $acceptedBins = $accepted->countBy($bin);
-        $missedBins = $missed->countBy($bin);
-
-        $rows = [];
-        for ($i = $bin($min); $i <= $bin($max); $i++) {
-            $from = $origin + $i * $width;
-            $to = $from + $width - 1;
-            $range = $from === $to ? (string) $from : "{$from}–{$to}";
-
-            $rows[] = [
-                'x' => (string) $from,
-                'heading' => "Total {$range}",
-                'accepted' => (int) ($acceptedBins[$i] ?? 0),
-                'missed' => (int) ($missedBins[$i] ?? 0),
-            ];
-        }
-
-        return $rows;
     }
 
     /**
