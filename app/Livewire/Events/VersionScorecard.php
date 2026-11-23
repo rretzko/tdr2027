@@ -9,6 +9,7 @@ use App\Enums\VersionDateType;
 use App\Models\Candidate;
 use App\Models\Ensemble;
 use App\Models\Version;
+use App\Models\VersionAnalyticsSnapshot;
 use App\Models\VersionDate;
 use App\Models\VersionScorecardSnapshot;
 use App\Models\VoicePart;
@@ -94,6 +95,7 @@ class VersionScorecard extends Component
             'retention' => $this->tab === 'registration' ? $retention->forVersion($this->version) : null,
             'registrationTiming' => $this->tab === 'registration' ? $registrationTiming->forVersion($this->version) : null,
             'selection' => $this->tab === 'selection' ? $selection->forVersion($this->version) : null,
+            'hasAnalyticsSnapshot' => VersionAnalyticsSnapshot::where('version_id', $this->version->id)->exists(),
             'pieCharts' => $this->tab === 'selection' ? $this->pieCharts($cutoffs) : collect(),
         ]);
     }

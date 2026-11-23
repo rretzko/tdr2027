@@ -1,6 +1,6 @@
 # Version Analytics Report (end-of-version PDF for Event Managers)
 
-Status: **in progress**. Step 1, the Close-time snapshot, was built 2026-11-22 (see Prerequisites). Next: the measures the snapshot doesn't capture yet (below), then the PDF.
+Status: **in progress**. PDF built 2026-11-23: DomPDF, downloaded from the Scorecard ("Download analytics report", Event Managers, closed Versions with a snapshot), read only from the Close snapshot, charts drawn as server-side SVG (`SvgCharts`); email delivery deferred. Step 1, the Close-time snapshot, was built 2026-11-22 (see Prerequisites). Next: the measures the snapshot doesn't capture yet (below), then the PDF.
 
 ## Goal
 

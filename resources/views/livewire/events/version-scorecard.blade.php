@@ -38,8 +38,13 @@
         <span>Scorecard</span>
     </div>
 
-    <div class="mb-4">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <flux:heading size="xl">Scorecard</flux:heading>
+        @if ($hasAnalyticsSnapshot)
+            <flux:button size="sm" icon="arrow-down-tray" href="{{ route('events.versions.scorecard.analytics-report', $version) }}">
+                Download analytics report
+            </flux:button>
+        @endif
     </div>
 
     <flux:tab.group>
