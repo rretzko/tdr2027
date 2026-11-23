@@ -54,6 +54,17 @@ Performance: `ListeningEstimate` reads every tracked event for the Version. A sy
 - Score distributions around each cut-off, and how out-of-tolerance candidates were resolved (see judge agreement under Adjudication).
 - Acceptances and declines after results were released.
 
+**Built 2026-11-23** (`SelectionAnalysisService`, the Scorecard's **Selection** tab, and the snapshot's `selection.analysis` at `SCHEMA_VERSION` 2):
+
+- **Outcomes:** decided, accepted (with rate), not accepted, no-show, incomplete and declined. A Declined candidate counts as accepted.
+- **Accepted by Ensemble,** against last season's `EnsembleHistory` count.
+- **One row per cut-off line.** The per-Ensemble strategies have one line per Voice Part × Ensemble. The shared-cutoff strategies have one line per Voice Part. Each row shows the line, accepted of pool, rate, closest miss, candidates near the line on each side (within 3% of the line, at least 1 point), median totals on each side, and a histogram split at the line. The Scorecard charts one line at a time, picked from a selector.
+  - A line's pool is the Voice Part candidates this Ensemble could take (the grade gate) who weren't accepted elsewhere. Under Sequential Fill, the second Ensemble's pool therefore starts below the first Ensemble's line.
+  - The shared-cutoff strategies don't store their cutoff score (only the per-Ensemble strategies write `version_ensemble_cutoffs`), so their line is the worst accepted total, marked *.
+  - A candidate who wasn't accepted despite being at or past the line is flagged. That should never happen, so a flag is worth a look on Ensemble Cut-offs.
+- Totals come from `audition_results`, the totals each decision was made on. Imported legacy Versions have no `audition_results` (their scores weren't imported), so they get outcomes and Ensemble totals but no line analysis.
+- **Still open.** How out-of-tolerance candidates were resolved belongs with the judge-agreement work (in v93 the tolerance check never fired). **Declines:** nothing in the app sets `Declined` yet, so there's no decline timing to report. When a decline flow exists, read decline dates from `candidate_status_history` at report time, not from the Close snapshot, since declines happen after Close.
+
 ## Prerequisites
 
 - **Snapshot the analytics when the Version closes.** Store each section's computed metrics in a per-Version table at Close Audition (the same hook as the platform invoice; see `close-audition-invoice.md`). The report and any cross-Version or year-over-year comparison read those snapshots, not live data, so later score edits or deletions can't change history.

@@ -46,7 +46,14 @@
         <flux:tabs wire:model.live="tab">
             <flux:tab name="registration" icon="user-group">Registration</flux:tab>
             <flux:tab name="adjudication" icon="musical-note">Adjudication</flux:tab>
+            <flux:tab name="selection" icon="trophy">Selection</flux:tab>
         </flux:tabs>
+
+        <flux:tab.panel name="selection">
+            @if ($tab === 'selection')
+                @include('livewire.events.version-scorecard-selection', ['selection' => $selection, 'selectionLine' => $selectionLine, 'pieCharts' => $pieCharts])
+            @endif
+        </flux:tab.panel>
 
         <flux:tab.panel name="adjudication">
             @if ($progress !== null)
