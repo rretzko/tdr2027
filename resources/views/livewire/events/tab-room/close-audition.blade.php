@@ -48,6 +48,26 @@
                 <flux:button variant="danger" wire:click="close" wire:confirm="Close {{ $version->name }}? This releases audition results to participating teachers{{ $emailTeachers ? ' and emails them now' : '' }}.">
                     Close Audition
                 </flux:button>
+
+                @if ($closeProblems !== [])
+                    <flux:callout variant="danger" icon="exclamation-triangle" class="text-left">
+                        <flux:callout.heading>Audition not closed — some candidates don't have a result yet</flux:callout.heading>
+                        <flux:callout.text>
+                            <ul class="list-disc ps-5 space-y-0.5">
+                                @foreach ($closeProblems as $problem)
+                                    <li>{{ $problem }}</li>
+                                @endforeach
+                            </ul>
+                            <p class="mt-2">
+                                @if ($needsFinalize)
+                                    On <a href="{{ route('events.versions.tab-room.cutoffs', $version) }}" wire:navigate class="underline font-medium">Ensemble Cut-offs</a>, click <strong>Finalize — reject remaining</strong>, then close again.
+                                @else
+                                    On <a href="{{ route('events.versions.tab-room.cutoffs', $version) }}" wire:navigate class="underline font-medium">Ensemble Cut-offs</a>, apply a cutoff in each voice part listed, then close again.
+                                @endif
+                            </p>
+                        </flux:callout.text>
+                    </flux:callout>
+                @endif
             </div>
         @endif
     </flux:card>
