@@ -40,7 +40,9 @@ final class VersionAnalyticsSnapshotService
 {
     /** Bump when a section's shape changes. */
     // 2: selection.analysis (SelectionAnalysisService) added 2026-11-23.
-    public const SCHEMA_VERSION = 2;
+    // 3: adjudication.judgeMeasures (JudgeMeasuresService) added 2026-11-23.
+    // 4: selection.analysis lines carry acceptedRange/missedRange instead of histogram (2026-11-23).
+    public const SCHEMA_VERSION = 4;
 
     public function __construct(
         private readonly VersionScorecardService $scorecard,
@@ -51,6 +53,7 @@ final class VersionAnalyticsSnapshotService
         private readonly JudgeSurveySummaryService $survey,
         private readonly EnsembleCutoffService $cutoffs,
         private readonly SelectionAnalysisService $selectionAnalysis,
+        private readonly JudgeMeasuresService $judgeMeasures,
     ) {}
 
     public function capture(Version $version, ?User $capturedBy = null, ?Carbon $at = null): VersionAnalyticsSnapshot
@@ -201,6 +204,7 @@ final class VersionAnalyticsSnapshotService
         return $this->plain([
             ...$progress,
             'survey' => $this->survey->forVersion($version),
+            'judgeMeasures' => $this->judgeMeasures->forVersion($version),
         ]);
     }
 

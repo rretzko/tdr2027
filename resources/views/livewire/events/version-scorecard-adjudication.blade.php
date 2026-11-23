@@ -547,4 +547,8 @@
             </flux:callout>
         @endforelse
     </div>
+
+    @if (($judgeMeasures ?? []) !== [])
+        @include('livewire.events.version-scorecard-judge-measures', ['measures' => $judgeMeasures])
+    @endif
 </div>

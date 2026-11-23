@@ -14,6 +14,7 @@ use App\Models\VersionScorecardSnapshot;
 use App\Models\VoicePart;
 use App\Services\AdjudicationProgressService;
 use App\Services\EnsembleCutoffService;
+use App\Services\JudgeMeasuresService;
 use App\Services\JudgeSurveySummaryService;
 use App\Services\RegistrationTimingService;
 use App\Services\SchoolRetentionService;
@@ -44,9 +45,6 @@ class VersionScorecard extends Component
     #[Url(as: 'tab')]
     public string $tab = '';
 
-    /** The Selection tab's charted cut-off line (a SelectionAnalysisService line key); first line when blank. */
-    public string $selectionLine = '';
-
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
     {
         abort_unless($roles->canManageEvent(Auth::user(), $version->event), 403);
@@ -62,7 +60,7 @@ class VersionScorecard extends Component
         }
     }
 
-    public function render(VersionScorecardService $scorecard, AdjudicationProgressService $adjudication, SchoolRetentionService $retention, JudgeSurveySummaryService $judgeSurvey, RegistrationTimingService $registrationTiming, SelectionAnalysisService $selection, EnsembleCutoffService $cutoffs): View
+    public function render(VersionScorecardService $scorecard, AdjudicationProgressService $adjudication, SchoolRetentionService $retention, JudgeSurveySummaryService $judgeSurvey, RegistrationTimingService $registrationTiming, SelectionAnalysisService $selection, EnsembleCutoffService $cutoffs, JudgeMeasuresService $judgeMeasures): View
     {
         $snapshots = $this->version->scorecardSnapshots()->orderBy('captured_on')->get();
         $deadline = $this->postmarkDeadline();
@@ -92,6 +90,7 @@ class VersionScorecard extends Component
             // Only computed for the tab on screen; the tabs switch via wire:model.live.
             'progress' => $this->tab === 'adjudication' ? $adjudication->forVersion($this->version) : null,
             'judgeSurvey' => $this->tab === 'adjudication' ? $judgeSurvey->forVersion($this->version) : null,
+            'judgeMeasures' => $this->tab === 'adjudication' ? $judgeMeasures->forVersion($this->version) : [],
             'retention' => $this->tab === 'registration' ? $retention->forVersion($this->version) : null,
             'registrationTiming' => $this->tab === 'registration' ? $registrationTiming->forVersion($this->version) : null,
             'selection' => $this->tab === 'selection' ? $selection->forVersion($this->version) : null,
