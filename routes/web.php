@@ -29,6 +29,7 @@ use App\Http\Controllers\SharedScoresPdfController;
 use App\Http\Controllers\StopImpersonatingController;
 use App\Http\Controllers\StudentClaimController;
 use App\Http\Controllers\UserGuidePdfController;
+use App\Http\Controllers\VersionAnalyticsReportPdfController;
 use App\Http\Controllers\VersionInvitationRequestController;
 use App\Http\Controllers\VersionObligationPdfController;
 use App\Http\Controllers\VersionRoomRosterPdfController;
@@ -307,6 +308,7 @@ Route::middleware(['auth', 'verified', 'onboarding.complete'])->group(function (
         Route::get('/events/versions/{version}/scoring-rubric', VersionScoringRubric::class)->name('events.versions.scoring-rubric');
         Route::get('/events/versions/{version}/readiness', VersionReadinessChecklist::class)->name('events.versions.readiness');
         Route::get('/events/versions/{version}/scorecard', VersionScorecard::class)->name('events.versions.scorecard');
+        Route::get('/events/versions/{version}/scorecard/analytics-report.pdf', VersionAnalyticsReportPdfController::class)->name('events.versions.scorecard.analytics-report');
         Route::get('/events/versions/{version}/setup-questions', VersionSetupQuestions::class)->name('events.versions.setup-questions');
         Route::get('/events/versions/{version}/adjudicate', Adjudicate::class)->name('events.versions.adjudicate');
 
