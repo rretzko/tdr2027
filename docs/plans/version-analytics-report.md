@@ -1,6 +1,6 @@
 # Version Analytics Report (end-of-version PDF for Event Managers)
 
-Status: **planned, not started** (2026-11-17). Build it after Version 93's adjudication window closes on 2026-11-22, so the patterns it reports have been confirmed against a full window first.
+Status: **in progress**. Step 1, the Close-time snapshot, was built 2026-11-22 (see Prerequisites). Next: the measures the snapshot doesn't capture yet (below), then the PDF.
 
 ## Goal
 
@@ -57,6 +57,10 @@ Performance: `ListeningEstimate` reads every tracked event for the Version. A sy
 ## Prerequisites
 
 - **Snapshot the analytics when the Version closes.** Store each section's computed metrics in a per-Version table at Close Audition (the same hook as the platform invoice; see `close-audition-invoice.md`). The report and any cross-Version or year-over-year comparison read those snapshots, not live data, so later score edits or deletions can't change history.
+  - **Built 2026-11-22.** `version_analytics_snapshots` holds one row per Version, with `registration`, `adjudication` and `selection` JSON columns and a `schema_version` (`VersionAnalyticsSnapshotService::SCHEMA_VERSION`, which must be bumped whenever a section's shape changes). Close Audition queues `CaptureVersionAnalyticsSnapshotJob`, stamped with the Close time. A re-Close after a Reopen replaces the row, since reopening is for corrections. `php artisan analytics:snapshot {version}` backfills or recaptures a closed Version, stamped with `results_released_at`. In prod the migration has to be run by hand, and v93 needs the backfill after deploy.
+  - **What a snapshot holds.** *Registration:* Scorecard counts with registrants defined by `CandidateStatus::registrantStates()` (the live Scorecard's `status = Registered` counts read zero after results are released), fees (due, paid, outstanding, waived), `RegistrationTimingService`, `SchoolRetentionService`, who uploaded each recording type (student / teacher / other), and stranded pending candidates by teacher. *Adjudication:* the full `AdjudicationProgressService::forVersion()` output as of Close: window, totals, per-Room and per-judge rows (status, sittings, pace, listening, own-students lean, halo), daily saves, and Scales vs Solo agreement. It also holds `JudgeSurveySummaryService::forVersion()`. *Selection:* strategy, voice parts, ensembles, outcomes per voice part, accepted per ensemble × voice part, cut-off scores, and every decided candidate's total from `audition_results`.
+  - **Privacy.** Students appear by candidate id only, never by name. Judge and teacher names stay, since Event Managers already see them. Any object a section builder doesn't map to plain values throws an exception instead of being stored.
+  - **Not yet captured (next step).** Judge-pair correlation and tolerance hits, calibration, scale use and same-score sheets, drift, review passes, and the "checked, no pattern" measures. Each needs a calculation that the Scorecard doesn't have yet. Add them to the adjudication section and bump `SCHEMA_VERSION`.
 - **Tracking data is partial for Version 93.** `adjudication_events` and `recordings.duration_seconds` only exist from the 2026-11-17 deploy onward. Version 93's listening-behavior measures must be labeled partial or left out. Version 88 (window opens 2026-12-03) is the first Version tracked from the start.
 
 ## Open questions

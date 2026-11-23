@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\CandidateStatus;
 use App\Enums\PdfExportStatus;
 use App\Enums\PlatformInvoiceStatus;
+use App\Jobs\CaptureVersionAnalyticsSnapshotJob;
 use App\Jobs\GenerateCombinedScoresPdfJob;
 use App\Livewire\Events\TabRoom\CloseAudition;
 use App\Mail\AuditionResultsAvailableMail;
@@ -317,4 +318,20 @@ test('close is not guarded on a Version with no cut-off strategy (legacy imports
         ->call('close');
 
     expect($version->refresh()->getRawOriginal('status'))->toBe('closed');
+});
+
+test('close queues the analytics snapshot capture', function () {
+    Queue::fake();
+
+    $manager = User::factory()->create();
+    actingAs($manager);
+    $event = Event::factory()->create();
+    $version = Version::factory()->create(['event_id' => $event->id, 'status' => 'active']);
+    grantVersionRole($manager, $version, 'Tab Room Manager');
+
+    Livewire::actingAs($manager)
+        ->test(CloseAudition::class, ['version' => $version])
+        ->call('close');
+
+    Queue::assertPushed(CaptureVersionAnalyticsSnapshotJob::class, 1);
 });
