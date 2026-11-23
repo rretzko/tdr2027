@@ -8,6 +8,7 @@ use App\Enums\CandidateStatus;
 use App\Enums\CutoffStrategy;
 use App\Enums\EventStatus;
 use App\Enums\PdfExportStatus;
+use App\Jobs\CaptureVersionAnalyticsSnapshotJob;
 use App\Jobs\GenerateCombinedScoresPdfJob;
 use App\Mail\AuditionResultsAvailableMail;
 use App\Models\Candidate;
@@ -88,6 +89,10 @@ class CloseAudition extends Component
         ]);
 
         $history->recordCurrentSeason($this->version, $cutoffs);
+
+        // Freeze this Version's end-of-cycle analytics (docs/plans/version-analytics-report.md).
+        // A re-Close after a Reopen replaces the snapshot, since reopening is for corrections.
+        CaptureVersionAnalyticsSnapshotJob::dispatch($this->version->id, Auth::id(), now()->toIso8601String());
 
         if ($this->version->share_results) {
             $this->queueSharedScoresPdf();
