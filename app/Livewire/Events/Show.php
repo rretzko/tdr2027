@@ -282,7 +282,7 @@ class Show extends Component
             // Web Registration button: everyone who can open the page —
             // full access (Event Manager / Web Registration Manager, §5.11)
             // plus Registration / Co-Registration Managers, who see only its
-            // Voice Part Audit tab (canAuditVoiceParts()).
+            // Registration History and Voice Part Audit tabs (canAuditVoiceParts()).
             'versionWebRegistrationAccess' => $versions->mapWithKeys(
                 fn (Version $version): array => [$version->id => $service->canAuditVoiceParts(Auth::user(), $version)],
             ),

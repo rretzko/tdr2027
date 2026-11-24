@@ -12,9 +12,9 @@
         <flux:heading size="xl">Web Registration</flux:heading>
         <flux:text size="sm" class="text-zinc-500">
             @if ($fullAccess)
-                {{ $version->name }} — impersonate an invited teacher, transfer students between invited teachers, or audit voice parts against recordings
+                {{ $version->name }} — impersonate an invited teacher, transfer students between invited teachers, review registration history, or audit voice parts against recordings
             @else
-                {{ $version->name }} — audit candidates' voice parts against their approved recordings
+                {{ $version->name }} — review registration history, or audit candidates' voice parts against their approved recordings
             @endif
         </flux:text>
     </div>
@@ -26,6 +26,7 @@
                 <flux:tab name="preview-student">Preview Student</flux:tab>
                 <flux:tab name="transfer">Transfer Students</flux:tab>
             @endif
+            <flux:tab name="registration-history">Registration History</flux:tab>
             <flux:tab name="voice-parts">Voice Part Audit</flux:tab>
         </flux:tabs>
 
@@ -193,6 +194,13 @@
             </div>
         </flux:tab.panel>
         @endif
+
+        {{-- Registration History: its own component, loaded once the tab is first shown --}}
+        <flux:tab.panel name="registration-history">
+            <div class="mt-6">
+                <livewire:events.version-registration-history :version="$version" lazy />
+            </div>
+        </flux:tab.panel>
 
         {{-- Voice Part Audit: its own component, loaded once the tab is first shown --}}
         <flux:tab.panel name="voice-parts">
