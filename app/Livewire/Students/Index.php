@@ -254,12 +254,45 @@ class Index extends Component
 
     /**
      * A roster row stands for the student at that school across all of their
-     * subjects, so Deactivate/Remove act on every subject row — dropping a
+     * subjects, so Deactivate/Reactivate/Remove act on every subject row — dropping a
      * single subject is done through Edit.
      */
     public function deactivate(int $rowId): void
     {
         $this->subjectRowsFor($rowId)?->update(['is_active' => false]);
+    }
+
+    /**
+     * Saves each subject row individually so StudentTeacherObserver enrolls the
+     * student into the teacher's invited Versions, as with any new roster row.
+     */
+    public function reactivate(int $rowId): void
+    {
+        $row = $this->teacherRow($rowId)->with(['student.user', 'school'])->first();
+
+        // A pending claim only becomes active through the other teacher's approval.
+        if ($row === null || $row->isPending()) {
+            return;
+        }
+
+        $name = $row->student->user->name;
+
+        // The student has since joined another school, which is what made them
+        // inactive here (SchoolStudentObserver) — they have to be claimed back.
+        $leftSchool = SchoolStudent::where('student_id', $row->student_id)
+            ->where('school_id', $row->school_id)
+            ->where('is_active', false)
+            ->exists();
+
+        if ($leftSchool) {
+            Flux::toast("{$name} can't be reactivated because they're no longer at {$row->school->name}.", variant: 'danger');
+
+            return;
+        }
+
+        $this->subjectRowsFor($rowId)?->get()->each(fn (StudentTeacher $subjectRow) => $subjectRow->update(['is_active' => true]));
+
+        Flux::toast("{$name} is active on your roster again.", variant: 'success');
     }
 
     /**

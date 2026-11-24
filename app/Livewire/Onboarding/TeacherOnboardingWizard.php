@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace App\Livewire\Onboarding;
 
-use App\Enums\EventInvitationStatus;
 use App\Enums\SchoolType;
 use App\Enums\Subject;
 use App\Enums\TeacherRole;
 use App\Models\County;
-use App\Models\Event;
-use App\Models\EventInvitationRequest;
 use App\Models\Geostate;
 use App\Models\Organization;
 use App\Models\Pivots\SchoolStudent;
@@ -37,6 +34,9 @@ use Livewire\Component;
 class TeacherOnboardingWizard extends Component
 {
     public const string REPLACED_TEACHER_NOT_LISTED = 'not-listed';
+
+    /** The last step, the "You're all set" overview. */
+    public const int FINAL_STEP = 5;
 
     public int $step = 1;
 
@@ -96,10 +96,6 @@ class TeacherOnboardingWizard extends Component
     /** @var array<int, string> */
     public array $supervisorCellPhone = [];
 
-    // Step 5 — events
-    /** @var list<int> */
-    public array $selectedEventIds = [];
-
     public function mount(): void
     {
         $teacher = Auth::user()->teacher;
@@ -110,7 +106,8 @@ class TeacherOnboardingWizard extends Component
             return;
         }
 
-        $this->step = $teacher->onboarding_step;
+        // A teacher saved on step 6 before the events step was removed resumes on the overview.
+        $this->step = min($teacher->onboarding_step, self::FINAL_STEP);
 
         if ($this->geostate_id === '') {
             $newJersey = Geostate::where('name', 'New Jersey')->first();
@@ -357,20 +354,6 @@ class TeacherOnboardingWizard extends Component
         $this->advanceTo(5);
     }
 
-    public function requestEventInvitations(): void
-    {
-        $teacherId = $this->teacher()->id;
-
-        foreach ($this->selectedEventIds as $eventId) {
-            EventInvitationRequest::firstOrCreate(
-                ['event_id' => $eventId, 'teacher_id' => $teacherId],
-                ['status' => EventInvitationStatus::Pending]
-            );
-        }
-
-        $this->advanceTo(6);
-    }
-
     public function finish(): void
     {
         $this->teacher()->update(['onboarding_completed_at' => now()]);
@@ -403,7 +386,6 @@ class TeacherOnboardingWizard extends Component
                 ? $this->classOfOptions($school)
                 : [],
             'organizationTree' => $this->step === 4 ? $this->organizationTree() : [],
-            'openEvents' => $this->step === 5 ? $this->openEvents() : collect(),
             'subjectOptions' => Subject::cases(),
             'replacingTeacherOptions' => $this->step === 2 ? $this->replacingTeacherOptions() : collect(),
         ]);
@@ -509,20 +491,6 @@ class TeacherOnboardingWizard extends Component
             ->whereHas('schools', fn ($query) => $query->where('schools.id', $school->id))
             ->whereDoesntHave('teachers', fn ($query) => $query->where('teachers.id', $teacherId))
             ->get();
-    }
-
-    /**
-     * @return Collection<int, Event>
-     */
-    private function openEvents(): Collection
-    {
-        $organizationIds = TeacherSupervisor::where('teacher_id', $this->teacher()->id)->pluck('organization_id');
-
-        if ($organizationIds->isEmpty()) {
-            return collect();
-        }
-
-        return Event::where('status', 'active')->whereIn('organization_id', $organizationIds)->get();
     }
 
     private function advanceTo(int $step): void
