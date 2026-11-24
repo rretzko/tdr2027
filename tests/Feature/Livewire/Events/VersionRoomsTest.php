@@ -5,11 +5,14 @@ declare(strict_types=1);
 use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
 use App\Livewire\Events\VersionRooms;
+use App\Models\Candidate;
 use App\Models\Ensemble;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\RoomJudge;
+use App\Models\Score;
 use App\Models\ScoreCategory;
+use App\Models\ScoreFactor;
 use App\Models\Student;
 use App\Models\User;
 use App\Models\Version;
@@ -530,4 +533,134 @@ test('judgeAssignmentHistory excludes Room assignments from a different Event', 
     $instance = $component->instance();
 
     expect($instance->judgeAssignmentHistory(0)->isEmpty())->toBeTrue();
+});
+
+/**
+ * @return array{manager: User, version: Version, room: VersionRoom, judge: RoomJudge}
+ */
+function makeScoredRoom(): array
+{
+    $manager = User::factory()->create();
+    $version = makeRoomsVersion();
+    grantVersionRole($manager, $version, 'Event Manager');
+
+    $room = VersionRoom::create(['version_id' => $version->id, 'name' => 'Alto I', 'order_by' => 1]);
+    $judge = RoomJudge::create([
+        'version_id' => $version->id,
+        'room_id' => $room->id,
+        'user_id' => User::factory()->create(['first_name' => 'Jamie', 'last_name' => 'Judge'])->id,
+        'judge_type' => JudgeType::Judge1,
+        'status' => JudgeStatus::Assigned,
+    ]);
+    addRoomScore($judge);
+
+    return ['manager' => $manager, 'version' => $version, 'room' => $room, 'judge' => $judge];
+}
+
+function addRoomScore(RoomJudge $judge): void
+{
+    $candidate = Candidate::factory()->create(['version_id' => $judge->version_id]);
+    $category = ScoreCategory::create(['event_id' => $judge->version->event_id, 'version_id' => null, 'description' => 'Scales', 'order_by' => 1]);
+    $factor = ScoreFactor::create([
+        'event_id' => $judge->version->event_id,
+        'version_id' => null,
+        'score_category_id' => $category->id,
+        'description' => 'High Scale',
+        'abbreviation' => 'HS',
+        'best' => 5,
+        'worst' => 1,
+        'interval_by' => 1,
+        'multiplier' => 1,
+        'tolerance' => null,
+        'order_by' => 1,
+    ]);
+
+    Score::create([
+        'version_id' => $judge->version_id,
+        'candidate_id' => $candidate->id,
+        'student_id' => $candidate->student_id,
+        'school_id' => $candidate->school_id,
+        'score_category_id' => $category->id,
+        'score_category_order_by' => 1,
+        'score_factor_id' => $factor->id,
+        'score_factor_order_by' => 1,
+        'judge_id' => $judge->id,
+        'judge_order_by' => 1,
+        'voice_part_id' => $candidate->voice_part_id,
+        'voice_part_order_by' => 1,
+        'score' => 3,
+    ]);
+}
+
+test('save warns before removing a judge who has scores, and saves nothing until confirmed', function () {
+    ['manager' => $manager, 'version' => $version, 'room' => $room, 'judge' => $judge] = makeScoredRoom();
+
+    $component = Livewire::actingAs($manager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('edit', $room->id)
+        ->set('name', 'Renamed')
+        ->call('removeJudgeRow', 0)
+        ->call('save')
+        ->assertSee('1 score for 1 candidate');
+
+    expect(Score::count())->toBe(1);
+    expect($room->fresh()->name)->toBe('Alto I');
+
+    $component->call('confirmScoreRemoval');
+
+    expect(Score::count())->toBe(0);
+    expect(RoomJudge::find($judge->id))->toBeNull();
+    expect($room->fresh()->name)->toBe('Renamed');
+});
+
+test('keepScores puts the removed judge back on the form', function () {
+    ['manager' => $manager, 'version' => $version, 'room' => $room, 'judge' => $judge] = makeScoredRoom();
+
+    Livewire::actingAs($manager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('edit', $room->id)
+        ->call('removeJudgeRow', 0)
+        ->call('save')
+        ->call('keepScores')
+        ->assertSet('judges.0.id', $judge->id)
+        ->assertSet('scoresAtRisk', [])
+        ->call('save')
+        ->assertSet('scoresAtRisk', []);
+
+    expect(Score::count())->toBe(1);
+});
+
+test('scores saved while the warning is open bring the warning back', function () {
+    ['manager' => $manager, 'version' => $version, 'room' => $room, 'judge' => $judge] = makeScoredRoom();
+
+    $component = Livewire::actingAs($manager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('edit', $room->id)
+        ->call('removeJudgeRow', 0)
+        ->call('save');
+
+    addRoomScore($judge);
+
+    $component->call('confirmScoreRemoval')->assertSee('2 scores for 2 candidates');
+    expect(Score::count())->toBe(2);
+
+    $component->call('confirmScoreRemoval');
+    expect(Score::count())->toBe(0);
+});
+
+test('remove warns before removing a Room with scores', function () {
+    ['manager' => $manager, 'version' => $version, 'room' => $room] = makeScoredRoom();
+
+    $component = Livewire::actingAs($manager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('remove', $room->id)
+        ->assertSee('Remove this room and its scores?')
+        ->assertSee('1 score for 1 candidate');
+
+    expect(VersionRoom::find($room->id))->toBeInstanceOf(VersionRoom::class);
+
+    $component->call('confirmScoreRemoval');
+
+    expect(VersionRoom::find($room->id))->toBeNull();
+    expect(Score::count())->toBe(0);
 });

@@ -211,7 +211,7 @@ Some things to know about judges:
 - **They need an account.** The search finds any TheDirectorsRoom.com account that isn't a student's.
 - **Assign each judge to one Room per Version.** The Adjudicate page opens only one (§13).
 - **Everyone listed must score.** A candidate is Completed only when every person in the Room's judge list has scored them, including a Judge Monitor or Monitor. Don't list anyone who won't be scoring.
-- **Removing a judge deletes their scores.** So does removing the Room. Once scoring has begun, don't remove either unless you mean to discard those scores; there's no undo.
+- **Removing a judge deletes their scores.** So does removing the Room. If there are saved scores, the site lists how many each judge would lose and asks you to confirm. **Keep scores** backs out; there's no undo after you confirm.
 
 ## 11. Scoring Rubric
 
@@ -415,6 +415,6 @@ You won't personally do most registration-phase work — that's the teacher's an
 
 - **A Room never turns green.** Everyone in its judge list must score every candidate. Look for a judge who hasn't finished, or a monitor who was listed but isn't scoring (§10).
 
-- **I need to replace a judge partway through.** Removing the original judge deletes the scores they've saved. Add the new judge and decide what should happen to the original scores before you remove anyone.
+- **I need to replace a judge partway through.** Removing the original judge deletes the scores they've saved, after a warning (§10). Add the new judge and decide what should happen to the original scores before you remove anyone.
 
 - **A Registration Manager can only be assigned once per Version.** Assigning a second is blocked until the first is removed — this keeps the Estimate Form's mail-to fallback address unambiguous.

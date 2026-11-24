@@ -333,4 +333,32 @@
             </div>
         </form>
     </flux:modal>
+
+    <flux:modal name="score-removal-warning" class="md:w-[28rem]" :dismissible="false" :escapable="false" :closable="false">
+        <div class="space-y-6">
+            <flux:heading size="lg">{{ $removingRoomId === null ? 'Delete saved scores?' : 'Remove this room and its scores?' }}</flux:heading>
+
+            <flux:callout variant="danger" icon="exclamation-triangle">
+                <flux:callout.text>
+                    {{ $removingRoomId === null ? 'Removing a judge' : 'Removing this room' }} permanently deletes these saved scores:
+                    <ul class="list-disc ps-5 my-2">
+                        @foreach ($scoresAtRisk as $risk)
+                            <li wire:key="risk-{{ $risk['id'] }}">
+                                <strong>{{ $risk['name'] }}</strong>: {{ $risk['scores'] }} {{ Str::plural('score', $risk['scores']) }} for {{ $risk['candidates'] }} {{ Str::plural('candidate', $risk['candidates']) }}
+                            </li>
+                        @endforeach
+                    </ul>
+                    This cannot be undone.
+                </flux:callout.text>
+            </flux:callout>
+
+            <div class="flex gap-2">
+                <flux:spacer />
+                <flux:button variant="ghost" wire:click="keepScores" autofocus>Keep scores</flux:button>
+                <flux:button variant="danger" wire:click="confirmScoreRemoval">
+                    {{ $removingRoomId === null ? 'Remove and delete scores' : 'Remove room and delete scores' }}
+                </flux:button>
+            </div>
+        </div>
+    </flux:modal>
 </div>
