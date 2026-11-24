@@ -189,7 +189,7 @@ test('changing to an offered voice part updates the candidate', function () {
     Livewire::actingAs(makeVoicePartAuditFounder())
         ->test(VoicePartAudit::class)
         ->set('versionId', $fixture['version']->id)
-        ->call('changeVoicePart', $candidate->id, (string) $fixture['parts']['Soprano I']->id)
+        ->call('changeVoicePart', $candidate->id, (string) $fixture['parts']['Soprano I']->id, 'match')
         ->assertHasNoErrors();
 
     expect($candidate->refresh()->voice_part_id)->toBe($fixture['parts']['Soprano I']->id);
@@ -202,7 +202,7 @@ test('changing to a voice part not offered for the grade is refused', function (
     Livewire::actingAs(makeVoicePartAuditFounder())
         ->test(VoicePartAudit::class)
         ->set('versionId', $fixture['version']->id)
-        ->call('changeVoicePart', $candidate->id, (string) $fixture['parts']['Soprano']->id)
+        ->call('changeVoicePart', $candidate->id, (string) $fixture['parts']['Soprano']->id, 'match')
         ->assertSet('refreshNonce', 1);
 
     expect($candidate->refresh()->voice_part_id)->toBe($fixture['parts']['Soprano I']->id);
@@ -223,7 +223,7 @@ test('a scored candidate is refused and nothing is deleted', function () {
     Livewire::actingAs(makeVoicePartAuditFounder())
         ->test(VoicePartAudit::class)
         ->set('versionId', $fixture['version']->id)
-        ->call('changeVoicePart', $candidate->id, (string) $fixture['parts']['Soprano I']->id)
+        ->call('changeVoicePart', $candidate->id, (string) $fixture['parts']['Soprano I']->id, 'match')
         ->assertSet('refreshNonce', 1);
 
     expect($candidate->refresh()->voice_part_id)->toBe($fixture['parts']['Soprano']->id)
@@ -239,7 +239,7 @@ test('a candidate from a different version than the one selected is refused', fu
     Livewire::actingAs(makeVoicePartAuditFounder())
         ->test(VoicePartAudit::class)
         ->set('versionId', $otherVersion->id)
-        ->call('changeVoicePart', $candidate->id, (string) $fixture['parts']['Soprano I']->id)
+        ->call('changeVoicePart', $candidate->id, (string) $fixture['parts']['Soprano I']->id, 'match')
         ->assertSet('refreshNonce', 1);
 
     expect($candidate->refresh()->voice_part_id)->toBe($fixture['parts']['Soprano']->id);

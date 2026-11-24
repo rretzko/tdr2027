@@ -4,16 +4,22 @@ declare(strict_types=1);
 
 namespace App\Livewire\Events\Reports;
 
+use App\Concerns\HasCandidateChecklist;
 use App\Concerns\ManagesFeeWaivers;
 use App\Concerns\ScopesReports;
 use App\Enums\CandidateStatus;
 use App\Enums\PhoneType;
+use App\Enums\VoicePartRecordingDecision;
+use App\Exceptions\VoicePartChangeRefusedException;
 use App\Models\Candidate;
 use App\Models\Phone;
 use App\Models\School;
 use App\Models\Teacher;
 use App\Models\Version;
+use App\Models\VoicePart;
+use App\Services\CandidateService;
 use App\Services\VersionRoleAssignmentService;
+use App\Services\VoicePartChangeService;
 use Flux\Flux;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -27,6 +33,7 @@ use Livewire\WithPagination;
 #[Layout('components.layouts.app')]
 class ParticipatingCandidates extends Component
 {
+    use HasCandidateChecklist;
     use ManagesFeeWaivers;
     use ScopesReports;
     use WithPagination;
@@ -64,6 +71,15 @@ class ParticipatingCandidates extends Component
     public string $edit_last_name = '';
 
     public string $edit_voice_part_id = '';
+
+    public string $recording_decision = '';
+
+    public bool $editHasRecordings = false;
+
+    public string $editCurrentVoicePartId = '';
+
+    /** @var array<int, string> voice part id => name: offered to the candidate's grade, plus their current part */
+    public array $editVoicePartOptions = [];
 
     public string $edit_home_phone = '';
 
@@ -136,6 +152,14 @@ class ParticipatingCandidates extends Component
         $this->edit_middle_name = $user->middle_name ?? '';
         $this->edit_last_name = $user->last_name;
         $this->edit_voice_part_id = (string) $candidate->voice_part_id;
+        $this->editCurrentVoicePartId = (string) $candidate->voice_part_id;
+        $this->recording_decision = '';
+        $this->editHasRecordings = $candidate->hasRecordings();
+        $this->editVoicePartOptions = VoicePart::whereIn('id', $this->selectableVoicePartIds($candidate))
+            ->ordered()
+            ->get()
+            ->mapWithKeys(fn (VoicePart $voicePart): array => [$voicePart->id => $voicePart->name])
+            ->all();
         $this->edit_home_phone = Phone::where('user_id', $user->id)->where('type', PhoneType::Home->value)->value('raw_number') ?? '';
         $this->edit_cell_phone = (string) $user->cell_phone;
         $this->edit_emergency_contact_id = (string) $candidate->emergency_contact_id;
@@ -146,12 +170,27 @@ class ParticipatingCandidates extends Component
         $this->modal('candidate-edit-form')->show();
     }
 
-    public function save(): void
+    /**
+     * The same grade rule as every other voice-part edit, plus the current
+     * part so other fields can be saved without changing it.
+     *
+     * @return list<int>
+     */
+    private function selectableVoicePartIds(Candidate $candidate): array
+    {
+        return [
+            ...array_values($this->version->availableVoicePartsForGrade($candidate->student->grade)->pluck('id')->all()),
+            $candidate->voice_part_id,
+        ];
+    }
+
+    public function save(VoicePartChangeService $changes, CandidateService $candidates): void
     {
         abort_if($this->editingCandidateId === null, 400);
 
         $candidate = $this->scopedCandidate($this->editingCandidateId);
-        $validVoicePartIds = $this->version->availableVoiceParts()->pluck('id')->all();
+        $validVoicePartIds = $this->selectableVoicePartIds($candidate);
+        $partChanged = (int) $this->edit_voice_part_id !== $candidate->voice_part_id;
         $validEmergencyContactIds = $candidate->student->emergencyContacts->pluck('id')->all();
 
         $validated = $this->validate([
@@ -159,10 +198,32 @@ class ParticipatingCandidates extends Component
             'edit_middle_name' => ['nullable', 'string', 'max:100'],
             'edit_last_name' => ['required', 'string', 'max:100'],
             'edit_voice_part_id' => ['required', 'integer', Rule::in($validVoicePartIds)],
+            'recording_decision' => $partChanged && $candidate->hasRecordings()
+                ? ['required', Rule::in(VoicePartRecordingDecision::answers())]
+                : ['nullable'],
             'edit_home_phone' => ['nullable', 'string', 'max:20'],
             'edit_cell_phone' => ['nullable', 'string', 'max:20'],
             'edit_emergency_contact_id' => ['nullable', 'integer', Rule::in($validEmergencyContactIds)],
+        ], [
+            'recording_decision.required' => 'Please say whether the recordings match the new voice part.',
         ]);
+
+        if ($partChanged) {
+            $decision = VoicePartRecordingDecision::tryFrom($this->recording_decision) ?? VoicePartRecordingDecision::Match;
+
+            try {
+                $changes->change($candidate, VoicePart::findOrFail((int) $validated['edit_voice_part_id']), $decision);
+            } catch (VoicePartChangeRefusedException $e) {
+                $this->addError('edit_voice_part_id', $e->getMessage());
+
+                return;
+            }
+
+            // Only removed recordings can leave the checklist incomplete.
+            if ($decision === VoicePartRecordingDecision::Remove) {
+                $candidates->recalculateStatus($candidate->refresh(), $this->checklistDefs($this->version), ignoreTeacherCutoff: true);
+            }
+        }
 
         $user = $candidate->student->user;
         $user->update([
@@ -182,7 +243,6 @@ class ParticipatingCandidates extends Component
         }
 
         $candidate->update([
-            'voice_part_id' => (int) $validated['edit_voice_part_id'],
             'emergency_contact_id' => $validated['edit_emergency_contact_id'] !== '' ? (int) $validated['edit_emergency_contact_id'] : null,
         ]);
 

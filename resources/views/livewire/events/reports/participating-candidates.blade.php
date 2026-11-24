@@ -199,10 +199,14 @@
             </div>
 
             <flux:select wire:model="edit_voice_part_id" label="Voice Part" placeholder="Select a voice part...">
-                @foreach ($availableVoiceParts as $voicePart)
-                    <flux:select.option value="{{ $voicePart->id }}">{{ $voicePart->name }}</flux:select.option>
+                @foreach ($editVoicePartOptions as $voicePartId => $voicePartName)
+                    <flux:select.option value="{{ $voicePartId }}">{{ $voicePartName }}</flux:select.option>
                 @endforeach
             </flux:select>
+
+            @if ($editHasRecordings)
+                @include('livewire.partials.voice-part-recording-question', ['model' => 'edit_voice_part_id', 'currentId' => $editCurrentVoicePartId, 'names' => $editVoicePartOptions])
+            @endif
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <flux:input wire:model="edit_home_phone" label="Home phone" type="tel" />

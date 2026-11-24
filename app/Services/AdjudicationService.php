@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Enums\CandidateStatus;
 use App\Enums\JudgeType;
+use App\Enums\VoicePartRecordingDecision;
 use App\Models\Candidate;
 use App\Models\Recording;
 use App\Models\RoomJudge;
@@ -502,9 +503,9 @@ final class AdjudicationService
      * reachable from the *new* voice part's Rooms — the inverse of the
      * matching rule in recordingsForCandidate().
      */
-    public function changeVoicePart(Candidate $candidate, VoicePart $newVoicePart): void
+    public function changeVoicePart(Candidate $candidate, VoicePart $newVoicePart, VoicePartRecordingDecision $decision = VoicePartRecordingDecision::Match): void
     {
-        DB::transaction(function () use ($candidate, $newVoicePart): void {
+        DB::transaction(function () use ($candidate, $newVoicePart, $decision): void {
             Score::where('version_id', $candidate->version_id)
                 ->where('candidate_id', $candidate->id)
                 ->delete();
@@ -527,7 +528,7 @@ final class AdjudicationService
                     }
                 });
 
-            $candidate->update(['voice_part_id' => $newVoicePart->id]);
+            app(VoicePartChangeService::class)->change($candidate, $newVoicePart, $decision, override: true);
         });
     }
 

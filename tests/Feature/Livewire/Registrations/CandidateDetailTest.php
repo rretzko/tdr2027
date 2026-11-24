@@ -982,6 +982,7 @@ test('saveRecording uploads a new recording as pending and recalculates status',
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->call('uploadRecording', $slot->id)
         ->set('newRecordingFile', $file)
+        ->set('recording_part_attested', true)
         ->call('saveRecording')
         ->assertHasNoErrors();
 
@@ -1008,6 +1009,7 @@ test('saveRecording rejects a file type not accepted by the Version\'s upload_ty
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->call('uploadRecording', $slot->id)
         ->set('newRecordingFile', $file)
+        ->set('recording_part_attested', true)
         ->call('saveRecording')
         ->assertHasErrors('newRecordingFile');
 });
@@ -1029,6 +1031,7 @@ test('saveRecording flags an upload whose filename mentions a different slot in 
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->call('uploadRecording', $solo->id)
         ->set('newRecordingFile', $file)
+        ->set('recording_part_attested', true)
         ->call('saveRecording')
         ->assertHasNoErrors();
 
@@ -1055,6 +1058,7 @@ test('saveRecording does not flag an upload whose filename matches its own slot'
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->call('uploadRecording', $solo->id)
         ->set('newRecordingFile', $file)
+        ->set('recording_part_attested', true)
         ->call('saveRecording')
         ->assertHasNoErrors();
 
@@ -1095,6 +1099,7 @@ test('saveRecording flags an upload whose duration is a clear outlier against th
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->call('uploadRecording', $solo->id)
         ->set('newRecordingFile', $file)
+        ->set('recording_part_attested', true)
         ->call('saveRecording')
         ->assertHasNoErrors();
 
@@ -1157,6 +1162,7 @@ test('re-uploading a recording replaces the S3 object and resets status to pendi
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->call('uploadRecording', $slot->id)
         ->set('newRecordingFile', $file)
+        ->set('recording_part_attested', true)
         ->call('saveRecording')
         ->assertHasNoErrors();
 
@@ -1302,6 +1308,7 @@ test('replacing an already-approved recording removes the stale synced recording
     $component
         ->call('uploadRecording', $slot->id)
         ->set('newRecordingFile', $newFile)
+        ->set('recording_part_attested', true)
         ->call('saveRecording')
         ->assertHasNoErrors();
 

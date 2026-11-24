@@ -6,6 +6,7 @@ namespace App\Livewire\Events\TabRoom;
 
 use App\Enums\AuditionType;
 use App\Enums\CandidateStatus;
+use App\Enums\VoicePartRecordingDecision;
 use App\Models\Candidate;
 use App\Models\RoomJudge;
 use App\Models\ScoreCategory;
@@ -57,6 +58,8 @@ class AddEditScores extends Component
     public ?int $selectedJudgeId = null;
 
     public string $newVoicePartId = '';
+
+    public string $recording_decision = '';
 
     /**
      * [score_factor_id => score] — only ever populated for factors the
@@ -134,22 +137,36 @@ class AddEditScores extends Component
     {
         abort_if($this->version->isClosed(), 422);
 
-        $candidate = Candidate::findOrFail($this->selectedCandidateId);
+        $candidate = Candidate::where('version_id', $this->version->id)->findOrFail($this->selectedCandidateId);
 
         $validated = $this->validate([
-            'newVoicePartId' => ['required', 'integer', Rule::exists('voice_parts', 'id')],
+            'newVoicePartId' => ['required', 'integer', Rule::in($this->version->availableVoiceParts()->pluck('id')->all())],
+            'recording_decision' => $candidate->hasRecordings()
+                ? ['required', Rule::in(VoicePartRecordingDecision::answers())]
+                : ['nullable'],
+        ], [
+            'newVoicePartId.required' => 'Please select a voice part.',
+            'recording_decision.required' => 'Please say whether the recordings match the new voice part.',
         ]);
 
         $newVoicePart = VoicePart::findOrFail($validated['newVoicePartId']);
 
-        $adjudication->changeVoicePart($candidate, $newVoicePart);
+        if ($newVoicePart->id === $candidate->voice_part_id) {
+            $this->addError('newVoicePartId', "The candidate is already {$newVoicePart->name}.");
+
+            return;
+        }
+
+        $decision = VoicePartRecordingDecision::tryFrom($this->recording_decision) ?? VoicePartRecordingDecision::Match;
+        $adjudication->changeVoicePart($candidate, $newVoicePart, $decision);
 
         $this->newVoicePartId = '';
+        $this->recording_decision = '';
         // Flux's <flux:modal> Alpine component listens for a document-level
         // "modal-close" event carrying {name}, not "close-modal" — see
         // handleClose() in vendor/livewire/flux-pro/dist/flux.js.
         $this->dispatch('modal-close', name: 'change-voice-part');
-        Flux::toast(text: "Voice part changed to {$newVoicePart->name}. All previously entered scores were removed.", variant: 'warning');
+        Flux::toast(text: "Voice part changed to {$newVoicePart->name}. All previously entered scores were removed.".($decision === VoicePartRecordingDecision::Remove ? ' The recordings were removed too.' : ''), variant: 'warning');
 
         $this->loadCandidate($candidate->id, $adjudication);
     }
@@ -232,6 +249,7 @@ class AddEditScores extends Component
             'recordings' => $recordings,
             'inTolerance' => $inTolerance,
             'availableVoiceParts' => $this->version->availableVoiceParts(),
+            'candidateHasRecordings' => $candidate?->hasRecordings() ?? false,
             'versionIsClosed' => $this->version->isClosed(),
             // getRawOriginal(), not the enum cast — Larastan can't infer it
             // through the method-based casts() (see PHPStan-quirks memory).
@@ -251,6 +269,7 @@ class AddEditScores extends Component
         }
 
         $this->selectedCandidateId = $candidateId;
+        $this->recording_decision = '';
         $this->matches = [];
         $this->resetValidation();
 

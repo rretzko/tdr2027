@@ -15,7 +15,10 @@ use App\Enums\FeeType;
 use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
 use App\Enums\PaymentType;
+use App\Enums\PitchFileVisibility;
 use App\Enums\UploadType;
+use App\Enums\VoicePartRecordingDecision;
+use App\Exceptions\VoicePartChangeRefusedException;
 use App\Models\Candidate;
 use App\Models\CandidateUploadFile;
 use App\Models\EmergencyContact;
@@ -26,7 +29,9 @@ use App\Models\Teacher;
 use App\Models\Version;
 use App\Models\VersionApplication;
 use App\Models\VersionInvitation;
+use App\Models\VersionPitchFile;
 use App\Models\VersionUploadFile;
+use App\Models\VoicePart;
 use App\Services\AuditionCapService;
 use App\Services\CandidateFeeCalculator;
 use App\Services\CandidateService;
@@ -35,14 +40,17 @@ use App\Services\Payments\CheckoutInProgressGuard;
 use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\Payments\PendingCheckoutConfirmer;
 use App\Services\RecordingReviewService;
+use App\Services\VoicePartChangeService;
 use App\Support\CandidateApplicationData;
 use Flux\Flux;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -106,6 +114,26 @@ class CandidateDetail extends Component
     public ?int $uploadingVersionUploadFileId = null;
 
     public $newRecordingFile = null;
+
+    /** The part named in the open upload modal; a change since then refuses the save. */
+    #[Locked]
+    public ?int $uploadVoicePartId = null;
+
+    public bool $recording_part_attested = false;
+
+    // The answer to "do the recordings match the new voice part?"
+    public string $recording_decision = '';
+
+    // Recording approval modal — what the teacher was shown, so approval
+    // can't land on a part or file that changed since.
+    #[Locked]
+    public ?int $reviewingUploadId = null;
+
+    #[Locked]
+    public ?int $reviewVoicePartId = null;
+
+    #[Locked]
+    public ?string $reviewUrl = null;
 
     // Payment form
     public string $payment_type = '';
@@ -183,18 +211,35 @@ class CandidateDetail extends Component
             ->contains('id', $this->candidate->voice_part_id);
         $this->edit_voice_part_id = $isOffered ? (string) $this->candidate->voice_part_id : '';
         $this->edit_voice_part_invalid_name = $isOffered ? null : ($this->candidate->voicePart->name ?? 'None');
+        $this->recording_decision = '';
+        $this->resetErrorBag('recording_decision');
+        $this->modal('confirm-voice-part')->close();
         $this->edit_birthday = (string) $student->getRawOriginal('birthday');
         $this->edit_height = $student->height !== null ? (string) $student->height : '';
         $this->resetErrorBag(['edit_first_name', 'edit_last_name', 'edit_voice_part_id', 'edit_birthday', 'edit_height']);
         $this->modal('edit-student')->show();
     }
 
-    public function saveStudent(CandidateService $candidates): void
+    public function confirmVoicePart(int $voicePartId): void
+    {
+        abort_if($this->version->registrationClosedToTeachers(), 403);
+        abort_if($this->candidate->voice_part_id !== $voicePartId, 409, 'The voice part has changed. Please reload the page.');
+        abort_unless($this->version->availableVoicePartsForGrade($this->candidate->student->grade)->contains('id', $voicePartId), 422);
+
+        $this->candidate->update(['voice_part_confirmed_at' => now()]);
+        $this->modal('confirm-voice-part')->close();
+
+        Flux::toast("Voice part confirmed: {$this->candidate->voicePart->name}.", variant: 'success');
+    }
+
+    public function saveStudent(CandidateService $candidates, VoicePartChangeService $changes): void
     {
         // Past the teacher cut-off the voice part is read-only: changing it
         // moves the candidate to another Room's roster. Event Managers fix
         // voice parts through Voice Part Audit or Tab Room instead.
         $voicePartLocked = $this->version->registrationClosedToTeachers();
+
+        $partChanged = ! $voicePartLocked && (int) $this->edit_voice_part_id !== $this->candidate->voice_part_id;
 
         $this->validate([
             'edit_first_name' => ['required', 'string', 'max:255', "regex:/^[\pL\s'-]+$/u"],
@@ -202,13 +247,33 @@ class CandidateDetail extends Component
             ...($voicePartLocked ? [] : [
                 'edit_voice_part_id' => ['required', 'integer', Rule::in($this->version->availableVoicePartsForGrade($this->candidate->student->grade)->pluck('id')->all())],
             ]),
+            'recording_decision' => $partChanged && $this->candidate->hasRecordings()
+                ? ['required', Rule::in(VoicePartRecordingDecision::answers())]
+                : ['nullable'],
             'edit_birthday' => [
                 'nullable', 'date',
                 'before_or_equal:'.now()->subYears(9)->format('Y-m-d'),
                 'after:'.now()->subYears(20)->format('Y-m-d'),
             ],
             'edit_height' => ['nullable', 'integer', 'min:30', 'max:84'],
+        ], [
+            'recording_decision.required' => 'Please say whether the recordings match the new voice part.',
         ]);
+
+        if ($partChanged) {
+            try {
+                $changes->change(
+                    $this->candidate,
+                    VoicePart::findOrFail((int) $this->edit_voice_part_id),
+                    VoicePartRecordingDecision::tryFrom($this->recording_decision) ?? VoicePartRecordingDecision::Match,
+                    (int) Auth::id(),
+                );
+            } catch (VoicePartChangeRefusedException $e) {
+                $this->addError('edit_voice_part_id', $e->getMessage());
+
+                return;
+            }
+        }
 
         $this->candidate->student->user->update([
             'first_name' => $this->edit_first_name,
@@ -219,10 +284,6 @@ class CandidateDetail extends Component
             'birthday' => $this->edit_birthday !== '' ? $this->edit_birthday : null,
             'height' => $this->edit_height !== '' ? (int) $this->edit_height : null,
         ]);
-
-        if (! $voicePartLocked) {
-            $this->candidate->update(['voice_part_id' => (int) $this->edit_voice_part_id]);
-        }
 
         $candidates->recalculateStatus(
             $this->candidate->refresh(),
@@ -425,6 +486,15 @@ class CandidateDetail extends Component
         // Registered candidate to Pending with no way back.
         abort_if($this->version->registrationClosedToTeachers(), 403);
 
+        if ($this->candidate->needsVoicePartConfirmation()) {
+            $this->modal('confirm-voice-part')->show();
+
+            return;
+        }
+
+        $this->uploadVoicePartId = $this->candidate->voice_part_id;
+        $this->recording_part_attested = false;
+        $this->resetErrorBag('recording_part_attested');
         $this->uploadingVersionUploadFileId = $versionUploadFileId;
         $this->newRecordingFile = null;
         $this->resetErrorBag('newRecordingFile');
@@ -433,6 +503,7 @@ class CandidateDetail extends Component
 
     public function saveRecording(CandidateService $candidates, RecordingReviewService $review): void
     {
+        abort_if($this->candidate->needsVoicePartConfirmation(), 403);
         // Past the teacher cut-off recordings are read-only, same as the
         // voice part: changing them changes what judges hear and can drop a
         // Registered candidate to Pending with no way back.
@@ -446,7 +517,16 @@ class CandidateDetail extends Component
             // extensions: checks the file's actual extension directly,
             // per Laravel's own docs recommendation for exactly this case.
             'newRecordingFile' => ['required', 'file', 'extensions:'.$this->allowedRecordingExtensions(), 'max:51200'],
+            'recording_part_attested' => ['accepted'],
+        ], [
+            'recording_part_attested.accepted' => 'Please confirm which voice part this recording is.',
         ]);
+
+        if ($this->uploadVoicePartId !== $this->candidate->voice_part_id) {
+            $this->addError('newRecordingFile', 'The voice part changed while this was open. Please close this window and upload again.');
+
+            return;
+        }
 
         $slot = VersionUploadFile::where('id', $this->uploadingVersionUploadFileId)
             ->where('version_id', $this->version->id)
@@ -475,6 +555,7 @@ class CandidateDetail extends Component
             $previousUrl = $existing->url;
             $existing->update([
                 'url' => $path,
+                'voice_part_id' => $this->uploadVoicePartId,
                 'uploaded_by_user_id' => Auth::id(),
                 ...$reviewResult,
                 // A re-upload (including replacing an already-approved file)
@@ -490,6 +571,7 @@ class CandidateDetail extends Component
             CandidateUploadFile::create([
                 'candidate_id' => $this->candidate->id,
                 'version_upload_file_id' => $this->uploadingVersionUploadFileId,
+                'voice_part_id' => $this->uploadVoicePartId,
                 'uploaded_by_user_id' => Auth::id(),
                 'url' => $path,
                 ...$reviewResult,
@@ -516,6 +598,49 @@ class CandidateDetail extends Component
         );
     }
 
+    /**
+     * Opens the approval modal: the recording beside the pitch files for
+     * the candidate's voice part.
+     */
+    public function reviewRecording(int $candidateUploadFileId): void
+    {
+        abort_if($this->version->registrationClosedToTeachers(), 403);
+
+        $upload = CandidateUploadFile::where('id', $candidateUploadFileId)
+            ->where('candidate_id', $this->candidate->id)
+            ->firstOrFail();
+
+        $this->reviewingUploadId = $upload->id;
+        $this->reviewVoicePartId = $this->candidate->voice_part_id;
+        $this->reviewUrl = $upload->url;
+        $this->modal('review-recording')->show();
+    }
+
+    /**
+     * The candidate's pitch files for the recording being reviewed: those
+     * named for its slot when there are any, otherwise all of them.
+     *
+     * @return Collection<int, VersionPitchFile>
+     */
+    private function reviewPitchFiles(?CandidateUploadFile $upload): Collection
+    {
+        $visible = in_array(
+            $this->version->getRawOriginal('pitch_file_visibility'),
+            [PitchFileVisibility::Both->value, PitchFileVisibility::Teacher->value],
+            true,
+        );
+
+        if ($upload === null || ! $visible) {
+            return new Collection;
+        }
+
+        $pitchFiles = $this->version->pitchFilesForVoicePart($this->candidate->voice_part_id)->toBase();
+        $slotName = mb_strtolower(trim($upload->versionUploadFile->name));
+        $forSlot = $pitchFiles->filter(fn (VersionPitchFile $file): bool => mb_strtolower(trim($file->name)) === $slotName);
+
+        return ($forSlot->isNotEmpty() ? $forSlot : $pitchFiles)->values();
+    }
+
     public function approveRecording(int $candidateUploadFileId, CandidateService $candidates): void
     {
         // Past the teacher cut-off recordings are read-only, same as the
@@ -529,9 +654,19 @@ class CandidateDetail extends Component
 
         abort_if($upload === null, 404);
 
+        if ($this->reviewingUploadId === $upload->id
+            && ($this->reviewVoicePartId !== $this->candidate->voice_part_id || $this->reviewUrl !== $upload->url)) {
+            $this->modal('review-recording')->close();
+            Flux::toast('The voice part or the recording changed while this was open. Please review it again.', variant: 'warning');
+
+            return;
+        }
+
         $decidedAt = now();
         $upload->update([
             'status' => CandidateUploadStatus::Approved->value,
+            // Approving states that the recording is of this voice part.
+            'voice_part_id' => $this->candidate->voice_part_id,
             'decided_at' => $decidedAt,
             'decided_by_user_id' => Auth::id(),
         ]);
@@ -549,6 +684,7 @@ class CandidateDetail extends Component
             ],
             [
                 'uploaded_by' => $upload->uploaded_by_user_id,
+                'voice_part_id' => $this->candidate->voice_part_id,
                 'approved_at' => $decidedAt,
                 'approved_by' => Auth::id(),
                 'url' => $upload->url,
@@ -560,7 +696,10 @@ class CandidateDetail extends Component
             $this->checklistDefs($this->version),
         );
 
-        Flux::toast('Recording approved.');
+        $this->reviewingUploadId = null;
+        $this->modal('review-recording')->close();
+
+        Flux::toast("Recording approved as {$this->candidate->voicePart->name}.", variant: 'success');
     }
 
     public function rejectRecording(int $candidateUploadFileId, CandidateService $candidates): void
@@ -852,6 +991,9 @@ class CandidateDetail extends Component
         ]);
 
         $checklistDefs = $this->checklistDefs($this->version);
+        $reviewingUpload = $this->reviewingUploadId !== null
+            ? CandidateUploadFile::where('candidate_id', $this->candidate->id)->find($this->reviewingUploadId)
+            : null;
 
         // Checklist-complete but held below Registered by the school's
         // audition-group cap (Version::audition_cap_per_school) — see
@@ -893,6 +1035,10 @@ class CandidateDetail extends Component
             'uploadSlots' => $this->version->getRawOriginal('audition_type') === AuditionType::Remote->value
                 ? $this->version->uploadFiles
                 : collect(),
+            'confirmationRequired' => ! $this->version->registrationClosedToTeachers() && $this->candidate->needsVoicePartConfirmation(),
+            'candidateHasRecordings' => $this->candidate->hasRecordings(),
+            'reviewingUpload' => $reviewingUpload,
+            'reviewPitchFiles' => $this->reviewPitchFiles($reviewingUpload),
             'candidateUploads' => $this->candidate->uploadFiles->keyBy('version_upload_file_id'),
             'registrationFeeDue' => $registrationFeeDue,
             'participationFeeDue' => $participationFeeDue,

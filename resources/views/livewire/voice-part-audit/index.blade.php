@@ -80,4 +80,21 @@
             {{ $rows->links() }}
         </div>
     @endif
+
+    <flux:modal name="voice-part-recordings" class="w-full max-w-md" wire:close="cancelVoicePartChange">
+        @if ($pendingCandidate && $pendingVoicePart)
+            <div class="space-y-6">
+                <flux:heading size="lg">Do the recordings match {{ $pendingVoicePart->name }}?</flux:heading>
+                <flux:text>
+                    {{ $pendingCandidate->student->user->name }}'s voice part will change to {{ $pendingVoicePart->name }}.
+                    Choosing "No" permanently deletes every recording for this candidate. After the deadline for teacher changes they can't be uploaded again.
+                </flux:text>
+                <div class="flex flex-wrap justify-end gap-2">
+                    <flux:button variant="ghost" wire:click="cancelVoicePartChange">Cancel</flux:button>
+                    <flux:button variant="danger" wire:click="answerRecordings('remove')">No, remove them</flux:button>
+                    <flux:button variant="primary" wire:click="answerRecordings('match')">Yes, they match</flux:button>
+                </div>
+            </div>
+        @endif
+    </flux:modal>
 </div>

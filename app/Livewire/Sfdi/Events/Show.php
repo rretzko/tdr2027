@@ -13,6 +13,8 @@ use App\Enums\FeeType;
 use App\Enums\PaymentTransactionStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\UploadType;
+use App\Enums\VoicePartRecordingDecision;
+use App\Exceptions\VoicePartChangeRefusedException;
 use App\Models\Candidate;
 use App\Models\CandidateUploadFile;
 use App\Models\PaymentAllocation;
@@ -24,12 +26,14 @@ use App\Models\VersionInvitation;
 use App\Models\VersionPitchFile;
 use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VersionUploadFile;
+use App\Models\VoicePart;
 use App\Services\CandidateFeeCalculator;
 use App\Services\CandidateService;
 use App\Services\Payments\CheckoutInProgressGuard;
 use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\Payments\PendingCheckoutConfirmer;
 use App\Services\RecordingReviewService;
+use App\Services\VoicePartChangeService;
 use App\Support\CandidateApplicationData;
 use Flux\Flux;
 use Illuminate\Support\Carbon;
@@ -39,6 +43,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -101,6 +106,12 @@ class Show extends Component
 
     public $newRecordingFile = null;
 
+    /** The part named in the open upload modal; a change since then refuses the save. */
+    #[Locked]
+    public ?int $uploadVoicePartId = null;
+
+    public bool $recording_part_attested = false;
+
     /**
      * Ownership is a straight equality check, not a Coteacher-style shared
      * roster (studentfolder-module.md §7 — "there is no co-student analog").
@@ -139,6 +150,12 @@ class Show extends Component
                     : 'Pitch Files will be available once student registration opens.',
                 variant: 'warning',
             );
+
+            return;
+        }
+
+        if ($this->confirmationRequired()) {
+            $this->modal('confirm-voice-part')->show();
 
             return;
         }
@@ -200,16 +217,29 @@ class Show extends Component
         Flux::toast('Parent signature status updated.');
     }
 
+    public function confirmVoicePart(int $voicePartId): void
+    {
+        abort_if($this->writeActionsBlocked(), 403);
+        abort_if($this->candidate->voice_part_id !== $voicePartId, 409, 'The voice part has changed. Please reload the page.');
+        abort_unless($this->version->availableVoicePartsForGrade($this->candidate->student->grade)->contains('id', $voicePartId), 422);
+
+        $this->candidate->update(['voice_part_confirmed_at' => now()]);
+        $this->modal('confirm-voice-part')->close();
+
+        Flux::toast("Voice part confirmed: {$this->candidate->voicePart->name}.", variant: 'success');
+    }
+
     public function editVoicePart(): void
     {
         abort_if($this->writeActionsBlocked(), 403);
 
         $this->edit_voice_part_id = (string) $this->candidate->voice_part_id;
         $this->resetErrorBag('edit_voice_part_id');
+        $this->modal('confirm-voice-part')->close();
         $this->modal('edit-voice-part')->show();
     }
 
-    public function saveVoicePart(CandidateService $candidates): void
+    public function saveVoicePart(CandidateService $candidates, VoicePartChangeService $changes): void
     {
         abort_if($this->writeActionsBlocked(), 403);
 
@@ -217,7 +247,19 @@ class Show extends Component
             'edit_voice_part_id' => ['required', 'integer', Rule::in($this->version->availableVoicePartsForGrade($this->candidate->student->grade)->pluck('id')->all())],
         ]);
 
-        $this->candidate->update(['voice_part_id' => (int) $this->edit_voice_part_id]);
+        // A student can't vouch for recordings of another part: pending ones
+        // must be replaced, and an approved one sends them to their teacher.
+        if ((int) $this->edit_voice_part_id === $this->candidate->voice_part_id) {
+            $this->candidate->update(['voice_part_confirmed_at' => now()]);
+        } else {
+            try {
+                $changes->change($this->candidate, VoicePart::findOrFail((int) $this->edit_voice_part_id), VoicePartRecordingDecision::Replace);
+            } catch (VoicePartChangeRefusedException $e) {
+                $this->addError('edit_voice_part_id', $e->getMessage());
+
+                return;
+            }
+        }
 
         $candidates->recalculateStatus(
             $this->candidate->refresh(),
@@ -375,6 +417,15 @@ class Show extends Component
         abort_if($this->writeActionsBlocked(), 403);
         abort_if($this->recordingLocked($versionUploadFileId), 403);
 
+        if ($this->candidate->needsVoicePartConfirmation()) {
+            $this->modal('confirm-voice-part')->show();
+
+            return;
+        }
+
+        $this->uploadVoicePartId = $this->candidate->voice_part_id;
+        $this->recording_part_attested = false;
+        $this->resetErrorBag('recording_part_attested');
         $this->uploadingVersionUploadFileId = $versionUploadFileId;
         $this->newRecordingFile = null;
         $this->resetErrorBag('newRecordingFile');
@@ -383,6 +434,7 @@ class Show extends Component
 
     public function saveRecording(CandidateService $candidates, RecordingReviewService $review): void
     {
+        abort_if($this->candidate->needsVoicePartConfirmation(), 403);
         abort_if($this->writeActionsBlocked(), 403);
         abort_if($this->recordingLocked($this->uploadingVersionUploadFileId), 403);
 
@@ -394,7 +446,16 @@ class Show extends Component
             // extensions: checks the file's actual extension directly,
             // per Laravel's own docs recommendation for exactly this case.
             'newRecordingFile' => ['required', 'file', 'extensions:'.$this->allowedRecordingExtensions(), 'max:51200'],
+            'recording_part_attested' => ['accepted'],
+        ], [
+            'recording_part_attested.accepted' => 'Please confirm which voice part this recording is.',
         ]);
+
+        if ($this->uploadVoicePartId !== $this->candidate->voice_part_id) {
+            $this->addError('newRecordingFile', 'The voice part changed while this was open. Please close this window and upload again.');
+
+            return;
+        }
 
         $slot = VersionUploadFile::where('id', $this->uploadingVersionUploadFileId)
             ->where('version_id', $this->version->id)
@@ -423,6 +484,7 @@ class Show extends Component
             $previousUrl = $existing->url;
             $existing->update([
                 'url' => $path,
+                'voice_part_id' => $this->uploadVoicePartId,
                 'uploaded_by_user_id' => Auth::id(),
                 'original_filename' => $originalFilename,
                 'duration_seconds' => null,
@@ -439,6 +501,7 @@ class Show extends Component
             $upload = CandidateUploadFile::create([
                 'candidate_id' => $this->candidate->id,
                 'version_upload_file_id' => $this->uploadingVersionUploadFileId,
+                'voice_part_id' => $this->uploadVoicePartId,
                 'uploaded_by_user_id' => Auth::id(),
                 'url' => $path,
                 'original_filename' => $originalFilename,
@@ -519,7 +582,9 @@ class Show extends Component
         );
         // Skip building the signed S3 URLs at all outside the window —
         // viewPitchFiles() refuses to open the modal then anyway.
-        $pitchFilesOpen = $pitchFilesVisible && $this->version->candidateReferenceWindowIsOpen();
+        $pitchFilesOpen = $pitchFilesVisible
+            && $this->version->candidateReferenceWindowIsOpen()
+            && ! $this->confirmationRequired();
 
         return view('livewire.sfdi.events.show', [
             'checklistDefs' => $checklistDefs,
@@ -533,6 +598,8 @@ class Show extends Component
                 ? $this->version->uploadFiles
                 : collect(),
             'candidateUploads' => $this->candidate->uploadFiles->keyBy('version_upload_file_id'),
+            'confirmationRequired' => $this->confirmationRequired(),
+            'voicePartOffered' => $this->version->availableVoicePartsForGrade($this->candidate->student->grade)->contains('id', $this->candidate->voice_part_id),
             'pitchFilesVisible' => $pitchFilesVisible,
             'pitchFiles' => $pitchFilesOpen ? $this->matchingPitchFiles() : new Collection,
             'registrationPeriod' => $this->version->candidateDate(),
@@ -552,6 +619,15 @@ class Show extends Component
             || $this->isLocked()
             || $this->isObligationsBlocked()
             || $this->isEventManagerPreviewSession();
+    }
+
+    /**
+     * Asked only while the student can act on it; a read-only page shows
+     * the Pitch Files regardless.
+     */
+    private function confirmationRequired(): bool
+    {
+        return ! $this->writeActionsBlocked() && $this->candidate->needsVoicePartConfirmation();
     }
 
     /**
@@ -669,13 +745,7 @@ class Show extends Component
      */
     private function matchingPitchFiles(): Collection
     {
-        return $this->version->pitchFiles()
-            ->with('voicePart')
-            ->get()
-            ->filter(fn (VersionPitchFile $pitchFile): bool => $pitchFile->voice_part_id === $this->candidate->voice_part_id
-                || $pitchFile->voicePart->abbr === 'ALL')
-            ->sortBy(fn (VersionPitchFile $pitchFile): array => [$pitchFile->voicePart->sort_order, $pitchFile->order_by])
-            ->values();
+        return $this->version->pitchFilesForVoicePart($this->candidate->voice_part_id);
     }
 
     /**

@@ -125,6 +125,14 @@ trait HasCandidateChecklist
                 ];
 
                 $items[] = [
+                    'label' => 'Recordings match voice part',
+                    'check' => fn (Candidate $c): bool => ! $c->uploadFiles
+                        ->whereIn('version_upload_file_id', $uploadSlotIds)
+                        ->contains(fn (CandidateUploadFile $u): bool => $u->isForAnotherVoicePart($c)),
+                    'gate' => true,
+                ];
+
+                $items[] = [
                     'label' => "Teacher approval of required {$mediaLabel} files",
                     'check' => fn (Candidate $c): bool => $uploadSlotIds->every(
                         fn (int $slotId): bool => $c->uploadFiles
