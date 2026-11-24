@@ -157,6 +157,6 @@ Results are decided and released later by the people running the Event. You won'
 
 **Can I judge on a tablet or phone?** Yes, the page adjusts to your screen. A wide screen, such as a computer's, shows your scoring form and Room Scores side by side.
 
-**What if I lose my internet connection?** Anything you've already saved is safe; anything you haven't may be lost. If you can't get back online, contact your Event Manager. They can provide paper score sheets, and the Tab Room can enter your scores for you.
+**What if I lose my internet connection?** Anything you've already saved is safe; anything you haven't may be lost. If you can't get back online, write your scores on paper and contact your Event Manager. The Tab Room can enter them for you.
 
 **Does the system record how I work?** Yes. Along with your saved scores, it records when you open a candidate and when you play, pause, or finish a recording.
