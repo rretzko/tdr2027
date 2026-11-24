@@ -54,8 +54,8 @@ class WebRegistration extends Component
 
     /**
      * Full Web Registration access (every tab). Registration /
-     * Co-Registration Managers reach this page only for the Voice Part Audit
-     * tab (canAuditVoiceParts()) and get false here — every other action
+     * Co-Registration Managers reach this page only for the Registration
+     * History and Voice Part Audit tabs and get false here — every other action
      * still re-checks canManageWebRegistration() itself.
      */
     #[Locked]
@@ -366,7 +366,7 @@ class WebRegistration extends Component
     public function render(TeacherStudentTransferService $transferService, VersionInvitationEligibilityService $eligibility): View
     {
         if (! $this->fullAccess) {
-            // Voice Part Audit only — don't load (or expose) the teacher and
+            // Registration History and Voice Part Audit only — don't load (or expose) the teacher and
             // student data the other tabs need.
             return view('livewire.events.web-registration');
         }
