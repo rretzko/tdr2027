@@ -664,3 +664,67 @@ test('remove warns before removing a Room with scores', function () {
     expect(VersionRoom::find($room->id))->toBeNull();
     expect(Score::count())->toBe(0);
 });
+
+test('clearJudgeSelection refuses to clear a saved judge who has scores', function () {
+    ['manager' => $manager, 'version' => $version, 'room' => $room, 'judge' => $judge] = makeScoredRoom();
+
+    Livewire::actingAs($manager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('edit', $room->id)
+        ->call('clearJudgeSelection', 0)
+        ->assertHasErrors('judges.0.user_id')
+        ->assertSee('has saved scores')
+        ->assertSet('judges.0.user_id', $judge->user_id);
+});
+
+test('save refuses to give a scored judge row to another user, and restores the judge', function () {
+    ['manager' => $manager, 'version' => $version, 'room' => $room, 'judge' => $judge] = makeScoredRoom();
+    Score::query()->delete();
+    $other = User::factory()->create();
+
+    $component = Livewire::actingAs($manager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('edit', $room->id)
+        ->set('name', 'Renamed')
+        ->call('clearJudgeSelection', 0)
+        ->call('selectJudgeUser', 0, $other->id);
+
+    // The judge saves a first score while the form is open.
+    addRoomScore($judge);
+
+    $component->call('save')
+        ->assertHasErrors('judges.0.user_id')
+        ->assertSet('judges.0.user_id', $judge->user_id);
+
+    expect($judge->fresh()->user_id)->toBe($judge->user_id);
+    expect($room->fresh()->name)->toBe('Alto I');
+
+    $component->call('save')->assertHasNoErrors();
+    expect($room->fresh()->name)->toBe('Renamed');
+});
+
+test('save can still change the judge on a row without scores, or the role of a scored judge', function () {
+    ['manager' => $manager, 'version' => $version, 'room' => $room, 'judge' => $judge] = makeScoredRoom();
+    $other = User::factory()->create();
+
+    Livewire::actingAs($manager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('edit', $room->id)
+        ->set('judges.0.judge_type', JudgeType::Judge2->value)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($judge->fresh()->judge_type)->toBe(JudgeType::Judge2);
+
+    Score::query()->delete();
+
+    Livewire::actingAs($manager)
+        ->test(VersionRooms::class, ['version' => $version])
+        ->call('edit', $room->id)
+        ->call('clearJudgeSelection', 0)
+        ->call('selectJudgeUser', 0, $other->id)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($judge->fresh()->user_id)->toBe($other->id);
+});
