@@ -155,6 +155,10 @@ Results are decided and released later by the people running the Event. You won'
 
 **I'm judging in two Rooms, but I only see one — why?** The Adjudicate page opens one Room per judge for each Version. Contact your Event Manager right away so they can plan around it.
 
+**I can't finish judging. What happens to my scores?** Tell your Event Manager as soon as you can. Ask them to add your replacement as a new judge and to decide what to do with your scores before removing you. Your scores stay under your name and can't be passed to someone else, so your replacement starts with a blank score sheet for every candidate. If you're removed from the Room, the scores you've saved are permanently deleted. Your Event Manager sees a warning before that happens.
+
+**A candidate who was green is yellow again — why?** Most likely a judge was added to your Room and hasn't scored that candidate yet. If your own check mark is still there, your scores are safe.
+
 **Can I judge on a tablet or phone?** Yes, the page adjusts to your screen. A wide screen, such as a computer's, shows your scoring form and Room Scores side by side.
 
 **What if I lose my internet connection?** Anything you've already saved is safe; anything you haven't may be lost. If you can't get back online, write your scores on paper and contact your Event Manager. The Tab Room can enter them for you.
