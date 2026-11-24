@@ -6,14 +6,18 @@ namespace App\Livewire\Shared;
 
 use App\Concerns\HasCandidateChecklist;
 use App\Enums\CandidateStatus;
+use App\Enums\VoicePartRecordingDecision;
 use App\Exceptions\VoicePartChangeRefusedException;
 use App\Models\Candidate;
 use App\Models\Version;
+use App\Models\VoicePart;
 use App\Services\VoicePartAuditService;
+use App\Services\VoicePartChangeService;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\View\View;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -59,6 +63,13 @@ abstract class AbstractVoicePartAudit extends Component
     /** Bumped on a refused change so the row's select re-renders to the stored value. */
     public int $refreshNonce = 0;
 
+    /** The change waiting on the "do the recordings match?" answer. */
+    #[Locked]
+    public ?int $pendingCandidateId = null;
+
+    #[Locked]
+    public ?int $pendingVoicePartId = null;
+
     /** Aborts (403) unless the acting user may use this audit for $versionId. */
     abstract protected function authorizeAudit(): void;
 
@@ -90,7 +101,31 @@ abstract class AbstractVoicePartAudit extends Component
         $this->resetPage();
     }
 
-    public function changeVoicePart(int $candidateId, string $voicePartId, VoicePartAuditService $audit): void
+    /** Closing the question without answering puts the select back. */
+    public function cancelVoicePartChange(): void
+    {
+        $this->pendingCandidateId = null;
+        $this->pendingVoicePartId = null;
+        $this->refreshNonce++;
+        $this->modal('voice-part-recordings')->close();
+    }
+
+    public function answerRecordings(VoicePartAuditService $audit, VoicePartChangeService $changes, string $decision): void
+    {
+        if ($this->pendingCandidateId === null || $this->pendingVoicePartId === null) {
+            return;
+        }
+
+        abort_unless(in_array($decision, VoicePartRecordingDecision::answers(), true), 422);
+
+        $this->changeVoicePart($audit, $changes, $this->pendingCandidateId, (string) $this->pendingVoicePartId, $decision);
+        $this->cancelVoicePartChange();
+    }
+
+    /**
+     * Without an answer about the recordings, checks the change and asks for one.
+     */
+    public function changeVoicePart(VoicePartAuditService $audit, VoicePartChangeService $changes, int $candidateId, string $voicePartId, string $decision = ''): void
     {
         $this->authorizeAudit();
 
@@ -114,7 +149,21 @@ abstract class AbstractVoicePartAudit extends Component
         $name = "{$candidate->student->user->last_name}, {$candidate->student->user->first_name}";
 
         try {
-            ['from' => $from, 'to' => $to] = $audit->changeVoicePart($candidate, (int) $voicePartId, $this->checklistDefs($candidate->version));
+            if (! in_array($decision, VoicePartRecordingDecision::answers(), true)) {
+                $changes->assertAllowed($candidate, VoicePart::findOrFail((int) $voicePartId));
+
+                if ((int) $voicePartId === $candidate->voice_part_id) {
+                    return;
+                }
+
+                $this->pendingCandidateId = $candidate->id;
+                $this->pendingVoicePartId = (int) $voicePartId;
+                $this->modal('voice-part-recordings')->show();
+
+                return;
+            }
+
+            ['from' => $from, 'to' => $to] = $audit->changeVoicePart($candidate, (int) $voicePartId, $this->checklistDefs($candidate->version), VoicePartRecordingDecision::from($decision));
         } catch (VoicePartChangeRefusedException $e) {
             $this->refreshNonce++;
             Flux::toast(variant: 'danger', heading: $name, text: $e->getMessage());
@@ -159,6 +208,10 @@ abstract class AbstractVoicePartAudit extends Component
             'version' => $version,
             'rows' => $rows,
             'voiceParts' => $version !== null ? $version->availableVoiceParts() : new EloquentCollection,
+            'pendingCandidate' => $this->pendingCandidateId !== null
+                ? Candidate::with('student.user')->find($this->pendingCandidateId)
+                : null,
+            'pendingVoicePart' => $this->pendingVoicePartId !== null ? VoicePart::find($this->pendingVoicePartId) : null,
             'statuses' => CandidateStatus::cases(),
         ]);
     }

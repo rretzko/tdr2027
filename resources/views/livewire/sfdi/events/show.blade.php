@@ -195,6 +195,17 @@
             <flux:card id="tour-recordings-card">
                 <flux:heading size="sm" class="mb-3">Recordings</flux:heading>
 
+                @if ($confirmationRequired)
+                    <flux:callout variant="warning" icon="musical-note" class="mb-4">
+                        <flux:callout.text>Please confirm your voice part before uploading recordings.</flux:callout.text>
+                        <x-slot name="actions">
+                            <flux:modal.trigger name="confirm-voice-part">
+                                <flux:button size="sm">Confirm voice part</flux:button>
+                            </flux:modal.trigger>
+                        </x-slot>
+                    </flux:callout>
+                @endif
+
                 <div class="space-y-4">
                     @foreach ($uploadSlots as $slot)
                         @php
@@ -208,6 +219,9 @@
                                 <div class="flex items-center gap-2">
                                     @if ($upload !== null && $upload->flagged_at !== null)
                                         <flux:badge color="red" size="sm" icon="flag">Review Suggested</flux:badge>
+                                    @endif
+                                    @if ($upload !== null && $upload->isForAnotherVoicePart($candidate))
+                                        <flux:badge color="red" size="sm" icon="exclamation-triangle">Recorded as {{ $upload->voicePart->name ?? 'another part' }}</flux:badge>
                                     @endif
                                     @if ($upload === null)
                                         <flux:badge color="zinc" size="sm">Not Uploaded</flux:badge>
@@ -371,6 +385,16 @@
         </flux:card>
 
     </div>
+
+    @if ($confirmationRequired)
+        @include('livewire.partials.confirm-voice-part-modal', [
+            'before' => "You're auditioning as",
+            'after' => '. Is that right?',
+            'yes' => "Yes, I'm {$candidate->voicePart->name}",
+            'changeAction' => 'editVoicePart',
+            'offered' => $voicePartOffered,
+        ])
+    @endif
 
     {{-- Pitch Files modal --}}
     <flux:modal name="pitch-files" class="w-full max-w-3xl" scroll="body">
@@ -565,6 +589,12 @@
             <flux:heading>Edit Voice Part</flux:heading>
             <flux:text size="sm" class="text-zinc-500">You are auditioning as a {{ $candidate->voicePart->name ?? 'voice part' }}.</flux:text>
 
+            @if ($candidate->uploadFiles->isNotEmpty())
+                <flux:callout variant="warning" icon="exclamation-triangle">
+                    <flux:callout.text>If you change your voice part, the recordings you've uploaded must be replaced with recordings of the new part. Once your teacher has approved a recording, only your teacher can change your voice part.</flux:callout.text>
+                </flux:callout>
+            @endif
+
             <flux:field>
                 <flux:label>Voice Part</flux:label>
                 <flux:select wire:model="edit_voice_part_id" placeholder="Select a voice part...">
@@ -611,7 +641,7 @@
     @if ($uploadSlots->isNotEmpty())
         <flux:modal name="upload-recording" class="w-full max-w-md">
             <div class="space-y-6">
-                <flux:heading>Upload Recording</flux:heading>
+                <flux:heading>Upload {{ $candidate->voicePart->name ?? '' }} – {{ $uploadSlots->firstWhere('id', $uploadingVersionUploadFileId)->name ?? 'Recording' }}</flux:heading>
 
                 <flux:field>
                     <flux:label>File</flux:label>
@@ -625,6 +655,11 @@
                         <flux:text size="sm" class="mt-1 text-zinc-400">Uploading…</flux:text>
                     </div>
                     <flux:error name="newRecordingFile" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:checkbox wire:model="recording_part_attested" label="This is the {{ $candidate->voicePart->name ?? 'correct' }} part" />
+                    <flux:error name="recording_part_attested" />
                 </flux:field>
 
                 <div class="flex justify-end gap-2">

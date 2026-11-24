@@ -620,6 +620,22 @@ class Version extends Model
     }
 
     /**
+     * Pitch files for one voice part, plus those for the seeded 'ALL' part.
+     *
+     * @return Collection<int, VersionPitchFile>
+     */
+    public function pitchFilesForVoicePart(?int $voicePartId): Collection
+    {
+        return $this->pitchFiles()
+            ->with('voicePart')
+            ->get()
+            ->filter(fn (VersionPitchFile $pitchFile): bool => $pitchFile->voice_part_id === $voicePartId
+                || $pitchFile->voicePart->abbr === 'ALL')
+            ->sortBy(fn (VersionPitchFile $pitchFile): array => [$pitchFile->voicePart->sort_order, $pitchFile->order_by])
+            ->values();
+    }
+
+    /**
      * availableVoiceParts() narrowed to Ensembles whose EnsembleGrade list
      * either includes $grade or is empty (unrestricted — same "empty =
      * unrestricted" convention as GradeSegmentedEnsemblesStrategy::

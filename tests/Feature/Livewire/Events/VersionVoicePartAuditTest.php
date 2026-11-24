@@ -95,7 +95,7 @@ test('a Registration Manager sees every county and can change a voice part', fun
         ->assertSee('Countya')
         ->assertSee('Countyb')
         ->assertDontSee('Select a version...')
-        ->call('changeVoicePart', $inA->id, (string) $fixture['parts']['Soprano I']->id);
+        ->call('changeVoicePart', $inA->id, (string) $fixture['parts']['Soprano I']->id, 'match');
 
     expect($inA->refresh()->voice_part_id)->toBe($fixture['parts']['Soprano I']->id);
 });
@@ -117,9 +117,9 @@ test('a Co-Registration Manager sees and changes only candidates in their counti
         ->test(VersionVoicePartAudit::class, ['version' => $fixture['version']])
         ->assertSee('Countya')
         ->assertDontSee('Countyb')
-        ->call('changeVoicePart', $inB->id, (string) $fixture['parts']['Soprano I']->id)
+        ->call('changeVoicePart', $inB->id, (string) $fixture['parts']['Soprano I']->id, 'match')
         ->assertSet('refreshNonce', 1)
-        ->call('changeVoicePart', $inA->id, (string) $fixture['parts']['Soprano II']->id);
+        ->call('changeVoicePart', $inA->id, (string) $fixture['parts']['Soprano II']->id, 'match');
 
     expect($inB->refresh()->voice_part_id)->toBe($fixture['parts']['Soprano']->id)
         ->and($inA->refresh()->voice_part_id)->toBe($fixture['parts']['Soprano II']->id);

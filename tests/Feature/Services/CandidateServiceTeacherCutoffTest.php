@@ -224,7 +224,7 @@ test('after the cut-off a teacher sees recordings read-only and can\'t upload, a
     $page = fn () => Livewire::actingAs($teacher->user)->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate]);
 
     $page()->assertSee("recordings can't be uploaded, replaced, approved or removed", false)
-        ->assertDontSeeHtml('wire:click="approveRecording(')
+        ->assertDontSeeHtml('wire:click="reviewRecording(')
         ->assertDontSeeHtml('wire:click="uploadRecording(');
 
     // A forbidden call ends the test component, so each gets a fresh one.
@@ -256,7 +256,7 @@ test('before the cut-off a teacher can still approve recordings', function () {
     Livewire::actingAs($teacher->user)
         ->test(CandidateDetail::class, ['version' => $version, 'candidate' => $candidate])
         ->assertDontSee("recordings can't be uploaded", false)
-        ->assertSeeHtml('wire:click="approveRecording(')
+        ->assertSeeHtml('wire:click="reviewRecording(')
         ->call('approveRecording', $upload->id)
         ->assertOk();
 
