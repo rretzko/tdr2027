@@ -2096,6 +2096,59 @@ test('deactivate applies to all of the student\'s subject rows', function () {
         ->and($second->refresh()->is_active)->toBeFalse();
 });
 
+test('reactivate applies to all of the student\'s subject rows', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Multi', 'Subject', 8, 'chorus');
+    $second = addStudentsIndexSubjectRow($row, 'orchestra');
+    StudentTeacher::where('student_id', $row->student_id)->update(['is_active' => false]);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertSee('Reactivate')
+        ->call('reactivate', $row->id)
+        ->assertDontSee('Reactivate');
+
+    expect($row->refresh()->is_active)->toBeTrue()
+        ->and($second->refresh()->is_active)->toBeTrue();
+});
+
+test('reactivate cannot affect a row belonging to another teacher', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher(Teacher::factory()->create(), $school, 'Not', 'Mine');
+    $row->update(['is_active' => false]);
+
+    Livewire::actingAs($user)->test(Index::class)->call('reactivate', $row->id);
+
+    expect($row->refresh()->is_active)->toBeFalse();
+});
+
+test('reactivate does not approve a pending claim', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Still', 'Pending');
+    $row->update(['is_active' => false, 'claim_status' => 'pending']);
+
+    Livewire::actingAs($user)
+        ->test(Index::class)
+        ->assertDontSee('Reactivate')
+        ->call('reactivate', $row->id);
+
+    expect($row->refresh()->is_active)->toBeFalse();
+});
+
+test('reactivate is refused when the student has left that school', function () {
+    $user = makeStudentsIndexTeacherUser();
+    $school = School::factory()->create();
+    $row = claimStudentForTeacher($user->teacher, $school, 'Moved', 'Away');
+    SchoolStudent::where('student_id', $row->student_id)->firstOrFail()->update(['is_active' => false]);
+
+    Livewire::actingAs($user)->test(Index::class)->call('reactivate', $row->id);
+
+    expect($row->refresh()->is_active)->toBeFalse();
+});
+
 test('remove deletes all of the student\'s subject rows', function () {
     $user = makeStudentsIndexTeacherUser();
     $school = School::factory()->create();
