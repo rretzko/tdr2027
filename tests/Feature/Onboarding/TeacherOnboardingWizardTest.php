@@ -2,13 +2,10 @@
 
 declare(strict_types=1);
 
-use App\Enums\EventInvitationStatus;
 use App\Enums\SchoolType;
 use App\Enums\TeacherRole;
 use App\Livewire\Onboarding\TeacherOnboardingWizard;
 use App\Models\County;
-use App\Models\Event;
-use App\Models\EventInvitationRequest;
 use App\Models\Geostate;
 use App\Models\Organization;
 use App\Models\Pivots\SchoolTeacher;
@@ -335,46 +332,20 @@ test('step 4 links an organization without any supervisor contact info', functio
     expect($supervisor->supervisory_cell_phone)->toBeNull();
 });
 
-test('step 5 can be completed with zero open events', function () {
-    $user = makeTeacherUser();
-    $user->teacher->update(['onboarding_step' => 5]);
-
-    Livewire::actingAs($user)
-        ->test(TeacherOnboardingWizard::class)
-        ->assertSee('No open events')
-        ->call('requestEventInvitations')
-        ->assertSet('step', 6);
-
-    expect(EventInvitationRequest::count())->toBe(0);
-});
-
-test('step 5 requests an invitation to an open event from a linked organization', function () {
-    $user = makeTeacherUser();
-    $organization = Organization::factory()->create();
-    TeacherSupervisor::create([
-        'organization_id' => $organization->id,
-        'teacher_id' => $user->teacher->id,
-        'supervisor_name' => 'Jamie Lee',
-        'supervisor_email' => 'jamie@example.com',
-        'supervisory_cell_phone' => '5559876543',
-    ]);
-    $event = Event::factory()->active()->create(['organization_id' => $organization->id]);
-    $user->teacher->update(['onboarding_step' => 5]);
-
-    Livewire::actingAs($user)
-        ->test(TeacherOnboardingWizard::class)
-        ->set('selectedEventIds', [$event->id])
-        ->call('requestEventInvitations')
-        ->assertSet('step', 6);
-
-    $request = EventInvitationRequest::where('event_id', $event->id)->where('teacher_id', $user->teacher->id)->first();
-    expect($request)->not->toBeNull();
-    expect($request->status)->toBe(EventInvitationStatus::Pending);
-});
-
-test('step 6 finishing marks onboarding complete and unlocks the dashboard', function () {
+test('a teacher saved on the former step 6 resumes on the overview', function () {
     $user = makeTeacherUser();
     $user->teacher->update(['onboarding_step' => 6]);
+
+    Livewire::actingAs($user)
+        ->test(TeacherOnboardingWizard::class)
+        ->assertSet('step', 5)
+        ->assertSee('Step 5 of 5')
+        ->assertSee('Go to my dashboard');
+});
+
+test('step 5 finishing marks onboarding complete and unlocks the dashboard', function () {
+    $user = makeTeacherUser();
+    $user->teacher->update(['onboarding_step' => 5]);
 
     Livewire::actingAs($user)
         ->test(TeacherOnboardingWizard::class)

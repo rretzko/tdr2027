@@ -15,7 +15,7 @@
 
     <flux:callout color="blue" icon="calendar" heading="Events">
         <flux:callout.text>
-            Any event invitation requests you made will show up on your dashboard once they're reviewed.
+            Once your school email is verified on the Schools page, look for events on the Registrations page, where you can request an invitation.
         </flux:callout.text>
     </flux:callout>
 

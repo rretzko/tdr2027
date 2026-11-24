@@ -163,9 +163,15 @@
                             Edit
                         </flux:button>
                     </flux:modal.trigger>
-                    <flux:button size="sm" variant="outline" :disabled="! $row->is_active" wire:click="deactivate({{ $row->id }})">
-                        Deactivate
-                    </flux:button>
+                    @if ($row->is_active || $row->isPending())
+                        <flux:button size="sm" variant="outline" :disabled="$row->isPending()" wire:click="deactivate({{ $row->id }})">
+                            Deactivate
+                        </flux:button>
+                    @else
+                        <flux:button size="sm" variant="outline" wire:click="reactivate({{ $row->id }})">
+                            Reactivate
+                        </flux:button>
+                    @endif
                     <flux:button
                         size="sm"
                         variant="danger"
@@ -276,9 +282,15 @@
                                     <flux:button size="sm" variant="ghost" icon="ellipsis-vertical" aria-label="Student actions" />
 
                                     <flux:menu>
-                                        <flux:menu.item :disabled="! $row->is_active" wire:click="deactivate({{ $row->id }})">
-                                            Deactivate
-                                        </flux:menu.item>
+                                        @if ($row->is_active || $row->isPending())
+                                            <flux:menu.item :disabled="$row->isPending()" wire:click="deactivate({{ $row->id }})">
+                                                Deactivate
+                                            </flux:menu.item>
+                                        @else
+                                            <flux:menu.item wire:click="reactivate({{ $row->id }})">
+                                                Reactivate
+                                            </flux:menu.item>
+                                        @endif
                                         <flux:menu.item
                                             variant="danger"
                                             wire:click="remove({{ $row->id }})"
@@ -914,7 +926,7 @@
                 { ids: ['tour-add-student'], title: 'Add student', body: "Add a brand-new student, or link an existing one already in the system — TDR2027 will catch likely duplicates for you either way." },
                 { ids: ['tour-roster-desktop', 'tour-roster-mobile'], title: 'Your roster', body: 'Every student currently linked to you, across every school.' },
                 { ids: ['tour-status-desktop', 'tour-status-mobile'], title: 'Status', body: 'Pending means a claim request is waiting on approval from another teacher. Inactive students are hidden from registration until reactivated.' },
-                { ids: ['tour-actions-desktop', 'tour-actions-mobile'], title: 'Manage a student', body: 'Edit their profile, deactivate them, or remove them from your roster entirely.' }
+                { ids: ['tour-actions-desktop', 'tour-actions-mobile'], title: 'Manage a student', body: 'Edit their profile, deactivate or reactivate them, or remove them from your roster entirely.' }
             ];
 
             var activeSteps = [];
