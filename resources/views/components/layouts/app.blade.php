@@ -210,6 +210,9 @@
                     <flux:sidebar.item icon="document-text" :href="route('guides.show', 'teacher-guide')" target="_blank">
                         Teacher Guide
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="document-text" :href="route('guides.show', 'adjudicator-guide')" target="_blank">
+                        Adjudicator Guide
+                    </flux:sidebar.item>
                     @if (app(\App\Services\VersionRoleAssignmentService::class)->hasActiveOrSandboxVersionRole(auth()->user()))
                         <flux:sidebar.item icon="document-text" :href="route('guides.show', 'event-manager-guide')" target="_blank">
                             Event Manager Guide
