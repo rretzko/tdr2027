@@ -9,6 +9,7 @@ use App\Enums\JudgeStatus;
 use App\Enums\JudgeType;
 use App\Models\Candidate;
 use App\Models\RoomJudge;
+use App\Models\Score;
 use App\Models\User;
 use App\Models\Version;
 use App\Models\VersionRoom;
@@ -20,6 +21,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 #[Layout('components.layouts.app')]
@@ -45,6 +47,27 @@ class VersionRooms extends Component
     /** @var list<array{id: int|null, user_id: int|null, search: string, judge_type: string}> */
     public array $judges = [];
 
+    /**
+     * Judges whose saved scores the pending save or removal would delete.
+     *
+     * @var list<array{id: int, name: string, scores: int, candidates: int}>
+     */
+    #[Locked]
+    public array $scoresAtRisk = [];
+
+    /**
+     * What the user agreed to delete. Compared with a fresh count, so scores
+     * saved while the warning was open bring the warning back.
+     *
+     * @var list<array{id: int, name: string, scores: int, candidates: int}>
+     */
+    #[Locked]
+    public array $confirmedScoresAtRisk = [];
+
+    /** The Room being removed, or null when the warning came from save(). */
+    #[Locked]
+    public ?int $removingRoomId = null;
+
     public function mount(Version $version, VersionRoleAssignmentService $roles): void
     {
         abort_unless($roles->canManageAuditionEnvironment(Auth::user(), $version), 403);
@@ -60,6 +83,7 @@ class VersionRooms extends Component
         $this->scoreCategoryIds = [];
         $this->voicePartIds = [];
         $this->judges = [];
+        $this->resetRemovalWarning();
         $this->resetErrorBag();
     }
 
@@ -79,6 +103,7 @@ class VersionRooms extends Component
                 'search' => $roomJudge->user->name ?? '',
                 'judge_type' => (string) $roomJudge->getRawOriginal('judge_type'),
             ])->all();
+        $this->resetRemovalWarning();
         $this->resetErrorBag();
     }
 
@@ -170,6 +195,14 @@ class VersionRooms extends Component
             'judges.*.judge_type' => ['required', Rule::in(array_map(fn (JudgeType $case): string => $case->value, JudgeType::cases()))],
         ]);
 
+        if ($this->editingId !== null) {
+            $submittedIds = array_filter(array_column($this->judges, 'id'));
+
+            if ($this->warnsAboutScores($this->editingId, array_values($submittedIds))) {
+                return;
+            }
+        }
+
         $data = [
             'name' => $validated['name'],
             'tolerance' => $validated['tolerance'] !== null && $validated['tolerance'] !== '' ? (int) $validated['tolerance'] : null,
@@ -211,7 +244,9 @@ class VersionRooms extends Component
         RoomJudge::where('room_id', $room->id)->whereNotIn('id', $keepIds)->delete();
 
         $this->editingId = null;
+        $this->resetRemovalWarning();
         $this->modal('room-form')->close();
+        $this->modal('score-removal-warning')->close();
 
         $this->markReadinessReviewed();
 
@@ -224,13 +259,112 @@ class VersionRooms extends Component
 
         $room = VersionRoom::where('id', $id)->where('version_id', $this->version->id)->firstOrFail();
 
+        if ($this->warnsAboutScores($room->id)) {
+            $this->removingRoomId = $room->id;
+
+            return;
+        }
+
         $name = $room->name;
         $room->delete();
+        $this->resetRemovalWarning();
+        $this->modal('score-removal-warning')->close();
         unset($this->orderInputs[$id]);
 
         $this->markReadinessReviewed();
 
         Flux::toast(text: "\"{$name}\" removed.", variant: 'success');
+    }
+
+    public function confirmScoreRemoval(VersionRoleAssignmentService $roles): void
+    {
+        $this->confirmedScoresAtRisk = $this->scoresAtRisk;
+
+        if ($this->removingRoomId !== null) {
+            $this->remove($this->removingRoomId, $roles);
+        } else {
+            $this->save($roles);
+        }
+    }
+
+    /**
+     * Backs out of the warning, putting any judges taken off the form back.
+     */
+    public function keepScores(): void
+    {
+        if ($this->removingRoomId === null && $this->editingId !== null) {
+            $presentIds = array_column($this->judges, 'id');
+
+            RoomJudge::query()
+                ->where('room_id', $this->editingId)
+                ->where('version_id', $this->version->id)
+                ->whereIn('id', array_column($this->scoresAtRisk, 'id'))
+                ->whereNotIn('id', array_filter($presentIds))
+                ->with('user')
+                ->get()
+                ->each(function (RoomJudge $roomJudge): void {
+                    $this->judges[] = [
+                        'id' => $roomJudge->id,
+                        'user_id' => $roomJudge->user_id,
+                        'search' => $roomJudge->user->name ?? '',
+                        'judge_type' => (string) $roomJudge->getRawOriginal('judge_type'),
+                    ];
+                });
+        }
+
+        $this->resetRemovalWarning();
+        $this->modal('score-removal-warning')->close();
+    }
+
+    private function resetRemovalWarning(): void
+    {
+        $this->scoresAtRisk = [];
+        $this->confirmedScoresAtRisk = [];
+        $this->removingRoomId = null;
+    }
+
+    /**
+     * Deleting a room_judges row cascades to its scores, so opens the warning
+     * and returns true when the Room's judges outside $keepIds have scores
+     * the user hasn't already agreed to delete.
+     *
+     * @param  list<int>  $keepIds
+     */
+    private function warnsAboutScores(int $roomId, array $keepIds = []): bool
+    {
+        $judges = RoomJudge::query()
+            ->where('room_id', $roomId)
+            ->where('version_id', $this->version->id)
+            ->whereNotIn('id', $keepIds)
+            ->with('user')
+            ->orderBy('id')
+            ->get();
+
+        $atRisk = [];
+
+        foreach ($judges as $judge) {
+            $scores = Score::where('judge_id', $judge->id);
+            $count = $scores->count();
+
+            if ($count > 0) {
+                $atRisk[] = [
+                    'id' => $judge->id,
+                    'name' => (string) $judge->user->name,
+                    'scores' => $count,
+                    'candidates' => $scores->distinct()->count('candidate_id'),
+                ];
+            }
+        }
+
+        if ($atRisk === [] || $atRisk === $this->confirmedScoresAtRisk) {
+            return false;
+        }
+
+        $this->resetRemovalWarning();
+        $this->scoresAtRisk = $atRisk;
+        $this->modal('score-removal-warning')->show();
+
+        return true;
     }
 
     public function saveOrder(VersionRoleAssignmentService $roles): void
