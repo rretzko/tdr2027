@@ -28,6 +28,7 @@ class CandidateFactory extends Factory
             'version_id' => Version::factory(),
             'school_id' => School::factory(),
             'teacher_id' => Teacher::factory(),
+            'voice_part_confirmed_at' => now(),
             'voice_part_id' => VoicePart::factory(),
             'status' => CandidateStatus::Eligible,
             'program_name' => fake()->name(),

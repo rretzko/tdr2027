@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
-    'candidate_id', 'version_upload_file_id', 'uploaded_by_user_id', 'url', 'original_filename',
+    'candidate_id', 'version_upload_file_id', 'voice_part_id', 'uploaded_by_user_id', 'url', 'original_filename',
     'duration_seconds', 'flagged_at', 'flag_reason', 'status', 'uploaded_at', 'decided_at', 'decided_by_user_id',
 ])]
 class CandidateUploadFile extends Model
@@ -26,6 +26,25 @@ class CandidateUploadFile extends Model
             'decided_at' => 'datetime',
             'flagged_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Uploaded for a part other than the candidate's current one. An
+     * unstamped (older) upload is unknown, not a mismatch.
+     */
+    public function isForAnotherVoicePart(Candidate $candidate): bool
+    {
+        return $this->voice_part_id !== null && $this->voice_part_id !== $candidate->voice_part_id;
+    }
+
+    /**
+     * The part this was uploaded for; null = unknown (before stamping existed).
+     *
+     * @return BelongsTo<VoicePart, $this>
+     */
+    public function voicePart(): BelongsTo
+    {
+        return $this->belongsTo(VoicePart::class);
     }
 
     /**

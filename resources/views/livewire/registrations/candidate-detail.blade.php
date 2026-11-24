@@ -219,6 +219,17 @@
             <flux:card>
                 <flux:heading size="sm" class="mb-3">Recordings</flux:heading>
 
+                @if ($confirmationRequired)
+                    <flux:callout variant="warning" icon="musical-note" class="mb-4">
+                        <flux:callout.text>Please confirm this candidate's voice part before uploading recordings.</flux:callout.text>
+                        <x-slot name="actions">
+                            <flux:modal.trigger name="confirm-voice-part">
+                                <flux:button size="sm">Confirm voice part</flux:button>
+                            </flux:modal.trigger>
+                        </x-slot>
+                    </flux:callout>
+                @endif
+
                 <div class="space-y-4">
                     @foreach ($uploadSlots as $slot)
                         @php $upload = $candidateUploads->get($slot->id); @endphp
@@ -228,6 +239,9 @@
                                 <div class="flex items-center gap-2">
                                     @if ($upload !== null && $upload->flagged_at !== null)
                                         <flux:badge color="red" size="sm" icon="flag">Review Suggested</flux:badge>
+                                    @endif
+                                    @if ($upload !== null && $upload->isForAnotherVoicePart($candidate))
+                                        <flux:badge color="red" size="sm" icon="exclamation-triangle">Recorded as {{ $upload->voicePart->name ?? 'another part' }}</flux:badge>
                                     @endif
                                     @if ($upload === null)
                                         <flux:badge color="zinc" size="sm">Not Uploaded</flux:badge>
@@ -278,9 +292,10 @@
                                     {{ $upload !== null ? 'Replace' : 'Upload' }}
                                 </flux:button>
 
-                                @if ($upload !== null && $upload->getRawOriginal('status') === 'pending')
-                                    <flux:button size="sm" variant="ghost" icon="check" wire:click="approveRecording({{ $upload->id }})">
-                                        Approve
+                                {{-- An approved recording stamped with another part can be approved again. --}}
+                                @if ($upload !== null && ($upload->getRawOriginal('status') === 'pending' || $upload->isForAnotherVoicePart($candidate)))
+                                    <flux:button size="sm" variant="ghost" icon="check" wire:click="reviewRecording({{ $upload->id }})">
+                                        Approve as {{ $candidate->voicePart->name ?? '—' }}
                                     </flux:button>
                                     <flux:button
                                         size="sm" variant="ghost" icon="x-mark"
@@ -451,6 +466,10 @@
                     </flux:select>
                     <flux:error name="edit_voice_part_id" />
                 </flux:field>
+
+                @if ($candidateHasRecordings)
+                    @include('livewire.partials.voice-part-recording-question', ['model' => 'edit_voice_part_id', 'currentId' => $candidate->voice_part_id, 'names' => $voiceParts->pluck('name', 'id')->all()])
+                @endif
             @endif
 
             <flux:field>
@@ -652,11 +671,77 @@
         </flux:modal>
     @endif
 
+    @if ($confirmationRequired)
+        @include('livewire.partials.confirm-voice-part-modal', [
+            'before' => "{$candidate->student->user->name} is auditioning as",
+            'after' => '. Is that right?',
+            'yes' => "Yes, {$candidate->voicePart->name}",
+            'changeAction' => 'editStudent',
+            'offered' => $voiceParts->contains('id', $candidate->voice_part_id),
+        ])
+    @endif
+
+    {{-- Approve Recording modal --}}
+    <flux:modal name="review-recording" class="w-full max-w-lg">
+        @if ($reviewingUpload)
+            <div class="space-y-6" wire:key="review-{{ $reviewingUpload->id }}-{{ $reviewUrl }}">
+                <div>
+                    <flux:heading size="lg">Approve as {{ $candidate->voicePart->name }}</flux:heading>
+                    <flux:text size="sm" class="text-zinc-500">{{ $candidate->student->user->name }} – {{ $reviewingUpload->versionUploadFile->name }}</flux:text>
+                </div>
+
+                @if ($reviewingUpload->isForAnotherVoicePart($candidate))
+                    <flux:callout variant="warning" icon="exclamation-triangle">
+                        <flux:callout.text>This was uploaded as <strong>{{ $reviewingUpload->voicePart->name ?? 'another part' }}</strong>. Approve it only if it is the {{ $candidate->voicePart->name }} part.</flux:callout.text>
+                    </flux:callout>
+                @endif
+
+                <div>
+                    <flux:text class="mb-1 font-medium">Recording</flux:text>
+                    @php
+                        $reviewRecordingUrl = \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($reviewingUpload->url, now()->addMinutes(30));
+                    @endphp
+                    @if ($version->getRawOriginal('upload_type') === 'video')
+                        <video controls preload="metadata" class="w-full rounded" src="{{ $reviewRecordingUrl }}"></video>
+                    @else
+                        <audio controls preload="metadata" class="w-full" src="{{ $reviewRecordingUrl }}"></audio>
+                    @endif
+                </div>
+
+                @if ($reviewPitchFiles->isNotEmpty())
+                    <div class="space-y-3">
+                        <flux:text class="font-medium">{{ $candidate->voicePart->name }} pitch files</flux:text>
+                        @foreach ($reviewPitchFiles as $pitchFile)
+                            @php
+                                $pitchFileUrl = \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($pitchFile->url, now()->addMinutes(30));
+                            @endphp
+                            <div wire:key="review-pitch-{{ $pitchFile->id }}">
+                                <flux:text size="sm">{{ $pitchFile->name }}{{ $pitchFile->description ? ' – '.$pitchFile->description : '' }}</flux:text>
+                                @if (strtolower(pathinfo($pitchFile->url, PATHINFO_EXTENSION)) === 'pdf')
+                                    <a href="{{ $pitchFileUrl }}" target="_blank" rel="noopener" class="text-sm text-blue-600 hover:underline dark:text-blue-400">Read</a>
+                                @else
+                                    <audio controls preload="none" class="w-full" src="{{ $pitchFileUrl }}"></audio>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+
+                <div class="flex justify-end gap-2">
+                    <flux:modal.close>
+                        <flux:button variant="ghost">Cancel</flux:button>
+                    </flux:modal.close>
+                    <flux:button variant="primary" wire:click="approveRecording({{ $reviewingUpload->id }})">Approve as {{ $candidate->voicePart->name }}</flux:button>
+                </div>
+            </div>
+        @endif
+    </flux:modal>
+
     {{-- Upload Recording modal --}}
     @if ($uploadSlots->isNotEmpty())
         <flux:modal name="upload-recording" class="w-full max-w-md">
             <div class="space-y-6">
-                <flux:heading>Upload Recording</flux:heading>
+                <flux:heading>Upload {{ $candidate->voicePart->name ?? '' }} – {{ $uploadSlots->firstWhere('id', $uploadingVersionUploadFileId)->name ?? 'Recording' }}</flux:heading>
 
                 <flux:field>
                     <flux:label>File</flux:label>
@@ -670,6 +755,11 @@
                         <flux:text size="sm" class="mt-1 text-zinc-400">Uploading…</flux:text>
                     </div>
                     <flux:error name="newRecordingFile" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:checkbox wire:model="recording_part_attested" label="This is the {{ $candidate->voicePart->name ?? 'correct' }} part" />
+                    <flux:error name="recording_part_attested" />
                 </flux:field>
 
                 <div class="flex justify-end gap-2">

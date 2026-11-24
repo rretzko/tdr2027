@@ -253,6 +253,13 @@
             </flux:callout.text>
         </flux:callout>
 
+        @if ($candidate && $candidateHasRecordings)
+            <div class="mb-4">
+                @include('livewire.partials.voice-part-recording-question', ['model' => 'newVoicePartId', 'currentId' => $candidate->voice_part_id, 'names' => $availableVoiceParts->pluck('name', 'id')->all()])
+            </div>
+        @endif
+        <flux:error name="newVoicePartId" class="mb-4" />
+
         <div class="flex justify-end gap-3">
             <flux:modal.close>
                 <flux:button variant="ghost">Cancel</flux:button>

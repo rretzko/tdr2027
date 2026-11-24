@@ -6,9 +6,9 @@ namespace App\Services;
 
 use App\Enums\CandidateStatus;
 use App\Enums\CandidateUploadStatus;
+use App\Enums\VoicePartRecordingDecision;
 use App\Exceptions\VoicePartChangeRefusedException;
 use App\Models\Candidate;
-use App\Models\Score;
 use App\Models\Version;
 use App\Models\VoicePart;
 use App\Support\VoicePartAuditRow;
@@ -26,7 +26,8 @@ use Illuminate\Support\Collection;
  * changeVoicePart() is the non-destructive counterpart to
  * AdjudicationService::changeVoicePart() (Tab Room), which wipes Scores and
  * non-matching Recordings: this one refuses outright once a Candidate has
- * Scores, and otherwise only changes voice_part_id and recalculates status.
+ * Scores, and otherwise applies the reviewer's answer about the recordings
+ * (VoicePartChangeService) and recalculates status.
  */
 class VoicePartAuditService
 {
@@ -37,7 +38,10 @@ class VoicePartAuditService
     /** @var array<string, Collection<int, VoicePart>> */
     private array $offeredByGrade = [];
 
-    public function __construct(private readonly CandidateService $candidates) {}
+    public function __construct(
+        private readonly CandidateService $candidates,
+        private readonly VoicePartChangeService $changes,
+    ) {}
 
     /**
      * countyIds: null = every county; a list restricts to Candidates whose
@@ -113,31 +117,19 @@ class VoicePartAuditService
      *
      * @throws VoicePartChangeRefusedException
      */
-    public function changeVoicePart(Candidate $candidate, int $voicePartId, array $checklistDefs): array
+    public function changeVoicePart(Candidate $candidate, int $voicePartId, array $checklistDefs, VoicePartRecordingDecision $decision = VoicePartRecordingDecision::Match): array
     {
         $candidate->loadMissing(['version', 'student', 'voicePart']);
-        $offered = $this->offeredVoiceParts($candidate->version, $candidate->student->grade);
-        $to = $offered->firstWhere('id', $voicePartId);
-
-        if (! $to instanceof VoicePart) {
-            $gradeLabel = $candidate->student->grade !== null ? "grade {$candidate->student->grade}" : 'this student';
-
-            throw new VoicePartChangeRefusedException("That voice part isn't offered for {$gradeLabel}.");
-        }
-
-        if (Score::where('candidate_id', $candidate->id)->exists()) {
-            throw new VoicePartChangeRefusedException(
-                'This candidate already has scores. Use Tab Room → Add/Edit Scores → Change Voice Part instead.'
-            );
-        }
-
         $from = $candidate->voicePart;
+        $to = VoicePart::findOrFail($voicePartId);
+
+        $this->changes->assertAllowed($candidate, $to);
 
         if ($from?->id === $to->id) {
             return ['from' => $from, 'to' => $to];
         }
 
-        $candidate->update(['voice_part_id' => $to->id]);
+        $this->changes->change($candidate, $to, $decision);
         // An Event Manager / Founder fix, not a teacher change, so the
         // teacher cut-off doesn't apply.
         $this->candidates->recalculateStatus($candidate->refresh(), $checklistDefs, ignoreTeacherCutoff: true);

@@ -6,6 +6,7 @@ use App\Enums\AuditionType;
 use App\Enums\JudgeType;
 use App\Livewire\Events\TabRoom\AddEditScores;
 use App\Models\Candidate;
+use App\Models\Ensemble;
 use App\Models\Event;
 use App\Models\Recording;
 use App\Models\RoomJudge;
@@ -204,6 +205,7 @@ test('changeVoicePart removes existing scores and non-relevant recordings, then 
     app(AdjudicationService::class)->saveScores($roomJudge, $candidate, $version, [$factor->id => 4]);
 
     $newVoicePart = VoicePart::factory()->create();
+    Ensemble::factory()->create(['event_id' => $version->event_id])->voiceParts()->attach($newVoicePart->id);
     $newRoom = VersionRoom::create(['version_id' => $version->id, 'name' => 'Room 2', 'order_by' => 2]);
     $newRoom->voiceParts()->attach($newVoicePart->id);
     $newCategory = ScoreCategory::create(['event_id' => $version->event_id, 'version_id' => null, 'description' => 'Solo', 'order_by' => 2]);
@@ -224,6 +226,9 @@ test('changeVoicePart removes existing scores and non-relevant recordings, then 
         ->test(AddEditScores::class, ['version' => $version])
         ->call('selectCandidate', $candidate->id)
         ->set('newVoicePartId', (string) $newVoicePart->id)
+        ->call('changeVoicePart')
+        ->assertHasErrors('recording_decision')
+        ->set('recording_decision', 'match')
         ->call('changeVoicePart')
         ->assertSet('selectedCandidateId', $candidate->id);
 

@@ -410,6 +410,7 @@ test('saveRecording uploads a new recording as pending', function () {
         ->test(Show::class, ['candidate' => $candidate])
         ->call('uploadRecording', $slot->id)
         ->set('newRecordingFile', $file)
+        ->set('recording_part_attested', true)
         ->call('saveRecording')
         ->assertHasNoErrors();
 
@@ -448,6 +449,7 @@ test('saveRecording accepts a real-world .m4a file even when its detected MIME t
         ->test(Show::class, ['candidate' => $candidate])
         ->call('uploadRecording', $slot->id)
         ->set('newRecordingFile', $file)
+        ->set('recording_part_attested', true)
         ->call('saveRecording')
         ->assertHasNoErrors();
 

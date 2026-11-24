@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'student_id', 'version_id', 'school_id', 'teacher_id',
-    'voice_part_id', 'accepted_ensemble_id', 'status', 'program_name', 'emergency_contact_id',
+    'voice_part_id', 'voice_part_confirmed_at', 'accepted_ensemble_id', 'status', 'program_name', 'emergency_contact_id',
     'application_certified_at', 'application_certified_by_user_id',
     'application_candidate_signed_at', 'application_parent_signed_at',
 ])]
@@ -41,10 +41,26 @@ class Candidate extends Model
     {
         return [
             'status' => CandidateStatus::class,
+            'voice_part_confirmed_at' => 'datetime',
             'application_certified_at' => 'datetime',
             'application_candidate_signed_at' => 'datetime',
             'application_parent_signed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Auto-enrollment may have guessed the voice part, so someone must
+     * confirm it before the first recording is uploaded. A Candidate who
+     * already has recordings is past that point.
+     */
+    public function needsVoicePartConfirmation(): bool
+    {
+        return $this->getRawOriginal('voice_part_confirmed_at') === null && ! $this->uploadFiles()->exists();
+    }
+
+    public function hasRecordings(): bool
+    {
+        return $this->uploadFiles()->exists() || Recording::where('candidate_id', $this->id)->exists();
     }
 
     /**
