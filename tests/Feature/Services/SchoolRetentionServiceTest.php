@@ -186,7 +186,8 @@ test('schools are only "not back" once the Postmark Deadline has passed', functi
 
 test('the Registration tab shows the retention panel', function () {
     ['prior' => $prior, 'current' => $current] = retentionVersions();
-    [$gone, $changed] = School::factory()->count(2)->create()->all();
+    $gone = School::factory()->create(['name' => "O'Hara High School"]);
+    $changed = School::factory()->create(['name' => 'Changed High School']);
     retentionStudents($prior, $gone, retentionTeacher($gone, 'Gone Teacher'), 4, CandidateStatus::Accepted);
     retentionStudents($prior, $changed, retentionTeacher($changed, 'Old Teacher'), 3, CandidateStatus::Accepted);
     retentionStudents($current, $changed, retentionTeacher($changed, 'New Teacher'), 2, CandidateStatus::Registered);
@@ -199,7 +200,7 @@ test('the Registration tab shows the retention panel', function () {
         ->toContain('Compared with Honor Choir 2026')
         ->toContain('Not back yet')
         ->toContain('No invited teacher')
-        ->toContain($gone->name)
+        ->toContain(e($gone->name))
         ->toContain('Retained with a teacher change')
         ->toContain('Old Teacher')
         ->toContain('New Teacher');

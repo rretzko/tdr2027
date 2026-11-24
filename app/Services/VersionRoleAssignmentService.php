@@ -327,8 +327,8 @@ final class VersionRoleAssignmentService
      * Access to the Voice Part Audit tab on Web Registration
      * (docs/plans/voice-part-recording-audit.md): everyone who can manage
      * Web Registration, plus Registration/Co-Registration Managers (the
-     * Reports gate). The latter see *only* that tab — the rest of Web
-     * Registration stays canManageWebRegistration()-only.
+     * Reports gate). The latter see *only* that tab and Registration History —
+     * the rest of Web Registration stays canManageWebRegistration()-only.
      */
     public function canAuditVoiceParts(User $user, Version $version): bool
     {
@@ -349,6 +349,28 @@ final class VersionRoleAssignmentService
         return $this->canManageWebRegistration($user, $version)
             ? null
             : $this->reportCountyIds($user, $version);
+    }
+
+    /**
+     * Access to the Registration History tab on Web Registration: the exact
+     * same gate as canAuditVoiceParts() above — Founder, Event Manager, Web
+     * Registration Manager, Registration Manager and Co-Registration Manager.
+     * Kept as its own named method so the two tabs can diverge later.
+     */
+    public function canViewRegistrationHistory(User $user, Version $version): bool
+    {
+        return $this->canAuditVoiceParts($user, $version);
+    }
+
+    /**
+     * County scope for Registration History — same rule as
+     * voicePartAuditCountyIds(): only a Co-Registration Manager is limited.
+     *
+     * @return list<int>|null
+     */
+    public function registrationHistoryCountyIds(User $user, Version $version): ?array
+    {
+        return $this->voicePartAuditCountyIds($user, $version);
     }
 
     /**
