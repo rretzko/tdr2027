@@ -116,6 +116,7 @@ class VersionRooms extends Component
     {
         unset($this->judges[$index]);
         $this->judges = array_values($this->judges);
+        $this->resetErrorBag();
     }
 
     /**
@@ -147,6 +148,12 @@ class VersionRooms extends Component
 
     public function clearJudgeSelection(int $index): void
     {
+        $this->resetErrorBag("judges.{$index}.user_id");
+
+        if ($this->blocksJudgeSwap($index, null)) {
+            return;
+        }
+
         $this->judges[$index]['user_id'] = null;
         $this->judges[$index]['search'] = '';
     }
@@ -196,6 +203,16 @@ class VersionRooms extends Component
         ]);
 
         if ($this->editingId !== null) {
+            $swapBlocked = false;
+
+            foreach ($validated['judges'] as $index => $row) {
+                $swapBlocked = $this->blocksJudgeSwap((int) $index, (int) $row['user_id']) || $swapBlocked;
+            }
+
+            if ($swapBlocked) {
+                return;
+            }
+
             $submittedIds = array_filter(array_column($this->judges, 'id'));
 
             if ($this->warnsAboutScores($this->editingId, array_values($submittedIds))) {
@@ -314,6 +331,38 @@ class VersionRooms extends Component
 
         $this->resetRemovalWarning();
         $this->modal('score-removal-warning')->close();
+    }
+
+    /**
+     * Scores belong to the room_judges row, so giving a scored row to another
+     * user would credit that user with someone else's scores. When $userId
+     * would do that, puts the original judge back, adds an error, and returns
+     * true.
+     */
+    private function blocksJudgeSwap(int $index, ?int $userId): bool
+    {
+        $id = $this->judges[$index]['id'] ?? null;
+
+        if ($id === null || $this->editingId === null) {
+            return false;
+        }
+
+        $roomJudge = RoomJudge::query()
+            ->where('room_id', $this->editingId)
+            ->where('version_id', $this->version->id)
+            ->with('user')
+            ->find($id);
+
+        if ($roomJudge === null || $roomJudge->user_id === $userId || ! Score::where('judge_id', $roomJudge->id)->exists()) {
+            return false;
+        }
+
+        $name = (string) $roomJudge->user->name;
+        $this->judges[$index]['user_id'] = $roomJudge->user_id;
+        $this->judges[$index]['search'] = $name;
+        $this->addError("judges.{$index}.user_id", "{$name} has saved scores, so this row can't be given to someone else. Use Add judge for a new judge. Removing {$name} with the trash icon deletes their scores.");
+
+        return true;
     }
 
     private function resetRemovalWarning(): void

@@ -211,7 +211,7 @@ Some things to know about judges:
 - **They need an account.** The search finds any TheDirectorsRoom.com account that isn't a student's.
 - **Assign each judge to one Room per Version.** The Adjudicate page opens only one (§13).
 - **Everyone listed must score.** A candidate is Completed only when every person in the Room's judge list has scored them, including a Judge Monitor or Monitor. Don't list anyone who won't be scoring.
-- **Removing a judge deletes their scores.** So does removing the Room. If there are saved scores, the site lists how many each judge would lose and asks you to confirm. **Keep scores** backs out; there's no undo after you confirm.
+- **Removing a judge or Room deletes saved scores.** You'll see what would be lost first; **Keep scores** backs out. To replace a judge who has scores, use **Add judge**; their row can't be reassigned.
 
 ## 11. Scoring Rubric
 
