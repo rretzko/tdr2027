@@ -165,6 +165,43 @@ final class VersionRoleAssignmentService
         $this->autoEnrollment->enrollAllInvitedTeachersForVersion($version);
     }
 
+    /**
+     * Grants "Event Manager" on a Version just added to an existing Event:
+     * everyone who holds it on $source (the Version it was cloned from), plus
+     * $creator. The Founder is never added as the creator, since a Founder
+     * adding a Version on someone's behalf isn't its Event Manager. Without
+     * this a new Version has no Event Manager of its own, so the Monday
+     * Scorecard and platform invoice have no recipient, even though every
+     * sibling Version's Event Manager can still manage it.
+     *
+     * Unlike bootstrapEventManager(), doesn't enroll every invited teacher:
+     * a clone carries last season's whole invitation list, and VersionObserver
+     * enrolls it when the Version is activated.
+     */
+    public function inheritEventManagers(User $creator, Version $version, ?Version $source): void
+    {
+        $managers = $source !== null
+            ? ($this->assignmentsForVersion($source)->get('Event Manager') ?? collect())
+            : collect();
+
+        if (! $creator->isFounder()) {
+            $managers = $managers->push($creator);
+        }
+
+        foreach ($managers->unique('id') as $manager) {
+            $this->versionRoles->withVersion($version, function () use ($manager): void {
+                // See canAccessVersion() above — same stale-relation-cache
+                // hazard: roles cached for another Version would make
+                // assignRole() skip this one.
+                $manager->unsetRelation('roles');
+                $manager->assignRole('Event Manager');
+                $manager->unsetRelation('roles');
+            });
+
+            $this->inviteToVersion($manager, $version, $creator);
+        }
+    }
+
     public function canManageVersionRoles(User $user, Version $version): bool
     {
         return $this->canManageEvent($user, $version->event);

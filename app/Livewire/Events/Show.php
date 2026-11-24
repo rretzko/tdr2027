@@ -121,6 +121,8 @@ class Show extends Component
             ]);
         }
 
+        $service->inheritEventManagers(Auth::user(), $version, $latest);
+
         Flux::toast("{$version->name} has been created.");
 
         // An Event's first Version → the setup questions; a clone already
