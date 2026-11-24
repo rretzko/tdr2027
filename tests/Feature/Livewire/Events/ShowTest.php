@@ -9,6 +9,8 @@ use App\Models\RoomJudge;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\Version;
+use App\Models\VersionInvitation;
+use App\Services\VersionRoleAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -224,6 +226,87 @@ test('createVersion clones the latest sibling Version for an Event Manager', fun
 
     expect($clone)->not->toBeNull();
     expect($clone->audition_timeslot)->toBe(20);
+});
+
+test("createVersion gives the clone the latest Version's Event Managers and the creator, and no other roles", function () {
+    $event = Event::factory()->create();
+    $older = Version::factory()->create(['event_id' => $event->id, 'senior_class_of' => 2026]);
+    $latest = Version::factory()->create(['event_id' => $event->id, 'senior_class_of' => 2027]);
+
+    // Holds the role only on an older Version, which still grants Event-wide access.
+    $creator = makeShowTestUser();
+    grantVersionRole($creator, $older, 'Event Manager');
+
+    $latestManager = makeShowTestUser();
+    grantVersionRole($latestManager, $latest, 'Event Manager');
+    $formerManager = makeShowTestUser();
+    grantVersionRole($formerManager, $older, 'Event Manager');
+    grantVersionRole(makeShowTestUser(), $latest, 'Registration Manager');
+
+    Livewire::actingAs($creator)
+        ->test(Show::class, ['event' => $event])
+        ->set('new_name', 'Cloned Version')
+        ->set('new_senior_class_of', '2028')
+        ->call('createVersion')
+        ->assertHasNoErrors();
+
+    $clone = Version::where('event_id', $event->id)->where('name', 'Cloned Version')->firstOrFail();
+    $assignments = app(VersionRoleAssignmentService::class)->assignmentsForVersion($clone);
+
+    expect($assignments['Event Manager']->pluck('id')->sort()->values()->all())
+        ->toBe(collect([$creator->id, $latestManager->id])->sort()->values()->all());
+    expect($assignments['Registration Manager']->isEmpty())->toBeTrue();
+    expect(VersionInvitation::where('version_id', $clone->id)->count())->toBe(2);
+});
+
+test('createVersion assigns a creator who already manages the latest Version only once', function () {
+    $creator = makeShowTestUser();
+    $event = Event::factory()->create();
+    $latest = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($creator, $latest, 'Event Manager');
+
+    Livewire::actingAs($creator)
+        ->test(Show::class, ['event' => $event])
+        ->set('new_name', 'Cloned Version')
+        ->set('new_senior_class_of', '2028')
+        ->call('createVersion')
+        ->assertHasNoErrors();
+
+    $clone = Version::where('event_id', $event->id)->where('name', 'Cloned Version')->firstOrFail();
+    $service = app(VersionRoleAssignmentService::class);
+
+    expect($service->assignmentsForVersion($clone)['Event Manager']->pluck('id')->all())->toBe([$creator->id]);
+    expect($service->assignmentsForVersion($latest)['Event Manager']->pluck('id')->all())->toBe([$creator->id]);
+});
+
+test('createVersion by the Founder copies Event Managers without adding the Founder', function () {
+    $founder = makeFounder();
+    $manager = makeShowTestUser();
+    $event = Event::factory()->create();
+    $latest = Version::factory()->create(['event_id' => $event->id]);
+    grantVersionRole($manager, $latest, 'Event Manager');
+
+    Livewire::actingAs($founder)
+        ->test(Show::class, ['event' => $event])
+        ->set('new_name', 'Cloned Version')
+        ->set('new_senior_class_of', '2028')
+        ->call('createVersion')
+        ->assertHasNoErrors();
+
+    $clone = Version::where('event_id', $event->id)->where('name', 'Cloned Version')->firstOrFail();
+
+    expect(app(VersionRoleAssignmentService::class)->assignmentsForVersion($clone)['Event Manager']->pluck('id')->all())
+        ->toBe([$manager->id]);
+});
+
+test('inheritEventManagers assigns just the creator when there is no source Version', function () {
+    $creator = makeShowTestUser();
+    $version = Version::factory()->create();
+    $service = app(VersionRoleAssignmentService::class);
+
+    $service->inheritEventManagers($creator, $version, null);
+
+    expect($service->assignmentsForVersion($version)['Event Manager']->pluck('id')->all())->toBe([$creator->id]);
 });
 
 test('createVersion falls back to defaults when the Event has no existing Version', function () {

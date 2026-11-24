@@ -71,9 +71,9 @@ Lists every Version of this Event, newest first, with a row of color-coded tool 
 - **Web Registration** — available to a Web Registration Manager as well as you (§12).
 - **Scorecard** — registration, adjudication, and selection figures for this Version, for Event Managers only (§13–§14).
 
-**Add Version** starts a new periodic run of this Event. If a prior Version exists, most of its configuration is **copied from the latest Version**: settings, dates, fees, requirements, documents, pitch files, Rooms, and invitations. You only fill in the new Version's Name, Short Name, and Senior Class Of. It starts in Sandbox, and the Obligations and Application start as drafts. Review the dates, because last year's are copied as they were.
+**Add Version** starts a new periodic run of this Event. If a prior Version exists, most of its configuration is **copied from the latest Version**: settings, dates, fees, requirements, documents, pitch files, Rooms, and invitations. You only fill in the new Version's Name, Short Name, and Senior Class Of. It starts in Sandbox, and the Obligations and Application start as drafts. Each date moves forward one year, at the same time of day, so review them against the new calendar. The latest Version's Event Managers carry over, and you become one too if you weren't already.
 
-**Not copied:** role assignments, judges, and candidates. Assign the new Version's roles in Configure → Roles (§6), including its Event Managers, and its judges in Rooms (§10). Rooms keep only the score categories that belong to the Event's default rubric; reassign any that were customized for the old Version. Cut-off Strategy, Share Results, and Judge check-ins on the General tab aren't copied either, so set them again.
+**Not copied:** every other role, judges, and candidates. Assign roles in Configure → Roles (§6), Co-Registration Managers on their own screen (§8), and judges in Rooms (§10). Rooms keep only the score categories that belong to the Event's default rubric; reassign any that were customized for the old Version. Cut-off Strategy, Share Results, and Judge check-ins on the General tab aren't copied either, so set them again.
 
 ### Ensembles tab
 
