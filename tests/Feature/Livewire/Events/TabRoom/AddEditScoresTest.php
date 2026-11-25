@@ -353,6 +353,19 @@ test('the selected Room\'s approved recordings are playable for a remote auditio
         ->assertDontSeeHtml('trackRecording');
 });
 
+test('recordings play in a video player when the Version collects video', function () {
+    Storage::fake('s3');
+    ['manager' => $manager, 'version' => $version, 'candidate' => $candidate] = makeTabRoomScenario();
+    $version->update(['upload_type' => 'video']);
+    makeTabRoomRecording($version, $candidate);
+
+    Livewire::actingAs($manager)
+        ->withQueryParams(['selectedCandidateId' => $candidate->id])
+        ->test(AddEditScores::class, ['version' => $version])
+        ->assertSeeHtml('<video controls')
+        ->assertDontSeeHtml('<audio controls');
+});
+
 test('unapproved recordings and ones outside the Room\'s rubric are not shown', function () {
     Storage::fake('s3');
     ['manager' => $manager, 'version' => $version, 'candidate' => $candidate] = makeTabRoomScenario();
