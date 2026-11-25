@@ -86,6 +86,11 @@ class EstimateForm extends Component
             'singleSchoolData' => $schools->count() === 1
                 ? EstimateFormData::build($this->version, $schools->first(), $teacher, $mailToResolver)
                 : null,
+            'truncatedSchoolIds' => $schools->count() > 1
+                ? $schools
+                    ->filter(fn (School $school): bool => EstimateFormData::build($this->version, $school, $teacher, $mailToResolver)->truncated)
+                    ->pluck('id')
+                : collect(),
         ]);
     }
 
