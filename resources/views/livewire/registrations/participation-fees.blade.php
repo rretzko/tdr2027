@@ -47,12 +47,29 @@
         </div>
     @endif
 
-    @if (! $version->epaymentTeacherReady())
-        <flux:text size="sm" class="mb-4 text-zinc-500">Online payment by teachers isn't turned on for this event.</flux:text>
-    @elseif (! $canPay && $window?->start_at?->isFuture())
-        <flux:text size="sm" class="mb-4 text-zinc-500">Online payment opens {{ $window->start_at->forDisplay()->format('M j, Y g:i A') }}.</flux:text>
+    @php
+        $teacherReady = $version->epaymentTeacherReady();
+        $opensLater = $teacherReady && ! $canPay && $window?->start_at?->isFuture();
+        // Shown greyed out before payment opens, so it's clear where payment happens.
+        $showPay = $teacherReady && ($canPay || $opensLater) && ! $confirming;
+        $payDisabled = $canPay ? 'false' : 'true';
+        $total = fn (string $ids, int $fee): string => '"$" + (($wire.'.$ids.'.length ? $wire.'.$ids.'.length * '.$fee.' + '.$surchargeCents.' : 0) / 100).toFixed(2)';
+    @endphp
+
+    @if ($opensLater)
+        <flux:callout variant="warning" icon="clock" class="mb-4">
+            <flux:callout.heading>Online payment opens {{ $window->start_at->forDisplay()->format('l, M j, Y') }} at {{ $window->start_at->forDisplay()->format('g:i A') }} Eastern</flux:callout.heading>
+            <flux:callout.text>You can select students and pay once it opens. Check and cash payments can be recorded now: choose Manage.</flux:callout.text>
+        </flux:callout>
+    @elseif (! $teacherReady)
+        <flux:callout variant="secondary" icon="information-circle" class="mb-4">
+            <flux:callout.text>Online payment by teachers isn't turned on for this event. Check and cash payments can be recorded: choose Manage.</flux:callout.text>
+        </flux:callout>
     @elseif (! $canPay)
-        <flux:text size="sm" class="mb-4 text-zinc-500">Online payment has closed.</flux:text>
+        <flux:callout variant="warning" icon="exclamation-triangle" class="mb-4">
+            <flux:callout.heading>Online payment has closed</flux:callout.heading>
+            <flux:callout.text>Check and cash payments can still be recorded: choose Manage.</flux:callout.text>
+        </flux:callout>
     @endif
 
     @if ($rows->isEmpty())
@@ -60,11 +77,11 @@
             <flux:callout.text>None of your students were accepted, so there are no Participation fees.</flux:callout.text>
         </flux:callout>
     @else
-        @if ($canPay && ! $confirming)
+        @if ($showPay)
             <div class="flex flex-wrap items-center gap-2 mb-4">
-                <flux:button size="sm" variant="ghost" wire:click="selectAllUnpaid">Select all unpaid</flux:button>
-                <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payParticipation" x-bind:disabled="$wire.selectedCandidateIds.length === 0">
-                    Pay for <span x-text="$wire.selectedCandidateIds.length"></span> selected
+                <flux:button size="sm" variant="ghost" wire:click="selectAllUnpaid" :disabled="! $canPay">Select all unpaid</flux:button>
+                <flux:button size="sm" variant="primary" icon="credit-card" wire:click="payParticipation" x-bind:disabled="{{ $payDisabled }} || $wire.selectedCandidateIds.length === 0">
+                    Pay <span x-text="{{ $total('selectedCandidateIds', $feeCents) }}"></span> with {{ $vendorLabel }} (<span x-text="$wire.selectedCandidateIds.length"></span> selected)
                 </flux:button>
             </div>
         @endif
@@ -76,8 +93,8 @@
                 <flux:card size="sm" wire:key="card-{{ $candidate->id }}">
                     <div class="flex items-start justify-between gap-3">
                         <div class="flex items-start gap-2">
-                            @if ($canPay && ! $confirming && $row['balanceCents'] > 0 && $row['pendingCents'] === 0)
-                                <flux:checkbox wire:model="selectedCandidateIds" value="{{ $candidate->id }}" class="mt-1" />
+                            @if ($showPay && $row['balanceCents'] > 0 && $row['pendingCents'] === 0)
+                                <flux:checkbox wire:model="selectedCandidateIds" value="{{ $candidate->id }}" :disabled="! $canPay" class="mt-1" />
                             @endif
                             <div>
                                 <flux:heading size="base">{{ $candidate->student->user->sort_name }}</flux:heading>
@@ -108,8 +125,8 @@
                     @php $candidate = $row['candidate']; @endphp
                     <flux:table.row wire:key="row-{{ $candidate->id }}">
                         <flux:table.cell>
-                            @if ($canPay && ! $confirming && $row['balanceCents'] > 0 && $row['pendingCents'] === 0)
-                                <flux:checkbox wire:model="selectedCandidateIds" value="{{ $candidate->id }}" />
+                            @if ($showPay && $row['balanceCents'] > 0 && $row['pendingCents'] === 0)
+                                <flux:checkbox wire:model="selectedCandidateIds" value="{{ $candidate->id }}" :disabled="! $canPay" />
                             @endif
                         </flux:table.cell>
                         <flux:table.cell>
@@ -137,9 +154,9 @@
         <flux:heading size="lg" class="mt-8">Registration fees still owed</flux:heading>
         <flux:text size="sm" class="mb-3 text-zinc-500">Separate from the Participation fee, and paid separately.</flux:text>
 
-        @if ($canPay && ! $confirming)
-            <flux:button size="sm" variant="primary" icon="credit-card" class="mb-3" wire:click="payRegistration" x-bind:disabled="$wire.selectedRegistrationIds.length === 0">
-                Pay Registration for <span x-text="$wire.selectedRegistrationIds.length"></span> selected
+        @if ($showPay)
+            <flux:button size="sm" variant="primary" icon="credit-card" class="mb-3" wire:click="payRegistration" x-bind:disabled="{{ $payDisabled }} || $wire.selectedRegistrationIds.length === 0">
+                Pay <span x-text="{{ $total('selectedRegistrationIds', $registrationFeeCents) }}"></span> with {{ $vendorLabel }} (<span x-text="$wire.selectedRegistrationIds.length"></span> selected)
             </flux:button>
         @endif
 
@@ -149,8 +166,8 @@
                 <flux:card size="sm" wire:key="reg-{{ $candidate->id }}">
                     <div class="flex items-center justify-between gap-3">
                         <div class="flex items-center gap-2">
-                            @if ($canPay && ! $confirming && $row['pendingCents'] === 0)
-                                <flux:checkbox wire:model="selectedRegistrationIds" value="{{ $candidate->id }}" />
+                            @if ($showPay && $row['pendingCents'] === 0)
+                                <flux:checkbox wire:model="selectedRegistrationIds" value="{{ $candidate->id }}" :disabled="! $canPay" />
                             @endif
                             <a href="{{ route('registrations.candidate', [$version, $candidate]) }}" wire:navigate class="font-medium hover:underline">{{ $candidate->student->user->sort_name }}</a>
                         </div>

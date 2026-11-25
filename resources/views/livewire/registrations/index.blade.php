@@ -1,6 +1,8 @@
 <div>
     <flux:heading size="xl" class="mb-6">Registrations</flux:heading>
 
+    <x-participation-fees-due :teacher="auth()->user()->teacher" class="mb-8" />
+
     @if ($sections['open']->isEmpty() && $sections['eligible']->isEmpty() && $sections['active']->isEmpty())
         <flux:callout variant="info" icon="information-circle">
             <flux:callout.text>
