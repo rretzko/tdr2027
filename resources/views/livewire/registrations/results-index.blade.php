@@ -25,6 +25,9 @@
 
                         <div class="flex items-center gap-3 shrink-0">
                             <flux:badge color="blue">{{ $candidateCount }} {{ Str::plural('candidate', $candidateCount) }}</flux:badge>
+                            @if ($version->collectsParticipationFees())
+                                <flux:button size="sm" variant="outline" icon="credit-card" :href="route('registrations.participation-fees', $version)" wire:navigate>Participation Fees</flux:button>
+                            @endif
                             <flux:button size="sm" variant="primary" :href="route('registrations.results', $version)" wire:navigate>
                                 Results
                             </flux:button>

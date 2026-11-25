@@ -11,13 +11,14 @@ use App\Enums\Vendor;
 use App\Models\Candidate;
 use App\Models\Event;
 use App\Models\EventEpaymentConfig;
-use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\Version;
+use App\Services\PaymentAllocationService;
 use App\Services\Payments\Dto\CheckoutSession;
 use App\Services\Payments\Dto\WebhookEvent;
+use App\Support\CheckoutReturnUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -88,14 +89,13 @@ class SquarePaymentGateway implements ConfirmsCheckoutOnReturn, PaymentGatewayCo
         // there).
         $redirectUrl = match (true) {
             $payer instanceof Student => route('sfdi.events.candidate', ['candidate' => $firstCandidate->id]),
-            $candidates->count() === 1 => route('registrations.candidate', ['version' => $version->id, 'candidate' => $firstCandidate->id]),
-            default => route('registrations.version', ['version' => $version->id]),
+            default => CheckoutReturnUrl::teacher($version, $candidates->count() === 1 ? $firstCandidate : null),
         };
 
         $request = new CreatePaymentLinkRequest([
             'idempotencyKey' => (string) Str::uuid(),
             'quickPay' => new QuickPay([
-                'name' => "{$version->name} registration",
+                'name' => "{$version->name} {$feeType->label()}",
                 'priceMoney' => new Money(['amount' => $amount, 'currency' => 'USD']),
                 'locationId' => $config->vendor_account_id,
             ]),
@@ -128,18 +128,7 @@ class SquarePaymentGateway implements ConfirmsCheckoutOnReturn, PaymentGatewayCo
             'paid_at' => null,
         ]);
 
-        // Auto-allocate at creation, not on webhook completion — for a
-        // single candidate we already know 100% of this transaction is
-        // theirs regardless of when/whether it actually completes. See
-        // epayment-integration.md §1.1.
-        if ($candidates->count() === 1) {
-            PaymentAllocation::create([
-                'payment_transaction_id' => $transaction->id,
-                'candidate_id' => $firstCandidate->id,
-                'amount' => $amount,
-                'allocated_at' => now(),
-            ]);
-        }
+        app(PaymentAllocationService::class)->allocateCheckout($transaction, $candidates, $fees, $feeType);
 
         return new CheckoutSession(redirectUrl: $paymentLink->getUrl(), paymentTransactionId: $transaction->id);
     }
@@ -194,6 +183,7 @@ class SquarePaymentGateway implements ConfirmsCheckoutOnReturn, PaymentGatewayCo
                     : PaymentTransactionStatus::Pending,
                 amountCents: (int) data_get($refundData, 'amount_money.amount', 0),
                 rawPayload: $payload,
+                refundId: isset($refundData['id']) ? (string) $refundData['id'] : null,
             );
         }
 

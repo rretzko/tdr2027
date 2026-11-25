@@ -783,6 +783,16 @@
             </flux:callout>
 
             <flux:field>
+                <flux:label>Fee</flux:label>
+                <flux:select wire:model="payment_fee_type">
+                    @foreach (\App\Enums\FeeType::cases() as $type)
+                        <flux:select.option value="{{ $type->value }}">{{ $type->label() }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <flux:error name="payment_fee_type" />
+            </flux:field>
+
+            <flux:field>
                 <flux:label>Payment Type</flux:label>
                 <flux:select wire:model="payment_type" placeholder="Select a payment type...">
                     <flux:select.option value="check">Check</flux:select.option>

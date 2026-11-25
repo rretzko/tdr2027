@@ -6,11 +6,13 @@ namespace App\Models;
 
 use App\Enums\ApplicationType;
 use App\Enums\CandidateStatus;
+use App\Enums\EventStatus;
 use App\Enums\FeeType;
 use App\Observers\CandidateObserver;
 use Database\Factories\CandidateFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -128,6 +130,27 @@ class Candidate extends Model
     public function statusHistory(): HasMany
     {
         return $this->hasMany(CandidateStatusHistory::class)->orderBy('created_at');
+    }
+
+    /**
+     * Active Versions, plus closed ones that collect a Participation fee
+     * from this accepted student. Accepted only: the list shows status, so
+     * it must never reveal a rejection. E-payment Versions only, which
+     * leaves out imported past seasons.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeVisibleToStudent(Builder $query): void
+    {
+        $query->where(fn (Builder $query) => $query
+            ->whereHas('version', fn ($version) => $version->where('status', EventStatus::Active->value))
+            ->orWhere(fn (Builder $closed) => $closed
+                ->where('status', CandidateStatus::Accepted->value)
+                ->whereHas('version', fn ($version) => $version
+                    ->where('status', EventStatus::Closed->value)
+                    ->whereNotNull('results_released_at')
+                    ->whereHas('fees', fn ($fees) => $fees->where('participation', '>', 0))
+                    ->whereHas('versionEpaymentConfig', fn ($config) => $config->where('epayment_student', true)->orWhere('epayment_teacher', true)))));
     }
 
     /**

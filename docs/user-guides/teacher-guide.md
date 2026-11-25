@@ -160,10 +160,9 @@ Each candidate row shows the student's name and email, voice part, and:
 
 **Group payment.** If teacher e-payment is turned on, check off the candidates in the roster, then choose **Pay Registration Fee for Selected**. Once the Version closes, the choices become Participation and Housing, for Accepted students (§12). Anyone who has already paid in full has to be deselected first, and a waived fee is never charged.
 
-Group payment takes two steps, and **the second one is yours**:
+After you pay, the payment appears under **Pending Payments**, usually for a couple of minutes, while the payment service confirms it. Don't pay again. If you closed the payment page without paying, the site tells you when you can try again. Once confirmed, it counts toward the students you selected.
 
-1. Pay. The payment appears under **Pending Payments**, usually for a couple of minutes, while the payment service confirms it. Don't pay again. If you closed the payment page without paying, the site tells you when you can try again.
-2. Once confirmed, it moves to **Your Unreconciled Payments**. Select **Allocate** and enter an amount for each student. Until you do, the payment doesn't count toward anyone's balance.
+A lump sum the Event Manager recorded for you, or an older group payment, may appear under **Your Unreconciled Payments**. Select **Allocate** and enter an amount for each student; until you do, it doesn't count toward anyone's balance.
 
 Some Versions accept online payment only. A notice here and on the Estimate Form tells you so; please don't mail a check for those.
 
@@ -192,7 +191,7 @@ This is the record for one student's registration into one Version. It's organiz
   - **Recorded as** is a red badge on a file uploaded for a different voice part than the candidate's current one. The candidate can't be Registered until you replace it, reject it, or, if it really is the current part, approve it.
   - **Reject** (or **Remove**, once approved) deletes the file outright and re-opens that slot.
   - **Review Suggested** is a flag for a possible misfile, such as the wrong slot or an unusual length. It never rejects anything on your behalf.
-- **Payment** — if teacher e-payment is on, **Pay Registration Fee** (or, once the Version closes, Participation or Housing; see §12) sends you to a secure checkout for this one student. While the payment service confirms it, the button is replaced by "payment being confirmed"; there's no need to pay again. A fee waived by the event is marked **Waived**, with nothing to pay, and an overpayment is shown too. Use **Record Payment** for a registration fee you collected by check, purchase order, cash, or another way, or for a refund; it doesn't charge anyone. Payment history is listed below.
+- **Payment** — if teacher e-payment is on, **Pay Registration Fee** (or, once the Version closes, Participation or Housing; see §12) sends you to a secure checkout for this one student. While the payment service confirms it, the button is replaced by "payment being confirmed"; there's no need to pay again. A fee waived by the event is marked **Waived**, with nothing to pay, and an overpayment is shown too. Use **Record Payment**, choosing which fee it's for, for money you collected by check, purchase order, cash, or another way, or for a refund; it doesn't charge anyone. Payment history is listed below.
 
 Use **Refresh Status** any time you want the checklist and status re-evaluated immediately rather than waiting for your next visit.
 
@@ -240,7 +239,16 @@ On a released Version's page you'll see every one of your candidates who reached
 
 When scores were recorded, you can view or download a score report for each school (one page per candidate) and for each individual candidate. Each page is headed by the student's name and voice part, so treat it as private. If the Event Manager enabled "Share Results," a **Full Score Report** for the whole audition is available too; it may show "Preparing…" for a short time after results are released.
 
-Participation and housing fees, where a Version charges them, become payable for Accepted students once the Version closes. A closed Version no longer appears under Registrations, so ask your Event Manager how to pay them.
+Participation and housing fees, where a Version charges them, become payable for Accepted students once the Version closes. A closed Version no longer appears under Registrations; use Results instead.
+
+**Participation fees.** When the Version charges one, choose **Participation Fees** from Results. The page lists your accepted students with what's due, paid, and still owed, and the dates online payment is open.
+
+- **Pay online** for as many students as you like: check them off, or choose **Select all unpaid**, then pay. The payment is credited to those students automatically.
+- **Check or cash**: choose **Manage**, then **Record Payment**, and pick the fee. Use the same form, with type Refund, for a refund.
+- **Registration fees still owed** are listed separately and paid separately. Paying one fee never counts toward the other.
+- **PDF** and **CSV** give you a record of every student and payment.
+
+Students whose teacher allows e-payment can also pay on StudentFolder.info; a student paying there can't be charged twice.
 
 ## 13. Common questions
 

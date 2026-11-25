@@ -15,10 +15,10 @@
         </div>
 
         <div class="flex gap-2">
-            <flux:button size="sm" variant="outline" icon="arrow-down-tray" :href="route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'pdf', 'search' => $search])" target="_blank">
+            <flux:button size="sm" variant="outline" icon="arrow-down-tray" :href="route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'pdf', 'search' => $search, 'fee' => $fee])" target="_blank">
                 Export PDF
             </flux:button>
-            <flux:button size="sm" variant="outline" icon="arrow-down-tray" :href="route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'csv', 'search' => $search])">
+            <flux:button size="sm" variant="outline" icon="arrow-down-tray" :href="route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'csv', 'search' => $search, 'fee' => $fee])">
                 Export CSV
             </flux:button>
         </div>
@@ -39,6 +39,57 @@
     {{-- Waived column/card only once this Version has any waivers
          (docs/plans/student-fee-waivers.md), so other Versions look unchanged. --}}
     @php $hasWaivers = $versionTotals['waivedCents'] > 0; @endphp
+
+    <div class="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end">
+        <flux:select wire:model.live="fee" label="Fee" class="sm:max-w-xs">
+            <flux:select.option value="">All fees</flux:select.option>
+            @foreach ($feeOptions as $option)
+                <flux:select.option value="{{ $option->value }}">{{ $option->label() }}</flux:select.option>
+            @endforeach
+        </flux:select>
+        @if ($canViewPaymentDetails)
+            <flux:button size="sm" variant="outline" icon="arrow-down-tray" :href="route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => 'csv', 'fee' => $fee, 'detail' => 'payments'])">Payments CSV</flux:button>
+        @endif
+    </div>
+
+    @if ($unrecordedRefunds->isNotEmpty())
+        <div class="mb-8">
+            <flux:heading size="lg" class="mb-1">Refunds to record</flux:heading>
+            <flux:text size="sm" class="text-zinc-500 mb-3">The payment service reported these partial refunds. Choose the student each one was for.</flux:text>
+            <div class="space-y-3">
+                @foreach ($unrecordedRefunds as $entry)
+                    <flux:card size="sm">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <span class="font-medium">${{ number_format($entry['unrecordedCents'] / 100, 2) }}</span>
+                                <span class="text-zinc-500">refunded from a ${{ number_format($entry['transaction']->amountInDollars(), 2) }} payment{{ $entry['transaction']->school ? ' — '.$entry['transaction']->school->name : '' }}</span>
+                                <div class="text-xs text-zinc-500 dark:text-zinc-400">Order {{ $entry['transaction']->vendor_transaction_id }}</div>
+                            </div>
+                            <flux:button size="sm" variant="primary" wire:click="openRefund({{ $entry['transaction']->id }})">Record refund</flux:button>
+                        </div>
+                    </flux:card>
+                @endforeach
+            </div>
+        </div>
+
+        <flux:modal name="record-refund" class="w-full max-w-md">
+            @if ($refundEntry)
+                <form wire:submit="saveRefund" class="space-y-4">
+                    <flux:heading size="lg">Record refund</flux:heading>
+                    <flux:select wire:model="refundCandidateId" label="Student" placeholder="Select a student...">
+                        @foreach ($refundEntry['transaction']->allocations as $allocation)
+                            <flux:select.option value="{{ $allocation->candidate_id }}">{{ $allocation->candidate->student->user->sort_name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                    <flux:input wire:model="refundAmount" label="Amount" type="number" step="0.01" min="0.01" />
+                    <div class="flex justify-end gap-2">
+                        <flux:modal.close><flux:button variant="ghost">Cancel</flux:button></flux:modal.close>
+                        <flux:button type="submit" variant="primary">Save</flux:button>
+                    </div>
+                </form>
+            @endif
+        </flux:modal>
+    @endif
 
     {{-- Version-level rollup --}}
     <div @class(['grid grid-cols-1 gap-4 mb-8', 'sm:grid-cols-3' => ! $hasWaivers, 'sm:grid-cols-2 lg:grid-cols-4' => $hasWaivers])>
@@ -65,10 +116,31 @@
         </flux:card>
     </div>
 
+    @if ($ensembleTotals->isNotEmpty())
+        <div class="mb-8">
+            <flux:heading size="lg" class="mb-3">Balances by Ensemble</flux:heading>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                @foreach ($ensembleTotals as $name => $totals)
+                    @php $badge = $balanceBadge($totals['balanceCents']); @endphp
+                    <flux:card size="sm">
+                        <div class="flex items-start justify-between gap-3">
+                            <flux:heading size="base">{{ $name }}</flux:heading>
+                            <flux:badge size="sm" color="{{ $badge['color'] }}">{{ $badge['label'] }}</flux:badge>
+                        </div>
+                        <div class="mt-1 text-sm text-zinc-500">
+                            {{ $totals['count'] }} {{ \Illuminate\Support\Str::plural('student', $totals['count']) }} — due ${{ number_format($totals['dueCents'] / 100, 2) }}, paid ${{ number_format($totals['paidCents'] / 100, 2) }}@if ($totals['pendingCents'] > 0), pending ${{ number_format($totals['pendingCents'] / 100, 2) }}@endif
+                        </div>
+                    </flux:card>
+                @endforeach
+            </div>
+        </div>
+    @endif
+
     {{-- Needs Reconciliation --}}
     <div class="mb-8">
         <flux:heading size="lg" class="mb-1">Needs Reconciliation</flux:heading>
         <flux:text size="sm" class="text-zinc-500 mb-3">
+            @if ($unallocatedCents > 0) <span class="font-medium">${{ number_format($unallocatedCents / 100, 2) }} unallocated.</span> @endif
             Payments not yet fully allocated to specific candidates — they don't count toward any school's balance
             above until allocated.
         </flux:text>
@@ -112,7 +184,7 @@
     <div class="mb-8">
         <flux:heading size="lg" class="mb-3">Balances by School</flux:heading>
 
-        <flux:input wire:model.live.debounce.300ms="search" placeholder="Search by school..." icon="magnifying-glass" class="sm:max-w-sm mb-4" />
+        <flux:input wire:model.live.debounce.300ms="search" placeholder="{{ $feeType ? 'Search by student, school, or teacher...' : 'Search by school...' }}" icon="magnifying-glass" class="sm:max-w-sm mb-4" />
 
         @if ($schoolRows->isEmpty())
             <flux:text class="text-zinc-500">
@@ -141,7 +213,7 @@
                             </div>
                         @endforeach
                         <div class="text-sm text-zinc-500">
-                            {{ $row['count'] }} registered — due ${{ number_format($row['dueCents'] / 100, 2) }}, paid ${{ number_format($row['paidCents'] / 100, 2) }}
+                            {{ $row['count'] }} {{ $feeType === \App\Enums\FeeType::Participation ? 'accepted' : 'registered' }} — due ${{ number_format($row['dueCents'] / 100, 2) }}, paid ${{ number_format($row['paidCents'] / 100, 2) }}
                             @if ($row['waivedCents'] > 0)
                                 , waived ${{ number_format($row['waivedCents'] / 100, 2) }} ({{ $row['waivedCount'] }} {{ \Illuminate\Support\Str::plural('student', $row['waivedCount']) }})
                             @endif
@@ -164,7 +236,7 @@
                 <flux:table.columns>
                     <flux:table.column>School</flux:table.column>
                     <flux:table.column>Teacher</flux:table.column>
-                    <flux:table.column>Registered</flux:table.column>
+                    <flux:table.column>{{ $feeType === \App\Enums\FeeType::Participation ? 'Accepted' : 'Registered' }}</flux:table.column>
                     <flux:table.column>Due</flux:table.column>
                     @if ($hasWaivers)
                         <flux:table.column>Waived</flux:table.column>
@@ -230,6 +302,64 @@
             </flux:table>
         @endif
     </div>
+
+    @if ($feeType)
+        <div class="mb-8">
+            <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <flux:heading size="lg">{{ $feeType->label() }} by Student</flux:heading>
+                <div class="flex gap-2">
+                    @foreach (['pdf', 'csv'] as $format)
+                        <flux:button size="sm" variant="outline" icon="arrow-down-tray" :href="route('events.versions.reports.payment-reconciliation.export', ['version' => $version, 'format' => $format, 'search' => $search, 'fee' => $fee, 'detail' => 'students'])">{{ strtoupper($format) }}</flux:button>
+                    @endforeach
+                </div>
+            </div>
+
+            <div class="md:hidden space-y-3">
+                @foreach ($studentRows as $row)
+                    <flux:card size="sm" wire:key="student-card-{{ $row['candidate']->id }}">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <flux:heading size="base">{{ $row['candidate']->student->user->sort_name }}</flux:heading>
+                                <flux:text size="sm" class="text-zinc-500">{{ $row['candidate']->school->name ?? '—' }} &middot; {{ $row['candidate']->teacher->user->name }}</flux:text>
+                                <flux:text size="sm" class="text-zinc-500">{{ $row['candidate']->acceptedEnsemble?->name }}</flux:text>
+                            </div>
+                            @include('livewire.registrations.partials.fee-balance-badge')
+                        </div>
+                        <div class="mt-1 text-sm text-zinc-500">Due ${{ number_format($row['dueCents'] / 100, 2) }}, paid ${{ number_format($row['paidCents'] / 100, 2) }}</div>
+                        @includeWhen($canViewPaymentDetails, 'livewire.registrations.partials.fee-payment-lines')
+                    </flux:card>
+                @endforeach
+            </div>
+
+            <flux:table class="hidden md:table">
+                <flux:table.columns>
+                    <flux:table.column>Student</flux:table.column>
+                    <flux:table.column>School</flux:table.column>
+                    <flux:table.column>Teacher</flux:table.column>
+                    <flux:table.column>Ensemble</flux:table.column>
+                    <flux:table.column>Due</flux:table.column>
+                    <flux:table.column>Paid</flux:table.column>
+                    <flux:table.column>Balance</flux:table.column>
+                </flux:table.columns>
+                <flux:table.rows>
+                    @foreach ($studentRows as $row)
+                        <flux:table.row wire:key="student-row-{{ $row['candidate']->id }}">
+                            <flux:table.cell class="font-medium">{{ $row['candidate']->student->user->sort_name }}</flux:table.cell>
+                            <flux:table.cell>{{ $row['candidate']->school->name ?? '—' }}</flux:table.cell>
+                            <flux:table.cell>{{ $row['candidate']->teacher->user->name }}</flux:table.cell>
+                            <flux:table.cell>{{ $row['candidate']->acceptedEnsemble->name ?? '—' }}</flux:table.cell>
+                            <flux:table.cell>${{ number_format($row['dueCents'] / 100, 2) }}</flux:table.cell>
+                            <flux:table.cell>
+                                ${{ number_format($row['paidCents'] / 100, 2) }}
+                                @includeWhen($canViewPaymentDetails, 'livewire.registrations.partials.fee-payment-lines')
+                            </flux:table.cell>
+                            <flux:table.cell>@include('livewire.registrations.partials.fee-balance-badge')</flux:table.cell>
+                        </flux:table.row>
+                    @endforeach
+                </flux:table.rows>
+            </flux:table>
+        </div>
+    @endif
 
     {{-- Payment Details modal (Event Manager / Founder only) --}}
     @if ($canViewPaymentDetails)

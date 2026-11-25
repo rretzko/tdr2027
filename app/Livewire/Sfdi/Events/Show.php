@@ -10,14 +10,12 @@ use App\Enums\AuditionType;
 use App\Enums\CandidateStatus;
 use App\Enums\CandidateUploadStatus;
 use App\Enums\FeeType;
-use App\Enums\PaymentTransactionStatus;
 use App\Enums\PitchFileVisibility;
 use App\Enums\UploadType;
 use App\Enums\VoicePartRecordingDecision;
 use App\Exceptions\VoicePartChangeRefusedException;
 use App\Models\Candidate;
 use App\Models\CandidateUploadFile;
-use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
 use App\Models\Recording;
 use App\Models\Version;
@@ -28,6 +26,7 @@ use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VersionUploadFile;
 use App\Models\VoicePart;
 use App\Services\CandidateFeeCalculator;
+use App\Services\CandidateFeeLedger;
 use App\Services\CandidateService;
 use App\Services\Payments\CheckoutInProgressGuard;
 use App\Services\Payments\PaymentGatewayFactory;
@@ -35,6 +34,7 @@ use App\Services\Payments\PendingCheckoutConfirmer;
 use App\Services\RecordingReviewService;
 use App\Services\VoicePartChangeService;
 use App\Support\CandidateApplicationData;
+use Carbon\CarbonInterface;
 use Flux\Flux;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -351,7 +351,7 @@ class Show extends Component
             // item 2, confirmed with the product owner: student-only,
             // registrationFeePayable() itself stays unchanged for teachers).
             FeeType::Registration => $this->version->registrationFeePayableByStudent(),
-            FeeType::Participation => $this->version->participationFeePayable(),
+            FeeType::Participation => $this->version->participationFeePayableOnline(),
             FeeType::Housing => $this->version->housingFeePayable(),
         }, 403);
 
@@ -802,6 +802,33 @@ class Show extends Component
     }
 
     /**
+     * The Participation Fee summary, for an accepted student once results
+     * are released. Null otherwise.
+     *
+     * @return array{ensemble: string|null, waived: bool, dueCents: int, paidCents: int, optedIn: bool, opensAt: CarbonInterface|null, closesAt: CarbonInterface|null, windowClosed: bool}|null
+     */
+    private function participationView(CandidateFeeLedger $ledger, bool $optedIn): ?array
+    {
+        if (! $this->version->collectsParticipationFees()
+            || $this->candidate->getRawOriginal('status') !== CandidateStatus::Accepted->value) {
+            return null;
+        }
+
+        $date = $this->version->participationFeeDate();
+
+        return [
+            'ensemble' => $this->candidate->acceptedEnsemble?->name,
+            'waived' => $this->candidate->hasFeeWaived(FeeType::Participation),
+            'dueCents' => $ledger->dueCents($this->version, $this->candidate, FeeType::Participation),
+            'paidCents' => $ledger->paidCents($this->candidate, FeeType::Participation),
+            'optedIn' => $optedIn,
+            'opensAt' => $this->version->participationFeeWindowIsOpen() ? null : $date?->start_at,
+            'closesAt' => $date?->end_at,
+            'windowClosed' => $this->version->participationFeeWindowHasClosed(),
+        ];
+    }
+
+    /**
      * The paymentView() flag that says whether this fee is due.
      *
      * @return 'registrationFeeDue'|'participationFeeDue'|'housingFeeDue'
@@ -824,7 +851,7 @@ class Show extends Component
      * drift no differently than any other Livewire-component duplication in
      * this codebase (e.g. isLocked()'s own status-cast comment).
      *
-     * @return array{registrationFeeDue: bool, participationFeeDue: bool, housingFeeDue: bool, confirmingFeeTypes: list<string>, overpaymentCents: int, waivedFeeLabels: list<string>, candidatePayments: Collection<int, PaymentTransaction>}
+     * @return array{registrationFeeDue: bool, participationFeeDue: bool, housingFeeDue: bool, confirmingFeeTypes: list<string>, overpaymentCents: int, waivedFeeLabels: list<string>, candidatePayments: Collection<int, PaymentTransaction>, participation: array{ensemble: string|null, waived: bool, dueCents: int, paidCents: int, optedIn: bool, opensAt: CarbonInterface|null, closesAt: CarbonInterface|null, windowClosed: bool}|null}
      */
     private function paymentView(): array
     {
@@ -836,37 +863,15 @@ class Show extends Component
 
         // Net of per-student fee waivers — see CandidateFeeCalculator.
         $feeCalculator = app(CandidateFeeCalculator::class);
-        $dueCents = $feeCalculator->combinedDueCents($this->version, $this->candidate);
-        $paidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
-            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
-            ->sum('amount');
-        $balanceDue = $dueCents - $paidCents > 0;
-        $overpaymentCents = max(0, $paidCents - $dueCents);
+        $ledger = app(CandidateFeeLedger::class);
+        $owed = fn (FeeType $type): bool => $epaymentOptedIn
+            && in_array($candidateStatus, $this->version->feePayableStates($type), true)
+            && $ledger->balanceCents($this->version, $this->candidate, $type) > 0;
 
-        $registrationFeeDue = $epaymentOptedIn
-            && $this->version->registrationFeePayableByStudent()
-            && in_array($candidateStatus, CandidateStatus::registrationFeeEligibleStates(), true)
-            && $balanceDue;
-
-        $participationFeeDue = $epaymentOptedIn
-            && $this->version->participationFeePayable()
-            && $candidateStatus === CandidateStatus::Accepted
-            && $balanceDue;
-
-        // Housing stays outside the combined balance above — same
-        // independent due/paid pair CandidateDetail::render() computes, see
-        // that method's own comment for the full reasoning.
-        $housingCents = $feeCalculator->feeCents($this->version, $this->candidate, FeeType::Housing);
-        $housingPaidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
-            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value)
-                ->where('fee_type', FeeType::Housing->value))
-            ->sum('amount');
-        $housingBalanceDue = $housingCents - $housingPaidCents > 0;
-
-        $housingFeeDue = $epaymentOptedIn
-            && $this->version->housingFeePayable()
-            && $candidateStatus === CandidateStatus::Accepted
-            && $housingBalanceDue;
+        $registrationFeeDue = $this->version->registrationFeePayableByStudent() && $owed(FeeType::Registration);
+        $participationFeeDue = $this->version->participationFeePayableOnline() && $owed(FeeType::Participation);
+        $housingFeeDue = $this->version->housingFeePayable() && $owed(FeeType::Housing);
+        $overpaymentCents = $ledger->overpaymentCents($this->version, $this->candidate);
 
         // A due fee whose checkout is paid but not yet confirmed shows
         // "being confirmed" instead of its Pay button (CheckoutInProgressGuard).
@@ -884,6 +889,7 @@ class Show extends Component
             'housingFeeDue' => $housingFeeDue,
             'confirmingFeeTypes' => $confirmingFeeTypes,
             'overpaymentCents' => $overpaymentCents,
+            'participation' => $this->participationView($ledger, $epaymentOptedIn),
             // Waived fees the Version actually charges — shown in place of a
             // Pay button. The waiver reason is EM/RM-only, never shown here.
             'waivedFeeLabels' => array_values(array_map(

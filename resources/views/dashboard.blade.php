@@ -161,7 +161,7 @@
 
                     @php
                         $myCandidates = \App\Models\Candidate::where('student_id', $student->id)
-                            ->whereHas('version', fn ($q) => $q->where('status', 'active'))
+                            ->visibleToStudent()
                             ->with(['version.event'])
                             ->get();
                     @endphp

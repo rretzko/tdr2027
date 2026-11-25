@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\FeeType;
+use App\Models\Candidate;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
 use App\Models\User;
+use App\Models\VersionFee;
+use Illuminate\Support\Collection;
 
 /**
  * The shared allocate-to-candidates action epayment-integration.md §3
@@ -59,5 +63,26 @@ class PaymentAllocationService
         // rows just created above aren't reflected there yet, so callers
         // that check remaining balance again after this method returns
         // need a fresh instance (e.g. $transaction->refresh()).
+    }
+
+    /**
+     * Ties a new checkout to the candidates it was started for. Done at
+     * creation, not on completion: the selection is known here and nowhere
+     * else, and only Completed transactions' allocations ever count as paid.
+     * The surcharge rides on the first allocation, so the transaction is
+     * always fully allocated.
+     *
+     * @param  Collection<int, Candidate>  $candidates
+     */
+    public function allocateCheckout(PaymentTransaction $transaction, Collection $candidates, VersionFee $fees, FeeType $feeType): void
+    {
+        foreach ($candidates->values() as $index => $candidate) {
+            PaymentAllocation::create([
+                'payment_transaction_id' => $transaction->id,
+                'candidate_id' => $candidate->id,
+                'amount' => $fees->perCandidate($feeType) + ($index === 0 ? $fees->epayment_surcharge : 0),
+                'allocated_at' => now(),
+            ]);
+        }
     }
 }

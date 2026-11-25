@@ -1664,7 +1664,7 @@ test('Pay Participation Fee and Pay Housing Fee are both visible at once once th
         ->assertSee('Pay Housing Fee');
 });
 
-test('housing balance is tracked independently of the combined registration+participation balance', function () {
+test('housing balance is tracked independently of registration and participation', function () {
     $teacher = makeCandidateDetailTeacher();
     $version = Version::factory()->create(['status' => EventStatus::Closed]);
 
@@ -1684,25 +1684,26 @@ test('housing balance is tracked independently of the combined registration+part
         'secret' => 'token-123',
     ]);
 
-    // Pays off registration + participation in full (2500), tagged with no
-    // specific fee_type (a manual/lump payment) — the combined balance
-    // clears, but housing has not been touched.
-    $transaction = PaymentTransaction::create([
-        'version_id' => $version->id,
-        'source' => 'manual',
-        'payer_teacher_id' => $teacher->id,
-        'school_id' => $candidate->school_id,
-        'amount' => 2500,
-        'status' => 'completed',
-        'payment_type' => 'check',
-        'paid_at' => now(),
-    ]);
-    PaymentAllocation::create([
-        'payment_transaction_id' => $transaction->id,
-        'candidate_id' => $candidate->id,
-        'amount' => 2500,
-        'allocated_at' => now(),
-    ]);
+    // Registration and participation each paid; housing untouched.
+    foreach (['registration' => 2000, 'participation' => 500] as $feeType => $amount) {
+        $transaction = PaymentTransaction::create([
+            'version_id' => $version->id,
+            'source' => 'manual',
+            'payer_teacher_id' => $teacher->id,
+            'school_id' => $candidate->school_id,
+            'amount' => $amount,
+            'status' => 'completed',
+            'payment_type' => 'check',
+            'fee_type' => $feeType,
+            'paid_at' => now(),
+        ]);
+        PaymentAllocation::create([
+            'payment_transaction_id' => $transaction->id,
+            'candidate_id' => $candidate->id,
+            'amount' => $amount,
+            'allocated_at' => now(),
+        ]);
+    }
 
     Livewire::actingAs($teacher->user)
         ->test(CandidateDetail::class, ['version' => $version->fresh(), 'candidate' => $candidate])

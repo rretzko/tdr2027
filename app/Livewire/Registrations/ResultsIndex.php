@@ -65,7 +65,7 @@ class ResultsIndex extends Component
             ->groupBy('version_id')
             ->pluck('total', 'version_id');
 
-        return Version::with('event')
+        return Version::with(['event', 'fees'])
             ->whereIn('id', $versionIds)
             ->whereNotNull('results_released_at')
             ->get()

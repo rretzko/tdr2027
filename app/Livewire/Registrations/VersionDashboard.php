@@ -6,6 +6,7 @@ namespace App\Livewire\Registrations;
 
 use App\Concerns\GuardsAcceptedObligations;
 use App\Concerns\HasCandidateChecklist;
+use App\Concerns\StartsGroupCheckout;
 use App\Enums\CandidateStatus;
 use App\Enums\FeeType;
 use App\Enums\ObligationDecision;
@@ -24,13 +25,11 @@ use App\Models\Version;
 use App\Models\VersionInvitation;
 use App\Models\VersionTeacherEpaymentOptIn;
 use App\Models\VoicePart;
-use App\Services\CandidateFeeCalculator;
 use App\Services\CandidateService;
 use App\Services\CoTeacherAccessService;
 use App\Services\CoTeacherConsolidationService;
 use App\Services\PaymentAllocationService;
 use App\Services\Payments\CheckoutInProgressGuard;
-use App\Services\Payments\PaymentGatewayFactory;
 use App\Services\Payments\PendingCheckoutConfirmer;
 use App\Services\VersionInvitationEligibilityService;
 use Carbon\Carbon;
@@ -48,6 +47,7 @@ class VersionDashboard extends Component
 {
     use GuardsAcceptedObligations;
     use HasCandidateChecklist;
+    use StartsGroupCheckout;
 
     public Version $version;
 
@@ -203,95 +203,12 @@ class VersionDashboard extends Component
     }
 
     /**
-     * Group payment — one payment_transactions row (source=teacher_epayment)
-     * covering every selected Candidate's total, unallocated until
-     * reconciled. See epayment-integration.md §1.1/§3.
+     * Group payment — one payment_transactions row covering every selected
+     * Candidate, allocated to each of them. See StartsGroupCheckout.
      */
-    public function payForSelected(PaymentGatewayFactory $factory, CoTeacherAccessService $coTeacherAccess, CheckoutInProgressGuard $guard, CandidateFeeCalculator $feeCalculator, string $feeType): void
+    public function payForSelected(string $feeType): void
     {
-        $feeType = FeeType::from($feeType);
-
-        abort_unless($this->version->epaymentTeacherReady(), 403);
-        abort_unless(match ($feeType) {
-            FeeType::Registration => $this->version->registrationFeePayable(),
-            FeeType::Participation => $this->version->participationFeePayable(),
-            FeeType::Housing => $this->version->housingFeePayable(),
-        }, 403);
-        abort_if($this->selectedCandidateIds === [], 422, 'Select at least one candidate to pay for.');
-
-        $eligibleStates = match ($feeType) {
-            FeeType::Registration => CandidateStatus::registrationFeeEligibleStates(),
-            FeeType::Participation, FeeType::Housing => [CandidateStatus::Accepted],
-        };
-
-        // Defensive filter — the roster UI already only offers checkboxes for
-        // candidates eligible for the currently-active FeeType. Paying is
-        // gated on the acting teacher's own e-payment opt-in (checked via
-        // epaymentTeacherReady() above and the roster UI's own checkbox
-        // eligibility) regardless of whether the target candidate is the
-        // teacher's own or a granted co-teacher's — the opt-in itself
-        // intentionally stays per-acting-teacher, not per-candidate-owner
-        // (docs/plans/co-teacher-definition.md, VersionDashboard note).
-        $candidates = $coTeacherAccess->candidateQuery($this->teacher())
-            ->whereIn('id', $this->selectedCandidateIds)
-            ->where('version_id', $this->version->id)
-            ->with('feeWaivers')
-            ->get()
-            // getRawOriginal(), not the magic-cast property — Larastan can't
-            // infer the enum cast through this method-based casts() return
-            // here (cataloged Larastan quirk; see PHPStan-quirks memory).
-            ->filter(fn (Candidate $candidate): bool => in_array(
-                CandidateStatus::from((string) $candidate->getRawOriginal('status')),
-                $eligibleStates,
-                true,
-            ))
-            ->values();
-
-        abort_if($candidates->isEmpty(), 422);
-
-        // A waived fee is never charged (docs/plans/student-fee-waivers.md).
-        // Dropping waived candidates here (not just hiding their checkbox)
-        // also keeps amountForCheckout()'s count × fee correct — a candidate
-        // can still be selectable with one active fee waived and another not.
-        $candidates = $candidates
-            ->reject(fn (Candidate $candidate): bool => $candidate->hasFeeWaived($feeType))
-            ->values();
-
-        if ($candidates->isEmpty()) {
-            Flux::toast("The {$feeType->label()} is waived for every selected student, so there's nothing to pay.", variant: 'warning');
-
-            return;
-        }
-
-        // Students already paid in full are still selectable, so stop rather
-        // than charge again. Not dropped silently: the redirect to the vendor
-        // follows immediately, so a "skipped" notice would never be seen.
-        $alreadyPaid = $this->alreadyPaid($candidates, $feeType, $feeCalculator);
-        if ($alreadyPaid->isNotEmpty()) {
-            Flux::toast(
-                "Already paid: {$alreadyPaid->pluck('program_name')->implode(', ')}. Deselect them to pay for the rest.",
-                variant: 'warning',
-            );
-
-            return;
-        }
-
-        // A group checkout that's paid but not yet confirmed by the vendor's
-        // webhook — see CheckoutInProgressGuard.
-        $pending = $guard->forTeacherGroup($this->version, $this->teacher(), $feeType);
-        if ($pending !== null) {
-            Flux::toast(
-                "Your last group payment is still being confirmed. If the payment page was closed without paying, you can try again after {$guard->retryAfter($pending)->forDisplay()->format('g:i A')}.",
-                variant: 'warning',
-            );
-
-            return;
-        }
-
-        $gateway = $factory->make($this->version);
-        $session = $gateway->createCheckoutSession($this->version, $candidates, $this->teacher(), $feeType);
-
-        $this->redirect($session->redirectUrl, navigate: false);
+        $this->startGroupCheckout($this->selectedCandidateIds, FeeType::from($feeType));
     }
 
     /**
@@ -305,43 +222,9 @@ class VersionDashboard extends Component
             $pending = $guard->forTeacherGroup($this->version, $this->teacher(), $feeType);
 
             if ($pending !== null && $confirmer->confirm($pending)) {
-                Flux::toast("{$feeType->label()} group payment confirmed. Allocate it to your students under Unreconciled Payments.", variant: 'success');
+                Flux::toast("{$feeType->label()} group payment confirmed.", variant: 'success');
             }
         }
-    }
-
-    /**
-     * Selected candidates with nothing left to pay for this fee: the same
-     * balance math as CandidateDetail's Pay button — registration and
-     * participation share one balance, housing has its own.
-     *
-     * @param  Collection<int, Candidate>  $candidates
-     * @return Collection<int, Candidate>
-     */
-    private function alreadyPaid(Collection $candidates, FeeType $feeType, CandidateFeeCalculator $feeCalculator): Collection
-    {
-        $paid = PaymentAllocation::whereIn('candidate_id', $candidates->pluck('id'))
-            ->whereHas('paymentTransaction', function ($q) use ($feeType): void {
-                $q->where('status', PaymentTransactionStatus::Completed->value);
-                if ($feeType === FeeType::Housing) {
-                    $q->where('fee_type', FeeType::Housing->value);
-                }
-            })
-            ->groupBy('candidate_id')
-            ->selectRaw('candidate_id, sum(amount) as paid')
-            ->pluck('paid', 'candidate_id');
-
-        return $candidates->filter(function (Candidate $candidate) use ($paid, $feeType, $feeCalculator): bool {
-            $due = $feeType === FeeType::Housing
-                ? $feeCalculator->feeCents($this->version, $candidate, FeeType::Housing)
-                : $feeCalculator->combinedDueCents($this->version, $candidate);
-
-            $paidCents = (int) ($paid[$candidate->id] ?? 0);
-
-            // Paid something that covers the balance. A candidate with no
-            // fee configured at all is left to the gateway's own check.
-            return $paidCents > 0 && $due - $paidCents <= 0;
-        })->values();
     }
 
     /**
@@ -458,7 +341,7 @@ class VersionDashboard extends Component
      * the CSV/PDF export controllers, the same pattern as
      * PaymentReconciliation's own baseRows() (see that class's docblock).
      *
-     * @return Collection<int, covariant array{candidate: Candidate, paidAt: \Carbon\Carbon, type: string, amountCents: int, referenceNumber: ?string, status: PaymentTransactionStatus}>
+     * @return Collection<int, covariant array{candidate: Candidate, paidAt: \Carbon\Carbon, type: string, feeType: FeeType, amountCents: int, referenceNumber: ?string, status: PaymentTransactionStatus}>
      */
     public static function paymentRegisterRows(Version $version, Teacher $teacher): Collection
     {
@@ -502,6 +385,8 @@ class VersionDashboard extends Component
                 'candidate' => $candidate,
                 'paidAt' => Carbon::parse($paidAtRaw ?? (string) $transaction->getRawOriginal('created_at')),
                 'type' => $type,
+                // Null only on rows from before fee_type existed, all registration.
+                'feeType' => FeeType::from((string) ($transaction->getRawOriginal('fee_type') ?? FeeType::Registration->value)),
                 'amountCents' => (int) $allocation->amount,
                 'referenceNumber' => $transaction->reference_number,
                 'status' => PaymentTransactionStatus::from((string) $transaction->getRawOriginal('status')),
@@ -675,7 +560,7 @@ class VersionDashboard extends Component
         if ($epaymentTeacherReady && $this->version->registrationFeePayable()) {
             $activeFeeTypes->push(FeeType::Registration);
         }
-        if ($epaymentTeacherReady && $this->version->participationFeePayable()) {
+        if ($epaymentTeacherReady && $this->version->participationFeePayableOnline()) {
             $activeFeeTypes->push(FeeType::Participation);
         }
         if ($epaymentTeacherReady && $this->version->housingFeePayable()) {
