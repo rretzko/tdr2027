@@ -65,7 +65,7 @@ You can have as many emergency contacts as you need — most Events only require
 
 ### 4. My Events
 
-Found under **My Events** in the sidebar (this page — and the individual Event pages under it — only becomes available once you've joined a school and teacher). This is a simple list of the open Events you've been entered into. An Event leaves the list once its organizer closes it. Each row shows:
+Found under **My Events** in the sidebar (this page — and the individual Event pages under it — only becomes available once you've joined a school and teacher). This is a simple list of the open Events you've been entered into. An Event leaves the list once its organizer closes it, unless you were accepted and it charges a Participation fee. Each row shows:
 
 - The **Event Version** name and its parent Event
 - The **registration period** — when it opens, when it closes, or "Registration closed"
