@@ -123,7 +123,7 @@ class VersionPitchFiles extends Component
             $pitchFile->update($data);
 
             if ($this->newFile !== null && $previousUrl !== $pitchFile->url) {
-                Storage::disk('s3')->delete($previousUrl);
+                $this->deleteUnusedFile($previousUrl);
             }
         }
 
@@ -142,15 +142,25 @@ class VersionPitchFiles extends Component
 
         $pitchFile = VersionPitchFile::where('id', $id)->where('version_id', $this->version->id)->firstOrFail();
 
-        Storage::disk('s3')->delete($pitchFile->url);
-
         $name = $pitchFile->name;
         $pitchFile->delete();
+        $this->deleteUnusedFile($pitchFile->url);
         unset($this->orderInputs[$id]);
 
         $this->markReadinessReviewed();
 
         Flux::toast(text: "\"{$name}\" removed.", variant: 'success');
+    }
+
+    /**
+     * Cloned Versions share one stored file per pitch file
+     * (VersionCloningService), so it's deleted only once nothing points to it.
+     */
+    private function deleteUnusedFile(string $url): void
+    {
+        if (! VersionPitchFile::where('url', $url)->exists()) {
+            Storage::disk('s3')->delete($url);
+        }
     }
 
     public function saveOrder(VersionRoleAssignmentService $roles): void
