@@ -50,14 +50,22 @@ If you said you're replacing a teacher, that teacher's current students at the s
 
 **Once a year, everyone verifies again.** Verifications are reset so that teachers who have left a school drop off its lists. You'll get a new email; select its link and your school becomes active again, with your roster as you left it.
 
+### The Schools page
+
+- **Add school** links you to another school or studio. If it's already in the system, select it from the suggestions instead of adding it again.
+- **Edit** changes your role, your school email, and the school's details. You can also mark here that you're replacing a teacher who has left.
+- **Deactivate** turns a school off and clears your school email and its verification, so you'll need to enter and verify the email again if you return.
+- **Remove** is only for a school linked by mistake. It's refused while any student is linked to you there.
+- **Co-Teachers** shares your roster with another teacher at that school (§3).
+
 ### Finding your way around
 
-- **Sidebar** — Schools, Students, Organizations, Registrations, and Results. Registrations and Results appear once you have an invitation, an active candidate, or a Version you can ask to join. Events appears only if you hold a role such as judge or Event Manager.
+- **Sidebar** — Dashboard, Schools, Students, Organizations, Registrations, and Results, with Password and a light/dark switch at the bottom. Students, Registrations, and Results need an active, verified school. Registrations and Results also wait until you have an invitation, an active candidate, or a Version you can ask to join. Events appears only if you hold a role such as judge or Event Manager.
 - **Fast Pass** — at the top of the sidebar, a menu of the pages you've visited most recently and most often.
 - **Organizations** — select the organizations you belong to, and add your membership number, expiration date, and membership card image. Some Versions need the card for the Estimate Form (§10).
 - **Profile** — your name, photo, and contact details. Profile also leads to Email Preferences (§11).
 - **Feedback** — report a bug, ask for an improvement, or send a comment. The History tab shows earlier reports.
-- **User Guides** — this guide, the Student Guide, and the Adjudicator Guide.
+- **User Guides** — this guide, the Student Guide, and the Adjudicator Guide. If you hold a role on an Active or Sandbox Version, you'll also see the Event Manager Guide and Student Folder Slides.
 
 Many pages have a **Take a tour** button that walks you through what's on screen.
 
@@ -150,7 +158,7 @@ Each candidate row shows the student's name and email, voice part, and:
 
 **Letting families pay online.** If student e-payment is turned on for this Version, check **Enable e-payment for all of your candidates in this Version** to let your students pay on StudentFolder.info. It applies to your whole roster and doesn't affect group payment.
 
-**Group payment.** If teacher e-payment is turned on, check off the candidates in the roster, then choose **Pay Registration Fee for Selected**. Once the Version closes, the choices become Participation and Housing, for Accepted students. Anyone who has already paid in full has to be deselected first, and a waived fee is never charged.
+**Group payment.** If teacher e-payment is turned on, check off the candidates in the roster, then choose **Pay Registration Fee for Selected**. Once the Version closes, the choices become Participation and Housing, for Accepted students (§12). Anyone who has already paid in full has to be deselected first, and a waived fee is never charged.
 
 Group payment takes two steps, and **the second one is yours**:
 
@@ -173,9 +181,9 @@ This is the record for one student's registration into one Version. It's organiz
   - **No, remove them** permanently deletes every recording for this candidate. They must be uploaded and approved again, so a Registered candidate drops to Pending.
   - Once a judge has entered a score, the voice part can't be changed here. Contact the Event Manager.
 - **Home Address** — only shown if this Version requires it.
-- **Emergency Contacts** — add or edit any number of contacts; which fields are required (cell, email) depends on this Version's settings.
+- **Emergency Contacts** — add or edit any number of contacts. **Add** appears only if this Version requires a contact, and which fields are required (cell, email) depends on this Version's settings.
 - **Program Name** — how the student's name should appear in the printed program. Defaults to their real name but is freely editable.
-- **Application** — click View to see the actual merged application document (the real legal form students/parents/teachers sign), along with the sign-off checkboxes. Two modes exist:
+- **Application** — click View to see the actual merged application document (the real legal form students/parents/teachers sign), along with the sign-off checkboxes. You can also choose **Download PDF**. Two modes exist:
   - **PDF mode** — signatures happen on paper. You check one box, certifying that the student, parent/guardian, teacher, and principal signatures are present, complete, and have integrity, once you've reviewed the physical form.
   - **eApplication mode** — signatures happen digitally. If your student has their own StudentFolder.info account, they and their parent sign it themselves there. If a student hasn't set up their own account yet, you can still check "Candidate signed" / "Parent signed" on their behalf as a stopgap — whichever of you (teacher or student) acts last is what counts.
 - **Recordings** — for a remote audition, upload each required audio or video file here, or review what the student uploaded. Before the first upload, you or the student may be asked to confirm the candidate's voice part, and each upload asks you to check that the file is that part. Every file needs your **Approve**, including ones you upload yourself. Audio can be MP3, WAV, or M4A; video can be MP4 or MOV; the limit is 50 MB per file.
@@ -184,7 +192,7 @@ This is the record for one student's registration into one Version. It's organiz
   - **Recorded as** is a red badge on a file uploaded for a different voice part than the candidate's current one. The candidate can't be Registered until you replace it, reject it, or, if it really is the current part, approve it.
   - **Reject** (or **Remove**, once approved) deletes the file outright and re-opens that slot.
   - **Review Suggested** is a flag for a possible misfile, such as the wrong slot or an unusual length. It never rejects anything on your behalf.
-- **Payment** — if teacher e-payment is on, **Pay Registration Fee** (or, once the Version closes, Participation or Housing) sends you to a secure checkout for this one student. While the payment service confirms it, the button is replaced by "payment being confirmed"; there's no need to pay again. A fee waived by the event is marked **Waived**, with nothing to pay, and an overpayment is shown too. Use **Record Payment** for a registration fee you collected by check, purchase order, cash, or another way, or for a refund; it doesn't charge anyone. Payment history is listed below.
+- **Payment** — if teacher e-payment is on, **Pay Registration Fee** (or, once the Version closes, Participation or Housing; see §12) sends you to a secure checkout for this one student. While the payment service confirms it, the button is replaced by "payment being confirmed"; there's no need to pay again. A fee waived by the event is marked **Waived**, with nothing to pay, and an overpayment is shown too. Use **Record Payment** for a registration fee you collected by check, purchase order, cash, or another way, or for a refund; it doesn't charge anyone. Payment history is listed below.
 
 Use **Refresh Status** any time you want the checklist and status re-evaluated immediately rather than waiting for your next visit.
 
@@ -204,7 +212,7 @@ Students who are already Registered stay Registered, but be careful: if you undo
 
 **Page: Pitch Files** (linked from the Version Dashboard's quick links)
 
-A read-only library of reference audio/video/PDF material for this Version's audition — scales, solo excerpts, quintet mixes, and the like — organized by voice part. Filter by voice part or by file type. A file marked for "ALL" voice parts always shows regardless of which voice part you've filtered to, since it applies across the board.
+A read-only library of reference audio/video/PDF material for this Version's audition — scales, solo excerpts, quintet mixes, and the like — organized by voice part. Filter by voice part or by file name (the menu is labeled "All file types"). Select **Listen** to open the audio player, or **Read** for a file named "pdf". Videos play as audio only. A file marked for "ALL" voice parts always shows regardless of which voice part you've filtered to, since it applies across the board.
 
 Note that some Versions restrict pitch files to candidates only (visible on StudentFolder.info, not here) — if that's the case for a given Version, this page will tell you plainly rather than showing an empty list with no explanation.
 
@@ -212,7 +220,7 @@ Note that some Versions restrict pitch files to candidates only (visible on Stud
 
 **Page: Estimate Form** (linked from the Version Dashboard's quick links)
 
-A printable invoice summarizing what you owe (or have overpaid) for your registered candidates in this Version — meant to be downloaded and, where required, physically mailed in with your paperwork. A fee the event has waived shows as Waived and isn't included in what you owe. If you have registered candidates at only one school, you'll see the summary right on the page — candidate count, fee subtotal, electronic payments received, and balance due — with a Download PDF button. If you have candidates at more than one school, you'll instead see a list of schools, each with its own separate Download PDF link, since fees, mailing addresses, and (if required) membership card documentation are all resolved per school.
+A printable invoice summarizing what you owe (or have overpaid) for your registered candidates in this Version — meant to be downloaded and, where required, physically mailed in with your paperwork. It includes only candidates whose status is **Registered**, so download it before results are decided. Some Versions also limit how many students it lists; a notice tells you if yours is cut short, and its totals cover only the students listed. A fee the event has waived shows as Waived and isn't included in what you owe. If you have registered candidates at only one school, you'll see the summary right on the page — candidate count, fee subtotal, electronic payments received, and balance due — with a Download PDF button. If you have candidates at more than one school, you'll instead see a list of schools, each with its own separate Download PDF link, since fees, mailing addresses, and (if required) membership card documentation are all resolved per school.
 
 If this Version requires a membership card, that section shows either your card on file or a note that one hasn't been uploaded yet, with a link to add it under Organizations.
 
@@ -232,7 +240,7 @@ On a released Version's page you'll see every one of your candidates who reached
 
 When scores were recorded, you can view or download a score report for each school (one page per candidate) and for each individual candidate. Each page is headed by the student's name and voice part, so treat it as private. If the Event Manager enabled "Share Results," a **Full Score Report** for the whole audition is available too; it may show "Preparing…" for a short time after results are released.
 
-Participation and housing fees, where a Version charges them, become payable for Accepted students once the Version closes. If teacher e-payment is on, pay them from that student's Candidate Detail page or by group payment (§7).
+Participation and housing fees, where a Version charges them, become payable for Accepted students once the Version closes. A closed Version no longer appears under Registrations, so ask your Event Manager how to pay them.
 
 ## 13. Common questions
 
