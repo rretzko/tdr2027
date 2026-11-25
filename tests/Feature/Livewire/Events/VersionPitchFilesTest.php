@@ -202,6 +202,39 @@ test('remove deletes the S3 object and the row', function () {
     Storage::disk('s3')->assertMissing('pitchFiles/1/gone.mp3');
 });
 
+test('a stored file shared with another Version is deleted only with its last pitch file', function (string $action) {
+    Storage::disk('s3')->put('pitchFiles/1/shared.mp3', 'content');
+
+    $version = makePitchFilesVersion();
+    $otherVersion = Version::factory()->create(['event_id' => $version->event_id]);
+    $voicePart = attachVoicePartToVersion($version);
+    $founder = makeFounder();
+    $attributes = ['voice_part_id' => $voicePart->id, 'name' => 'solo', 'url' => 'pitchFiles/1/shared.mp3', 'order_by' => 1];
+    $pitchFile = VersionPitchFile::create([...$attributes, 'version_id' => $version->id]);
+    $otherPitchFile = VersionPitchFile::create([...$attributes, 'version_id' => $otherVersion->id]);
+
+    $component = Livewire::actingAs($founder)->test(VersionPitchFiles::class, ['version' => $version]);
+
+    if ($action === 'remove') {
+        $component->call('remove', $pitchFile->id);
+        expect(VersionPitchFile::find($pitchFile->id))->toBeNull();
+    } else {
+        $component->call('edit', $pitchFile->id)
+            ->set('newFile', UploadedFile::fake()->create('new.mp3', 500, 'audio/mpeg'))
+            ->call('save')
+            ->assertHasNoErrors();
+        expect($pitchFile->refresh()->url)->not->toBe('pitchFiles/1/shared.mp3');
+    }
+
+    Storage::disk('s3')->assertExists('pitchFiles/1/shared.mp3');
+
+    Livewire::actingAs($founder)
+        ->test(VersionPitchFiles::class, ['version' => $otherVersion])
+        ->call('remove', $otherPitchFile->id);
+
+    Storage::disk('s3')->assertMissing('pitchFiles/1/shared.mp3');
+})->with(['remove', 'replace']);
+
 test('search matches by name and description', function () {
     $eventManager = User::factory()->create();
     $version = makePitchFilesVersion();

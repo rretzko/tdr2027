@@ -375,17 +375,9 @@ class ParticipatingSchools extends Component
         return $rows->values()->keyBy('key');
     }
 
+    /** Any listed row can be updated, including one whose candidates are all resolved. */
     private function assertPairInScope(int $schoolId, int $teacherId): void
     {
-        $query = Candidate::where('version_id', $this->version->id)
-            ->where('school_id', $schoolId)
-            ->where('teacher_id', $teacherId)
-            ->where('status', CandidateStatus::Registered->value);
-
-        if ($this->reportCountyIds !== null) {
-            $query->whereHas('school', fn ($q) => $q->whereIn('county_id', $this->reportCountyIds));
-        }
-
-        abort_unless($query->exists(), 403);
+        abort_unless(self::baseRows($this->version, $this->reportCountyIds)->has("{$schoolId}:{$teacherId}"), 403);
     }
 }
