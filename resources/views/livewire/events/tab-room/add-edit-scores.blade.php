@@ -159,9 +159,9 @@
                         @foreach ($recordings as $recording)
                             <div wire:key="tab-room-recording-{{ $recording->id }}">
                                 <flux:text class="font-medium capitalize">{{ $recording->file_type }}</flux:text>
-                                <audio controls preload="metadata" class="w-full">
+                                <{{ $mediaTag }} controls preload="metadata" class="w-full">
                                     <source src="{{ \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($recording->url, now()->addHour()) }}">
-                                </audio>
+                                </{{ $mediaTag }}>
                             </div>
                         @endforeach
                     </div>

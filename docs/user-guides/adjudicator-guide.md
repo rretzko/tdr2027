@@ -77,7 +77,7 @@ The colors don't update by themselves while you sit on the page. They catch up w
 
 This section applies to remote auditions. For an in-person audition, no Recordings card appears: select the number of the candidate in front of you and go straight to the scoring form.
 
-When you select a candidate, the Recordings card shows an audio player for each recording your Room scores, in the same order as your rubric. Play, pause, and replay as often as you need.
+When you select a candidate, the Recordings card shows a player (audio or video, depending on the audition) for each recording your Room scores, in the same order as your rubric. Play, pause, and replay as often as you need.
 
 - You'll see only recordings that have been approved. If none have, the card reads **"No approved recordings yet."**
 - You'll see only the recordings that match your Room's categories. A Room that scores only Solo won't see Scales.
@@ -96,7 +96,7 @@ A few things to know:
 
 - **Next candidate doesn't save.** Neither does selecting another number. Save first, or your unsaved choices are lost.
 - **You can't save a partial score sheet.** If any factor is blank, you'll be asked to select a score for every factor.
-- **Next candidate only moves forward.** If you skipped someone earlier, select their number in the list.
+- **Next candidate only moves forward.** If nothing happens, you've finished everyone further down the list. If you skipped someone earlier, select their number in the list.
 - **You can stop and come back.** Saved scores stay saved. Log in again any time while the adjudication window is open and look for buttons without a check mark.
 
 ## 7. Room Scores and tolerance
@@ -116,14 +116,14 @@ Tolerance is shown beside each category, but it applies to each judge's total ac
 
 Select the candidate's number. Your saved scores fill in the form; change what you need and select **Save Scores** again. The new scores replace the old ones.
 
-You can do this as often as you like while the adjudication window is open. Once it closes, contact your Event Manager about any change. The people running the Tab Room can also enter or correct scores for you, for example from a paper score sheet.
+You can do this as often as you like while the adjudication window is open. Once it closes, scores can't be saved, even on a page you already had open; you'll see a message, and your choices stay on screen. Contact your Event Manager about any change. The people running the Tab Room can also enter or correct scores for you, for example from a paper score sheet.
 
 ## 9. Judge check-ins
 
 If your Event Manager has turned them on, a short check-in appears after a save when you're about one-third done, about two-thirds done, and one candidate from the end. Small Rooms may see fewer. Each one thanks you, offers a tip, and asks a couple of quick questions about your focus, your setup, or the process.
 
 - **They're optional.** Select **No thanks** or close the window to skip one. Each is shown only once.
-- **They're anonymous.** Your Event Manager sees the answers only combined with other judges', never with your name.
+- **They're anonymous.** Your Event Manager never sees your name with an answer, and sees nothing until at least three judges have answered. Ratings and choices are combined. Comments are shown as you wrote them, in random order, so leave out anything that would identify you.
 - **They come after your scores are saved,** so they never put your work at risk.
 
 When you score your last candidate, you'll see a thank-you message for completing your Room.
@@ -145,13 +145,15 @@ Results are decided and released later by the people running the Event. You won'
 
 **A candidate has no recordings, or I can't hear one clearly. Should I score it anyway?** Don't guess. Contact your Event Manager with the candidate number and follow their instructions. In the meantime, go on to the next candidate.
 
+**A recording sounds like a different voice part — what should I do?** Don't guess. Contact your Event Manager with the candidate number before you score it, and go on to the next candidate.
+
 **I recognize a student's voice — what should I do?** Follow your Event's conflict-of-interest rules, and contact your Event Manager if you're unsure. The page shows only candidate numbers, so it can't warn you about a conflict.
 
 **I scored the wrong candidate — can I fix it?** You can open that candidate and save the correct scores over the wrong ones, but you can't clear a score sheet back to blank. If you don't have correct scores for that candidate yet, contact your Event Manager.
 
 **I've checked off every candidate, but Room Progress isn't all green — why?** Room Progress covers all the judges in your Room. Yellow means someone else still has scores to enter.
 
-**My candidate list changed. Is that a mistake?** Probably not. The list always reflects the current candidates in your Room's voice parts, so it changes if a candidate is added, withdrawn, or moved to another voice part. If the Tab Room moves a candidate to another voice part, that candidate's earlier scores are removed, so you may need to score them again.
+**My candidate list changed. Is that a mistake?** Probably not. The list always reflects the current candidates in your Room's voice parts, so it changes if a candidate is added, withdrawn, or moved to another voice part. If the Tab Room moves a candidate to another voice part, that candidate's earlier scores are removed, so you may need to score them again. Their recordings may be removed too.
 
 **I'm judging in two Rooms, but I only see one — why?** The Adjudicate page opens one Room per judge for each Version. Contact your Event Manager right away so they can plan around it.
 
@@ -163,4 +165,4 @@ Results are decided and released later by the people running the Event. You won'
 
 **What if I lose my internet connection?** Anything you've already saved is safe; anything you haven't may be lost. If you can't get back online, write your scores on paper and contact your Event Manager. The Tab Room can enter them for you.
 
-**Does the system record how I work?** Yes. Along with your saved scores, it records when you open a candidate and when you play, pause, or finish a recording.
+**Does the system record how I work?** Yes. Along with your saved scores, it records when you open a candidate and when you play, pause, or finish a recording. When a check-in appears, it also records your type of device and screen width.

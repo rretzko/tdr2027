@@ -12,6 +12,7 @@ use App\Enums\JudgeSurvey\JudgeDeviceType;
 use App\Enums\JudgeSurvey\JudgeFocus;
 use App\Enums\JudgeSurvey\JudgeObstacle;
 use App\Enums\JudgeSurvey\ListeningDevice;
+use App\Enums\UploadType;
 use App\Enums\VersionDateType;
 use App\Models\AdjudicationEvent;
 use App\Models\Candidate;
@@ -114,8 +115,17 @@ class Adjudicate extends Component
         $this->logCandidateOpened($candidate, $adjudication);
     }
 
-    public function save(AdjudicationService $adjudication): void
+    public function save(AdjudicationService $adjudication, VersionRoleAssignmentService $roles): void
     {
+        // Checked again here because the page may have been open since before
+        // judging ended. The judge's choices stay on screen.
+        if (! $roles->canAdjudicate(Auth::user(), $this->version)) {
+            $this->resetValidation();
+            $this->addError('judging_ended', 'Judging has ended, so these scores were not saved. Please contact your Event Manager.');
+
+            return;
+        }
+
         $candidate = $adjudication->candidatesForRoom($this->roomJudge->room)->firstWhere('id', $this->selectedCandidateId);
 
         abort_unless($candidate !== null, 404);
@@ -520,6 +530,7 @@ class Adjudicate extends Component
             'roomScores' => $roomScores,
             'showRecordings' => $showRecordings,
             'recordings' => $recordings,
+            'mediaTag' => $this->version->getRawOriginal('upload_type') === UploadType::Video->value ? 'video' : 'audio',
             'adjudicationWindow' => $adjudicationWindow,
             'hasRubric' => $factorCount > 0,
             'checkpointCase' => $this->checkpoint !== null ? JudgeCheckpoint::tryFrom($this->checkpoint) : null,

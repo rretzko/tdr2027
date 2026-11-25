@@ -406,3 +406,67 @@ test('a recording\'s duration is stored once from the browser, ignoring unusable
 
     expect($recording->fresh()->duration_seconds)->toBe(88);
 });
+
+test('scores are refused, and the choices kept, once judging has ended on an open page', function (string $ending) {
+    $user = User::factory()->create();
+    actingAs($user);
+    ['version' => $version, 'factor' => $factor, 'candidate' => $candidate] = makeAdjudicationScenario($user);
+
+    $component = Livewire::actingAs($user)
+        ->test(Adjudicate::class, ['version' => $version])
+        ->call('selectCandidate', $candidate->id)
+        ->set('scores', [$factor->id => 3])
+        ->call('save')
+        ->assertHasNoErrors();
+
+    if ($ending === 'closed') {
+        $version->update(['status' => 'closed']);
+    } else {
+        VersionDate::where('version_id', $version->id)->update(['end_at' => now()->subMinute()]);
+    }
+
+    $component->set('scores', [$factor->id => 1])
+        ->call('save')
+        ->assertHasErrors('judging_ended')
+        ->assertSee('Judging has ended, so these scores were not saved.')
+        ->assertDontSee('Select a score for every factor before saving.')
+        ->assertSet('scores', [$factor->id => 1]);
+
+    expect((int) Score::where('candidate_id', $candidate->id)->value('score'))->toBe(3);
+})->with(['window ended', 'closed']);
+
+test('saving works again once the adjudication window is extended', function () {
+    $user = User::factory()->create();
+    actingAs($user);
+    ['version' => $version, 'factor' => $factor, 'candidate' => $candidate] = makeAdjudicationScenario($user);
+
+    $component = Livewire::actingAs($user)
+        ->test(Adjudicate::class, ['version' => $version])
+        ->call('selectCandidate', $candidate->id)
+        ->set('scores', [$factor->id => 3]);
+
+    VersionDate::where('version_id', $version->id)->update(['end_at' => now()->subMinute()]);
+    $component->call('save')->assertHasErrors('judging_ended');
+
+    VersionDate::where('version_id', $version->id)->update(['end_at' => now()->addDay()]);
+    $component->call('save')->assertHasNoErrors();
+
+    expect(Score::where('candidate_id', $candidate->id)->count())->toBe(1);
+});
+
+test('recordings play in a video player only when the Version collects video', function (string $uploadType, string $seen, string $notSeen) {
+    $user = User::factory()->create();
+    actingAs($user);
+    ['version' => $version, 'candidate' => $candidate] = makeAdjudicationScenario($user);
+    $version->update(['audition_type' => 'remote', 'upload_type' => $uploadType]);
+    makeTrackedRecording($version, $candidate);
+
+    Livewire::actingAs($user)
+        ->test(Adjudicate::class, ['version' => $version])
+        ->call('selectCandidate', $candidate->id)
+        ->assertSeeHtml($seen)
+        ->assertDontSeeHtml($notSeen);
+})->with([
+    ['video', '<video controls', '<audio controls'],
+    ['audio', '<audio controls', '<video controls'],
+]);

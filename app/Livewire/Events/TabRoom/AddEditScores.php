@@ -6,6 +6,7 @@ namespace App\Livewire\Events\TabRoom;
 
 use App\Enums\AuditionType;
 use App\Enums\CandidateStatus;
+use App\Enums\UploadType;
 use App\Enums\VoicePartRecordingDecision;
 use App\Models\Candidate;
 use App\Models\RoomJudge;
@@ -247,6 +248,7 @@ class AddEditScores extends Component
             'roomScores' => $roomScores,
             'showRecordings' => $showRecordings,
             'recordings' => $recordings,
+            'mediaTag' => $this->version->getRawOriginal('upload_type') === UploadType::Video->value ? 'video' : 'audio',
             'inTolerance' => $inTolerance,
             'availableVoiceParts' => $this->version->availableVoiceParts(),
             'candidateHasRecordings' => $candidate?->hasRecordings() ?? false,
