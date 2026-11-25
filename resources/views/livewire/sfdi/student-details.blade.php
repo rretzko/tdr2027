@@ -50,11 +50,13 @@
                 <flux:input wire:model="home_geo_state" label="State" maxlength="2" />
                 <flux:input wire:model="home_zip_code" label="Zip code" />
             </div>
-            <flux:error name="home_address1" />
-            <flux:error name="home_city" />
-            <flux:error name="home_geo_state" />
-            <flux:error name="home_zip_code" />
         </flux:card>
+
+        @if ($errors->any())
+            <flux:callout variant="danger" icon="exclamation-triangle">
+                <flux:callout.text>Your details haven't been saved. Please correct the errors above.</flux:callout.text>
+            </flux:callout>
+        @endif
 
         <div class="flex items-center gap-4">
             <flux:button type="submit" variant="primary">Save</flux:button>

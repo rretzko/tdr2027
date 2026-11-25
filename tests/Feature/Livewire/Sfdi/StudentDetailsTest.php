@@ -100,3 +100,53 @@ test('an existing home address is updated in place, not duplicated', function ()
     expect(HomeAddress::where('student_id', $user->student->id)->count())->toBe(1);
     expect(HomeAddress::where('student_id', $user->student->id)->first()->address1)->toBe('New Address');
 });
+
+test('a partly filled home address is reported and nothing is saved', function (array $filled, array $missing) {
+    $user = makeStudentDetailsUser();
+
+    $component = Livewire::actingAs($user)
+        ->test(StudentDetails::class)
+        ->set('shirt_size', 'lg')
+        ->set('height', '60');
+
+    foreach ($filled as $field => $value) {
+        $component->set($field, $value);
+    }
+
+    $component->call('update')
+        ->assertHasErrors(array_fill_keys($missing, 'required_with'))
+        ->assertSet('saved', false)
+        ->assertSeeHtml("Your details haven't been saved.");
+
+    expect(HomeAddress::where('student_id', $user->student->id)->exists())->toBeFalse()
+        ->and($user->student->fresh()->height)->toBeNull();
+})->with([
+    'street only' => [['home_address1' => '123 Main St'], ['home_city', 'home_geo_state', 'home_zip_code']],
+    'address 2 only' => [['home_address2' => 'Apt 4'], ['home_address1', 'home_city', 'home_geo_state', 'home_zip_code']],
+    'missing zip code' => [['home_address1' => '123 Main St', 'home_city' => 'Anytown', 'home_geo_state' => 'NJ'], ['home_zip_code']],
+]);
+
+test('a blank home address saves the other details and keeps any address on file', function () {
+    $user = makeStudentDetailsUser();
+    $user->student->homeAddress()->create([
+        'address1' => 'Old Address',
+        'city' => 'Old City',
+        'geo_state' => 'NY',
+        'zip_code' => '10001',
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(StudentDetails::class)
+        ->set('shirt_size', 'lg')
+        ->set('height', '60')
+        ->set('home_address1', '')
+        ->set('home_address2', '')
+        ->set('home_city', '')
+        ->set('home_geo_state', '')
+        ->set('home_zip_code', '')
+        ->call('update')
+        ->assertHasNoErrors();
+
+    expect($user->student->fresh()->height)->toBe(60)
+        ->and(HomeAddress::where('student_id', $user->student->id)->value('address1'))->toBe('Old Address');
+});
