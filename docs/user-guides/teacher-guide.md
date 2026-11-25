@@ -239,11 +239,11 @@ On a released Version's page you'll see every one of your candidates who reached
 
 When scores were recorded, you can view or download a score report for each school (one page per candidate) and for each individual candidate. Each page is headed by the student's name and voice part, so treat it as private. If the Event Manager enabled "Share Results," a **Full Score Report** for the whole audition is available too; it may show "Preparing…" for a short time after results are released.
 
-Participation and housing fees, where a Version charges them, become payable for Accepted students once the Version closes. A closed Version no longer appears under Registrations; use Results instead.
+Participation and housing fees, where a Version charges them, become payable for Accepted students once the Version closes. A closed Version leaves Registrations, but while Participation fees are owed, a **Participation fees due** card on your Dashboard and Registrations page takes you to them.
 
-**Participation fees.** When the Version charges one, choose **Participation Fees** from Results. The page lists your accepted students with what's due, paid, and still owed, and the dates online payment is open.
+**Participation fees.** When the Version charges one, choose **Pay fees** on that card, or **Participation Fees** from Results. The page lists your accepted students with what's due, paid, and still owed, and the dates online payment is open.
 
-- **Pay online** for as many students as you like: check them off, or choose **Select all unpaid**, then pay. The payment is credited to those students automatically.
+- **Pay online** for as many students as you like: check them off, or choose **Select all unpaid**, then pay; the button shows the total. The payment is credited to those students automatically. Before online payment opens, these controls are greyed out and the page says when it opens.
 - **Check or cash**: choose **Manage**, then **Record Payment**, and pick the fee. Use the same form, with type Refund, for a refund.
 - **Registration fees still owed** are listed separately and paid separately. Paying one fee never counts toward the other.
 - **PDF** and **CSV** give you a record of every student and payment.
