@@ -497,3 +497,47 @@ test('a pending group checkout stops the student paying the same fee', function 
         ->call('payNow', 'participation')
         ->assertNoRedirect();
 });
+
+test('before payment opens, the page says when and shows the controls disabled', function () {
+    $s = new ParticipationScenario;
+    $s->accepted();
+    VersionDate::create(['version_id' => $s->version->id, 'date_type' => VersionDateType::ParticipationFee, 'start_at' => now()->addDay(), 'end_at' => now()->addDays(5)]);
+
+    Livewire::actingAs($s->teacher->user)
+        ->test(ParticipationFees::class, ['version' => $s->version])
+        ->assertSee('Online payment opens')
+        ->assertSee('Select all unpaid')
+        ->assertSeeHtml('x-bind:disabled="true || ');
+});
+
+test('the pay button shows the vendor and total', function () {
+    $s = new ParticipationScenario;
+    $s->accepted();
+
+    Livewire::actingAs($s->teacher->user)
+        ->test(ParticipationFees::class, ['version' => $s->version])
+        ->assertSee('with Square')
+        ->assertSeeHtml('* 3000 + 0')
+        ->assertSeeHtml('x-bind:disabled="false || ');
+});
+
+test('the teacher Dashboard and Registrations show participation fees due until they are paid', function () {
+    $s = new ParticipationScenario;
+    $candidate = $s->accepted();
+    $s->accepted(['status' => CandidateStatus::NotAccepted]);
+    $s->teacher->schools()->attach($s->school->id, ['is_active' => true, 'verified_at' => now()]);
+    actingAs($s->teacher->user);
+
+    foreach (['dashboard', 'registrations.index'] as $route) {
+        get(route($route))->assertOk()
+            ->assertSee('Participation fees due')
+            ->assertSee('1 student unpaid, $30.00 due')
+            ->assertSee(route('registrations.participation-fees', $s->version));
+    }
+
+    $s->pay($candidate, FeeType::Participation, 3000);
+
+    foreach (['dashboard', 'registrations.index'] as $route) {
+        get(route($route))->assertOk()->assertDontSee('Participation fees due');
+    }
+});

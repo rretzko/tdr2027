@@ -7,6 +7,7 @@ namespace App\Livewire\Registrations;
 use App\Concerns\StartsGroupCheckout;
 use App\Enums\FeeType;
 use App\Enums\PaymentTransactionStatus;
+use App\Enums\Vendor;
 use App\Models\PaymentTransaction;
 use App\Models\Teacher;
 use App\Models\Version;
@@ -102,6 +103,10 @@ class ParticipationFees extends Component
             'registrationRows' => $reconciliation->rowsForTeacher($this->version, $teacher, FeeType::Registration)
                 ->filter(fn (array $row): bool => $row['balanceCents'] > 0)
                 ->values(),
+            'vendorLabel' => $this->vendorLabel(),
+            'surchargeCents' => (int) $this->version->fees?->epayment_surcharge,
+            'feeCents' => (int) $this->version->fees?->participation,
+            'registrationFeeCents' => (int) $this->version->fees?->registration,
             'canPay' => $this->version->epaymentTeacherReady() && $this->version->participationFeePayableOnline(),
             'confirming' => collect([FeeType::Registration, FeeType::Participation])
                 ->contains(fn (FeeType $type): bool => $guard->forTeacherGroup($this->version, $teacher, $type) !== null),
@@ -114,6 +119,14 @@ class ParticipationFees extends Component
                 ->sum(fn (PaymentTransaction $t): int => $t->unallocatedAmount()),
             'window' => $this->version->participationFeeDate(),
         ]);
+    }
+
+    private function vendorLabel(): string
+    {
+        // getRawOriginal(): see PaymentGatewayFactory's comment.
+        $vendor = $this->version->eventEpaymentConfig()?->getRawOriginal('vendor');
+
+        return $vendor !== null ? Vendor::from($vendor)->label() : 'online payment';
     }
 
     private function teacher(): Teacher

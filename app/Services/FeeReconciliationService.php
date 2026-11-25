@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\CandidateStatus;
 use App\Enums\FeeType;
 use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
@@ -41,6 +42,42 @@ final class FeeReconciliationService
     public function rowsForTeacher(Version $version, Teacher $teacher, FeeType $feeType): Collection
     {
         return $this->rows($version, $this->coTeacherAccess->candidateQuery($teacher), $feeType);
+    }
+
+    /**
+     * Closed Versions where this teacher's accepted students still owe the
+     * Participation fee. E-payment Versions only, which leaves out imported
+     * past seasons (as Candidate::scopeVisibleToStudent() does).
+     *
+     * @return Collection<int, array{version: Version, count: int, balanceCents: int}>
+     */
+    public function participationDueForTeacher(Teacher $teacher): Collection
+    {
+        $versions = Version::with(['event', 'fees', 'dates', 'versionEpaymentConfig'])
+            ->whereIn('id', $this->coTeacherAccess->candidateQuery($teacher)
+                ->where('status', CandidateStatus::Accepted->value)
+                ->distinct()
+                ->pluck('version_id'))
+            ->whereHas('versionEpaymentConfig', fn ($config) => $config->where('epayment_student', true)->orWhere('epayment_teacher', true))
+            ->orderBy('name')
+            ->get();
+
+        $items = [];
+
+        foreach ($versions as $version) {
+            if (! $version->collectsParticipationFees()) {
+                continue;
+            }
+
+            $unpaid = $this->rowsForTeacher($version, $teacher, FeeType::Participation)
+                ->filter(fn (array $row): bool => $row['balanceCents'] > 0);
+
+            if ($unpaid->isNotEmpty()) {
+                $items[] = ['version' => $version, 'count' => $unpaid->count(), 'balanceCents' => (int) $unpaid->sum('balanceCents')];
+            }
+        }
+
+        return new Collection($items);
     }
 
     /**

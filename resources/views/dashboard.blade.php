@@ -13,6 +13,11 @@
         </div>
 
         @if ($teacher)
+        {{-- The fees page needs an active school (has.active.school). --}}
+        @if ($teacher->hasActiveSchool())
+            <x-participation-fees-due :teacher="$teacher" />
+        @endif
+
         <div class="grid grid-cols-1 gap-6 sm:grid-cols-4">
             <a id="tour-card-schools" href="{{ route('schools.index') }}" wire:navigate class="block h-full transition hover:shadow-md">
                 <flux:card class="flex h-full flex-col gap-4 border-l-4 border-l-blue-500 sm:border-2 sm:border-blue-500">
