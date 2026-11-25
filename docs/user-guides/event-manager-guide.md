@@ -39,7 +39,7 @@ You won't see an "Add" button on this page unless you're a Founder — that's in
 
 **Page: Start a New Event** (`/events/new`, reached from your Dashboard)
 
-Any teacher can start a brand-new Event — you don't need to be invited or pre-authorized. Fill in the Event Name, an optional Short Name, the sponsoring Organization, and how often it recurs (Annual, Biannual, Biennial, or Monthly), then click **Create Event**.
+Any teacher can start a brand-new Event — you don't need to be invited or pre-authorized. Fill in the Event Name, an optional Short Name, the sponsoring Organization, and how often it recurs (Annual, Biannual, Biennial, or Monthly), then click **Create Event**. You can also add other Event Managers here.
 
 Doing this creates the Event *and* its first Version together, both starting in **Sandbox** status, and automatically makes you the Event Manager. Sandbox means the Event/Version isn't public yet — you can configure everything (dates, fees, rules, eligibility, rooms) before anyone else sees it.
 
@@ -47,7 +47,7 @@ Doing this creates the Event *and* its first Version together, both starting in 
 
 A new Event's first Version opens a short set of **setup questions**. Your answers fill in settings and trim the checklist to what applies to you. Skip anything you're unsure of; you can come back any time.
 
-The **Setup checklist** lists every decision the Version needs, in the order you'll need them. Its progress card appears with each Version on the Event overview page (§5). Items update on their own as you fill things in, and **Looks right** confirms a setting you've checked and want to keep. After cloning, settings carried over are marked for review.
+The **Setup checklist** lists every decision the Version needs, in the order you'll need them. Its progress card appears with each Version on the Event overview page (§5). Items update on their own as you fill things in, and **Looks right** confirms a setting you've checked and want to keep. After cloning, settings carried over are marked for review. The Version's Registration Manager can open the checklist too.
 
 The checklist also controls activation: a Version can't move from Sandbox to Active until its before-registration items are finished. If any remain, your other changes are saved and you'll see what's left. Activating a Version also makes its Event Active.
 
@@ -79,7 +79,7 @@ Lists every Version of this Event, newest first, with a row of color-coded tool 
 
 Lists every Ensemble this Event produces. **Add Ensemble** creates one with a Name, Short Name, and Abbreviation. Each Ensemble card then lets you set:
 
-- **Eligible Grades** — which grade levels (6–12) may audition for this Ensemble.
+- **Eligible Grades** — which grade levels (4–12) may audition for this Ensemble.
 - **Voice Parts** — which voice parts this Ensemble accepts.
 
 Both save independently with their own **Save Grades** / **Save Voice Parts** buttons.
@@ -110,7 +110,8 @@ The bulk of a Version's identity and rules:
 - **Pitch File Visibility** — Both (Teacher & Candidate), Candidate Only, or Teacher Only.
 - **Share Results** — when on, the public (no name/school) combined score PDF is automatically sent to every participating teacher once you release results.
 - **Judge check-ins** — when on, judges get a short thank-you and optional questions as they work through their Room (§13).
-- **Max Registrants** / **Max Upper Voice Registrants** / **Audition Cap Per School** — optional caps. The school cap limits one school's active candidates per audition group; Ensembles that share a Voice Part count as one group.
+- **Audition Cap Per School** — optional. Limits one school's active candidates per audition group; Ensembles that share a Voice Part count as one group.
+- **Max Registrants** / **Max Upper Voice Registrants** — optional. These limit how many registered students are listed on a teacher's Estimate Form; they don't stop anyone from registering.
 
 ### Dates
 
@@ -130,13 +131,13 @@ One entry per milestone; some have an end date. Some dates control access, and o
 
 ### Fees
 
-Registration, On-Site Registration, Participation, E-Payment Surcharge, and Housing — all entered in dollars, stored in cents. **Registration** and **Participation** are billed as two separate, never-combined charges: registration is owed by any non-withdrawn Candidate any time before the Version closes, while participation is only owed by an *Accepted* Candidate, and only becomes payable once the Version is closed. To excuse one student from a fee, use a fee waiver (§16).
+Registration, On-Site Registration, Participation, E-Payment Surcharge, and Housing — all entered in dollars, stored in cents. **Registration** and **Participation** are billed as two separate, never-combined charges: registration is owed by any non-withdrawn Candidate any time before the Version closes, while participation is only owed by an *Accepted* Candidate, and only becomes payable once the Version is closed. To excuse one student from a fee, use a fee waiver (§16). The E-Payment Surcharge is added once to each online checkout. The On-Site Registration fee is shown on the Application but isn't charged by the site.
 
 ### Requirements
 
 - **Membership** — whether a membership card is required, and an optional "valid thru" date.
 - **Mail** — whether teachers must mail physical materials to complete registration.
-- **Optional Fields Collected at Registration** — three groups of checkboxes: Candidate fields (Birthday, Shirt Size, Height, Home Address), Emergency Contact fields (Name, Cell, Email), and Other (Teacher Cell). Whatever you check here becomes a required registration milestone for every Candidate — see the poka-yoke checklist described in §17.
+- **Optional Fields Collected at Registration** — three groups of checkboxes: Candidate fields (Birthday, Shirt Size, Height, Home Address), Emergency Contact fields (Name, Cell, Email), and Other (Teacher Cell). Whatever you check here becomes a required registration milestone for every Candidate (§17), with two exceptions: Teacher Cell isn't a milestone, and Emergency Contact Cell and Email count only when Name is also checked.
 - **Eligible Counties** — leave all unchecked to allow any county; check specific ones to restrict both teacher eligibility (§7) and, later, Registration Manager reporting scope.
 - **Ensemble Fill Order** — when multiple Ensembles share one candidate pool, this sets which fills first (lower number = higher priority). Only shown once the Event has Ensembles.
 
@@ -148,7 +149,7 @@ Configures the Candidate Application — the actual document students, parents, 
 - **Student Endorsement** and **Parent/Guardian Endorsement** — always required.
 - **Teacher/Principal Endorsement** — only shown, and only required, when Application Type is `Pdf`.
 
-Each editor has an **Insert token** picker for merge fields (candidate name, voice part, grade, school, fees, etc.), resolved with real data when a Candidate's actual document is generated. Use **Save**, **Publish** (visible to Candidates only once published), **Preview**, or **Print Preview PDF**.
+Each editor has an **Insert token** picker for merge fields (candidate name, voice part, grade, school, fees, etc.), resolved with real data when a Candidate's actual document is generated. Use **Save**, **Publish** (visible to Candidates only once published), **Unpublish**, **Preview**, or **Print Preview PDF**.
 
 ### Obligations
 
@@ -165,7 +166,7 @@ Two distinct things live on this tab:
 
 ### Roles
 
-Assign or remove the five generic version-scoped roles here: **Event Manager, Registration Manager, Web Registration Manager, Tab Room Manager, Rehearsal Manager.** (**Co-Registration Manager** is deliberately *not* assignable here — it has its own screen, §8, because it always comes bundled with a county assignment.) Search for a person by name, pick a role, and **Assign Role**. Only one Registration Manager is allowed per Version at a time — assigning a second is blocked until the first is removed. The Registration Manager's row also has an **Edit mail-to address** button for the physical mailing address printed on the Estimate Form (§18's FAQ has more on this).
+Assign or remove the five generic version-scoped roles here: **Event Manager, Registration Manager, Web Registration Manager, Tab Room Manager, Rehearsal Manager.** (**Co-Registration Manager** is deliberately *not* assignable here — it has its own screen, §8, because it always comes bundled with a county assignment.) Search for a person by name, pick a role, and **Assign Role**. Assigning a role to a teacher also invites them to the Version. Only one Registration Manager is allowed per Version at a time — assigning a second is blocked until the first is removed. The Registration Manager's row also has an **Edit mail-to address** button for the physical mailing address printed on the Estimate Form (§18's FAQ has more on this).
 
 ## 7. Version Invitations
 
@@ -175,8 +176,8 @@ Controls exactly which teachers may enroll Candidates in this Version. A teacher
 
 The roster table lists every eligible teacher with their school/county, membership expiration (shown for reference only), and current status (Eligible, Invited, Obligated, or Participating). Actions:
 
-- **Invite** a single teacher, or **Invite All** to invite everyone currently eligible and not yet invited.
-- Uncheck/**Remove** to un-invite, or **Remove All** to bulk-remove everyone still just at "Invited."
+- Check a teacher's box to invite them, or use **Invite All** to invite everyone currently eligible and not yet invited.
+- Uncheck the box to un-invite, or use **Remove All** to bulk-remove everyone still just at "Invited."
 - **Upload Directors** adds many directors at once from a CSV file. Download the template, fill in one row per director, and review the preview before anything is saved. Directors already in the system are matched by email and their details aren't changed; new ones get an account. Everyone is invited to this Version.
 - Search and a status filter (click a status tile to filter to it, click again to clear) help on a large roster.
 
@@ -188,7 +189,7 @@ The roster table lists every eligible teacher with their school/county, membersh
 
 Reachable by you or by that Version's Registration Manager (not by a Co-Registration Manager themselves). Lets a Registration Manager build out their own support team without exposing the rest of Version configuration.
 
-**Add** a manager by searching for their name, then check which of the Version's counties they're responsible for. Counties are mutually exclusive — one county can only be claimed by one Co-Registration Manager on a given Version at a time, and any county already claimed by someone else won't be offered. The same form optionally captures that manager's physical mail-to address (recipient name, organization/school line, address, city/state/zip) — it's fine to leave blank now and fill in later; leaving it blank after it was previously filled in removes the saved address rather than erroring.
+Set the Version's counties first (Configure → Requirements, §6); without them there's nothing to assign. **Assign Co-Registration Manager** by searching for their name, then check which of the Version's counties they're responsible for. Counties are mutually exclusive — one county can only be claimed by one Co-Registration Manager on a given Version at a time, and any county already claimed by someone else won't be offered. The same form optionally captures that manager's physical mail-to address (recipient name, organization/school line, address, city/state/zip) — it's fine to leave blank now and fill in later; leaving it blank after it was previously filled in removes the saved address rather than erroring.
 
 ## 9. Pitch Files
 
@@ -196,7 +197,7 @@ Reachable by you or by that Version's Registration Manager (not by a Co-Registra
 
 An ordered, per-voice-part library of reference audio/video/PDF material (scales, solo excerpts, quintet mixes, etc.) that teachers and/or candidates can access, depending on the Pitch File Visibility setting from §6.
 
-**Add** a file: a Name, the Voice Part it applies to (must be one the Event's Ensembles actually use — or the seeded catch-all "ALL" part, which shows regardless of voice-part filtering), an optional Description, and the file itself (`mp3, wav, m4a, pdf, mp4, mov`, up to 50 MB). Editing lets you replace the file, which deletes the old one from storage. Search, and filter by Voice Part or file name, are available above the table. **Reordering works by drag-and-drop** directly in the table, or via the numeric order fields and **Save Order** as a fallback.
+**Add** a file: a Name, the Voice Part it applies to (must be one the Event's Ensembles actually use — or the seeded catch-all "ALL" part, which shows regardless of voice-part filtering), an optional Description, and the file itself (`mp3, wav, m4a, pdf, mp4, mov`, up to 50 MB). To give a PDF a **Read** link instead of an audio player, name it exactly "pdf". Editing lets you replace the file. Add Version carries pitch files over, and replacing or removing one in this Version doesn't affect the others. Search, and filter by Voice Part or file name, are available above the table. **Reordering works by drag-and-drop** directly in the table, or via the numeric order fields and **Save Order** as a fallback.
 
 ## 10. Rooms
 
@@ -204,7 +205,7 @@ An ordered, per-voice-part library of reference audio/video/PDF material (scales
 
 Available to you, or a Registration/Co-Registration Manager on this Version — not Event-Manager-exclusive, because it's genuinely part of running registration/adjudication logistics. Defines the physical (or virtual) rooms candidates are judged in.
 
-**Add** a room: a Name, an optional **Tolerance** (the acceptable point spread between judges' totals — leave blank for "not applied," or set to `0` to require judges' scores to match exactly), which score categories apply in this room, which voice parts are heard here, and an inline judge list (search by name, assign a judge type — Head Judge, Lead Judge, Judge 1–4, Judge Monitor, or Monitor). When you choose a judge, you'll also see their assignment history across every other Version of this same Event, so you can avoid stacking the same person into a high-volume room every year. Reordering is drag-and-drop, same as Pitch Files.
+**Add** a room: a Name, an optional **Tolerance** (the acceptable point spread between judges' totals — leave blank for "not applied," or set to `0` to require judges' scores to match exactly), which score categories apply in this room, which voice parts are heard here, and an inline judge list (search by name, assign a judge type — Head Judge, Lead Judge, Judge 1–4, Judge Monitor, or Monitor). When you choose a judge, you'll also see their assignment history across every other Version of this same Event, so you can avoid stacking the same person into a high-volume room every year. Reordering is drag-and-drop, same as Pitch Files. Each Room shows its candidate count, and **Print roster** gives you a PDF of every Room.
 
 Some things to know about judges:
 
@@ -237,7 +238,7 @@ The first three tabs are for you and that Version's **Web Registration Manager**
 
 **Registration History.** Search for a teacher or student to see what happened and when in this Version, who did it, and what's still incomplete. Times are Eastern. **Download .txt** saves a copy to send. Two limits: actions taken while impersonating someone are recorded under that person's account, and some earlier states, such as replaced recordings and removed signatures, aren't kept. Scores and contact details never appear, and outcomes stay hidden until results are released.
 
-**Voice Part Audit.** Listen to candidates' approved recordings and correct a voice part that doesn't match. Only voice parts offered for the student's grade can be chosen, and **Grade mismatch only** finds candidates whose voice part isn't. Each change asks whether the recordings match the new part. **Yes, they match** keeps the recordings and their approvals. **No, remove them** permanently deletes every recording for that candidate, and after the deadline for teacher changes they can't be uploaded again. If the candidate already has scores, use Change Voice Part in Add/Edit Scores instead (§14).
+**Voice Part Audit.** Listen to candidates' approved recordings and correct a voice part that doesn't match. Only voice parts offered for the student's grade can be chosen, and **Grade mismatch only** finds candidates whose voice part isn't. Filter by status, voice part, or name; only active candidates are listed at first. Each change asks whether the recordings match the new part. **Yes, they match** keeps the recordings and their approvals. **No, remove them** permanently deletes every recording for that candidate, and after the deadline for teacher changes they can't be uploaded again. If the candidate already has scores, use Change Voice Part in Add/Edit Scores instead (§14).
 
 ## 13. Adjudication and your judges
 
@@ -365,10 +366,10 @@ Nine reports, available to you or a Registration/Co-Registration Manager on this
 
 1. **Obligated Teachers** — every teacher who's accepted this Version's Obligations. PDF.
 2. **Participating Teachers** — teachers with at least one Registered candidate. PDF.
-3. **Participating Schools** — one row per school/teacher pair with a Registered candidate: fees due/paid/balance, a **packet received** checkbox, and a **Payment** button for manually recording a check/PO/cash payment. Checking "packet received" doesn't email anyone by itself — click **Send Confirmations** to batch-email every teacher whose packet is marked received but not yet confirmed. Unchecking a packet afterward does *not* un-send an already-sent confirmation.
-4. **Payment Reconciliation** — every payment transaction (electronic or manually recorded) for the Version, with an allocation status of fully allocated, partially allocated, or **Needs Reconciliation**. Totals at the top show what's due, waived, and paid, and each school has its balance, payment details, and fee waivers. A manually-recorded lump-sum payment lands here unallocated until you open it and assign specific dollar amounts to specific candidates — until allocated, it doesn't count toward any candidate's balance.
+3. **Participating Schools** — one row per school/teacher pair with a candidate who registered, whatever the audition outcome, or with money already paid: fees due/paid/balance, a **packet received** checkbox, and a **Payment** button for manually recording a check/PO/cash payment. Checking "packet received" doesn't email anyone by itself — click **Send Confirmations** to batch-email every teacher whose packet is marked received but not yet confirmed. Unchecking a packet afterward does *not* un-send an already-sent confirmation.
+4. **Payment Reconciliation** — every payment transaction (electronic or manually recorded) for the Version, with an allocation status of fully allocated, partially allocated, or **Needs Reconciliation**. Totals at the top show what's due, waived, and paid, and each school has its balance; Event Managers can also open payment details and fee waivers. A manually-recorded lump-sum payment lands here unallocated until you open it and assign specific dollar amounts to specific candidates — until allocated, it doesn't count toward any candidate's balance.
 5. **Participating Candidates** — the full Registered roster with an Edit modal (name, voice part, home/cell phone, emergency contact) and a Remove action that withdraws a candidate (Withdrew or Teacher Withdrawn). Event Managers also see **Waive fees**. Changing the voice part here follows the same rules as Voice Part Audit (§12): only parts offered for the student's grade, a question about any recordings, and no change once scores exist.
-6. **Participation by County** — one row per county: obligated-teacher count, participating-teacher count, candidate count, and the responsible manager's name. Counties with zero activity still show up.
+6. **Participation by County** — one row per county: obligated-teacher count, participating-teacher count, candidate count, and the responsible manager's name. Counties with zero activity still show up. PDF/CSV.
 7. **Candidate Counts** — one row per school/teacher with a count column per voice part plus a total, and a Version-wide summary header. PDF/CSV.
 8. **Adjudication Backup** — real navigation and export buttons exist, but the actual content is placeholder ("no in-person audition scheduled") because room-to-candidate assignment isn't part of this system yet — don't mistake this for a bug. If you need paper score sheets as a backup, prepare your own.
 9. **Registration Cards** — same situation: real filters and a working print link, but placeholder PDF content for the same reason as above.
@@ -381,11 +382,11 @@ Only an Event Manager can waive a fee; Registration Managers can see waivers but
 
 ### Downloads
 
-CSV files of your Event's data: Event/Version settings, Schools, Teachers, Students, and Candidates. **Ensemble Participants** adds one file per Ensemble, listing its accepted candidates with school, teacher, voice part, score, and contact details. Those files are built when you close the audition; choose **Regenerate** after a decline or a corrected detail. All of these contain personal information, so share them carefully.
+CSV files of your Event's data: Event/Version settings, Schools, Teachers, Students, and Candidates. **Ensemble Participants** adds one file per Ensemble, listing its accepted candidates with school, teacher, voice part, score, and contact details, including up to three emergency contacts. Those files are built when you close the audition; choose **Regenerate** after a decline or a corrected detail. All of these contain personal information, so share them carefully.
 
 ## 17. Registration, in brief
 
-You won't personally do most registration-phase work — that's the teacher's and (once StudentFolder.info is involved) the candidate's job — but it's worth knowing what they're up against, since your Requirements tab settings (§6) directly control it. A Candidate only reaches **Registered** once every milestone your Version requires is complete: emergency contact info, home address, candidate cell/email, application signatures, and — if remote auditions are configured — every required upload approved by the teacher, with none uploaded for a different voice part. Anything partially done sits at **pending**. Teachers see a checklist explaining exactly what's still missing, so "why isn't this student Registered?" should always have a visible answer on their end.
+You won't personally do most registration-phase work — that's the teacher's and (once StudentFolder.info is involved) the candidate's job — but it's worth knowing what they're up against, since your Requirements tab settings (§6) directly control it. A Candidate only reaches **Registered** once every milestone your Version requires is complete: a voice part offered for the student's grade, the fields you checked under Requirements (emergency contact with any required cell and email, birthday, height, shirt size, home address), application signatures once the Application is published, and — if remote auditions are configured — every required upload approved by the teacher, with none uploaded for a different voice part. Anything partially done sits at **pending**. Teachers see a checklist explaining exactly what's still missing, so "why isn't this student Registered?" should always have a visible answer on their end.
 
 ## 18. Common questions and gotchas
 
