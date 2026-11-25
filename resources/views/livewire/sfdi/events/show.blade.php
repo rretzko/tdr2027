@@ -304,6 +304,36 @@
                 </div>
             @endif
 
+            @if ($participation)
+                @php $participationBalance = $participation['dueCents'] - $participation['paidCents']; @endphp
+                <div class="mb-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+                    <flux:heading size="xs">Participation Fee</flux:heading>
+                    @if ($participation['ensemble'])
+                        <div>Accepted: {{ $participation['ensemble'] }}</div>
+                    @endif
+                    @unless ($participation['waived'])
+                        <div>
+                            Due ${{ number_format($participation['dueCents'] / 100, 2) }} &middot;
+                            Paid ${{ number_format($participation['paidCents'] / 100, 2) }} &middot;
+                            <span class="font-medium">{{ $participationBalance > 0 ? 'Balance $'.number_format($participationBalance / 100, 2) : 'Paid in full' }}</span>
+                        </div>
+                        @if ($participationBalance > 0)
+                            <div class="mt-1 text-zinc-500 dark:text-zinc-400">
+                                @if ($participation['windowClosed'])
+                                    Online payment closed {{ $participation['closesAt']->forDisplay()->format('M j, g:i A') }}. Please pay through your teacher.
+                                @elseif (! $participation['optedIn'])
+                                    Please pay this fee through your teacher.
+                                @elseif ($participation['opensAt'])
+                                    Online payment opens {{ $participation['opensAt']->forDisplay()->format('M j, g:i A') }}.
+                                @elseif ($participation['closesAt'])
+                                    Pay online by {{ $participation['closesAt']->forDisplay()->format('M j, g:i A') }}.
+                                @endif
+                            </div>
+                        @endif
+                    @endunless
+                </div>
+            @endif
+
             <div class="flex items-center justify-between mb-2">
                 <flux:heading size="xs" class="text-zinc-500">Payment History</flux:heading>
                 @if ($registrationFeeDue || $participationFeeDue || $housingFeeDue)

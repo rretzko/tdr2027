@@ -63,6 +63,8 @@ class ParticipatingSchools extends Component
 
     public ?int $paymentTeacherId = null;
 
+    public string $paymentFeeType = 'registration';
+
     public string $paymentType = '';
 
     public string $amount = '';
@@ -128,6 +130,7 @@ class ParticipatingSchools extends Component
 
         $this->paymentSchoolId = $schoolId;
         $this->paymentTeacherId = $teacherId;
+        $this->paymentFeeType = ($this->version->collectsParticipationFees() ? FeeType::Participation : FeeType::Registration)->value;
         $this->paymentType = '';
         $this->amount = '';
         $this->referenceNumber = '';
@@ -143,6 +146,7 @@ class ParticipatingSchools extends Component
         $modalPaymentTypes = [PaymentType::Check->value, PaymentType::PurchaseOrder->value, PaymentType::Cash->value, PaymentType::Other->value];
 
         $validated = $this->validate([
+            'paymentFeeType' => ['required', Rule::enum(FeeType::class)],
             'paymentType' => ['required', 'string', Rule::in($modalPaymentTypes)],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'referenceNumber' => ['nullable', 'string', 'max:100'],
@@ -158,9 +162,8 @@ class ParticipatingSchools extends Component
         PaymentTransaction::create([
             'version_id' => $this->version->id,
             'source' => PaymentSource::Manual,
-            // Lump sums recorded here are registration fees; without this
-            // they never reach the fee_type-scoped "Paid" totals once allocated.
-            'fee_type' => FeeType::Registration,
+            // Without this the payment never reaches the per-fee totals.
+            'fee_type' => FeeType::from($validated['paymentFeeType']),
             'payer_teacher_id' => $this->paymentTeacherId,
             'school_id' => $this->paymentSchoolId,
             'amount' => (int) round(((float) $validated['amount']) * 100),

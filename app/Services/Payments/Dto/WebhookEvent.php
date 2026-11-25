@@ -16,5 +16,7 @@ final readonly class WebhookEvent
         public PaymentTransactionStatus $status,
         public int $amountCents,
         public array $rawPayload,
+        public ?string $refundId = null,
+        public ?string $vendorCaptureId = null,
     ) {}
 }

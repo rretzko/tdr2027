@@ -21,7 +21,7 @@ class PaymentRegisterCsvController extends Controller
 
         return CsvExport::stream(
             "payment-register-{$version->id}.csv",
-            ['Candidate', 'Date', 'Type', 'Amount', 'Reference', 'Status'],
+            ['Candidate', 'Date', 'Type', 'Amount', 'Reference', 'Status', 'Fee'],
             $rows->map(fn (array $row): array => [
                 $row['candidate']->student->user->sort_name,
                 $row['paidAt']->format('M j, Y'),
@@ -29,6 +29,7 @@ class PaymentRegisterCsvController extends Controller
                 number_format($row['amountCents'] / 100, 2),
                 $row['referenceNumber'] ?? '',
                 $row['status']->label(),
+                $row['feeType']->label(),
             ]),
         );
     }

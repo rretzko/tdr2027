@@ -11,6 +11,9 @@
             </div>
 
             <div class="flex flex-col sm:flex-row gap-2">
+                @if ($version->collectsParticipationFees())
+                    <flux:button variant="outline" icon="credit-card" :href="route('registrations.participation-fees', $version)" wire:navigate>Participation Fees</flux:button>
+                @endif
                 @if ($schoolOptions->count() > 1)
                     <flux:select wire:model.live="schoolFilter" placeholder="All schools" class="sm:max-w-xs">
                         <flux:select.option value="">All schools</flux:select.option>

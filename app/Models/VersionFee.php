@@ -46,12 +46,15 @@ class VersionFee extends Model
      */
     public function amountForCheckout(FeeType $feeType, int $candidateCount): int
     {
-        $perCandidate = match ($feeType) {
+        return ($this->perCandidate($feeType) * $candidateCount) + $this->epayment_surcharge;
+    }
+
+    public function perCandidate(FeeType $feeType): int
+    {
+        return (int) match ($feeType) {
             FeeType::Registration => $this->registration,
             FeeType::Participation => $this->participation,
             FeeType::Housing => $this->housing,
         };
-
-        return ($perCandidate * $candidateCount) + $this->epayment_surcharge;
     }
 }

@@ -7,7 +7,10 @@ namespace App\Livewire\Events\Reports;
 use App\Concerns\ManagesFeeWaivers;
 use App\Concerns\ScopesReports;
 use App\Enums\CandidateStatus;
+use App\Enums\FeeType;
+use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
+use App\Enums\PaymentType;
 use App\Models\Candidate;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
@@ -15,11 +18,15 @@ use App\Models\School;
 use App\Models\Teacher;
 use App\Models\Version;
 use App\Services\CandidateFeeCalculator;
+use App\Services\CandidateFeeLedger;
+use App\Services\FeeReconciliationService;
 use App\Services\PaymentAllocationService;
 use App\Services\VersionRoleAssignmentService;
 use Flux\Flux;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -47,6 +54,17 @@ class PaymentReconciliation extends Component
 
     #[Url]
     public string $search = '';
+
+    /** FeeType value, or '' for all fees together. */
+    #[Url]
+    public string $fee = '';
+
+    #[Locked]
+    public ?int $refundTransactionId = null;
+
+    public string $refundCandidateId = '';
+
+    public string $refundAmount = '';
 
     public ?int $allocatingTransactionId = null;
 
@@ -200,16 +218,96 @@ class PaymentReconciliation extends Component
         Flux::toast('Payment allocated.', variant: 'success');
     }
 
-    public function render(): View
+    public function openRefund(int $transactionId, VersionRoleAssignmentService $roles, FeeReconciliationService $reconciliation): void
     {
-        $allSchoolRows = self::baseRows($this->version, $this->reportCountyIds);
+        $entry = $this->unrecordedRefund($transactionId, $roles, $reconciliation);
+
+        $this->refundTransactionId = $transactionId;
+        $this->refundCandidateId = '';
+        $this->refundAmount = number_format($entry['unrecordedCents'] / 100, 2, '.', '');
+        $this->resetErrorBag();
+        $this->modal('record-refund')->show();
+    }
+
+    /**
+     * Records a vendor-reported partial refund against one student, as a
+     * manual refund carrying the payment's vendor id.
+     */
+    public function saveRefund(VersionRoleAssignmentService $roles, FeeReconciliationService $reconciliation): void
+    {
+        abort_if($this->refundTransactionId === null, 400);
+        $entry = $this->unrecordedRefund($this->refundTransactionId, $roles, $reconciliation);
+        $transaction = $entry['transaction'];
+
+        $this->validate([
+            'refundCandidateId' => ['required', Rule::in($transaction->allocations->pluck('candidate_id')->map(strval(...))->all())],
+            'refundAmount' => ['required', 'numeric', 'min:0.01', 'max:'.number_format($entry['unrecordedCents'] / 100, 2, '.', '')],
+        ]);
+
+        $candidate = Candidate::with('student.user')->findOrFail((int) $this->refundCandidateId);
+        $cents = -(int) round(((float) $this->refundAmount) * 100);
+
+        DB::transaction(function () use ($transaction, $candidate, $cents): void {
+            $refund = PaymentTransaction::create([
+                'version_id' => $this->version->id,
+                'source' => PaymentSource::Manual,
+                'fee_type' => $transaction->getRawOriginal('fee_type'),
+                'payer_teacher_id' => $transaction->payer_teacher_id,
+                'school_id' => $candidate->school_id,
+                'amount' => $cents,
+                'status' => PaymentTransactionStatus::Completed,
+                'payment_type' => PaymentType::Refund,
+                'reference_number' => $transaction->vendor_transaction_id,
+                'comments' => 'Refund reported by the payment service',
+                'recorded_by_user_id' => Auth::id(),
+                'paid_at' => now(),
+            ]);
+
+            PaymentAllocation::create([
+                'payment_transaction_id' => $refund->id,
+                'candidate_id' => $candidate->id,
+                'amount' => $cents,
+                'allocated_by_user_id' => Auth::id(),
+                'allocated_at' => now(),
+            ]);
+        });
+
+        $this->refundTransactionId = null;
+        $this->modal('record-refund')->close();
+        Flux::toast("Refund recorded for {$candidate->student->user->name}.", variant: 'success');
+    }
+
+    /**
+     * @return array{transaction: PaymentTransaction, unrecordedCents: int}
+     */
+    private function unrecordedRefund(int $transactionId, VersionRoleAssignmentService $roles, FeeReconciliationService $reconciliation): array
+    {
+        abort_unless($roles->canManageEvent(Auth::user(), $this->version->event), 403);
+
+        $entry = $reconciliation->unrecordedRefunds($this->version, $this->reportCountyIds)
+            ->first(fn (array $entry): bool => $entry['transaction']->id === $transactionId);
+        abort_if($entry === null, 404);
+
+        return $entry;
+    }
+
+    public function render(FeeReconciliationService $reconciliation): View
+    {
+        $feeType = FeeType::tryFrom($this->fee);
+        $allSchoolRows = self::baseRows($this->version, $this->reportCountyIds, $feeType);
+        $studentRows = $feeType !== null
+            ? self::filterStudentRows($reconciliation->rowsForVersion($this->version, $this->reportCountyIds, $feeType), '')
+            : collect();
+        $unrecordedRefunds = $this->canViewPaymentDetails
+            ? $reconciliation->unrecordedRefunds($this->version, $this->reportCountyIds)
+            : collect();
 
         // The Version-level rollup always reflects every school in scope,
         // regardless of the search box below — only the table itself filters.
         $schoolRows = self::filterRows($allSchoolRows, $this->search);
         $versionTotals = self::versionTotals($allSchoolRows);
 
-        $needsReconciliation = self::unreconciledTransactions($this->version, $this->reportCountyIds);
+        $needsReconciliation = self::unreconciledTransactions($this->version, $this->reportCountyIds, $feeType);
 
         $allocatingTransaction = $needsReconciliation->firstWhere('id', $this->allocatingTransactionId);
         $allocationCandidates = $this->allocationCandidates($allocatingTransaction);
@@ -219,6 +317,16 @@ class PaymentReconciliation extends Component
             : null;
 
         return view('livewire.events.reports.payment-reconciliation', [
+            'feeType' => $feeType,
+            'feeOptions' => array_values(array_filter(
+                FeeType::cases(),
+                fn (FeeType $type): bool => app(CandidateFeeCalculator::class)->configuredFeeCents($this->version, $type) > 0,
+            )),
+            'ensembleTotals' => $feeType === FeeType::Participation ? FeeReconciliationService::ensembleTotals($studentRows) : collect(),
+            'studentRows' => self::filterStudentRows($studentRows, $this->search),
+            'unallocatedCents' => (int) $needsReconciliation->sum(fn (PaymentTransaction $t): int => $t->unallocatedAmount()),
+            'unrecordedRefunds' => $unrecordedRefunds,
+            'refundEntry' => $unrecordedRefunds->first(fn (array $entry): bool => $entry['transaction']->id === $this->refundTransactionId),
             'schoolRows' => $schoolRows,
             'versionTotals' => $versionTotals,
             'needsReconciliation' => $needsReconciliation,
@@ -226,7 +334,7 @@ class PaymentReconciliation extends Component
             'allocationCandidates' => $allocationCandidates,
             'paymentDetailsRow' => $paymentDetailsRow,
             'paymentDetails' => $paymentDetailsRow !== null
-                ? self::paymentDetails($this->version, $this->paymentDetailsSchoolId)
+                ? self::paymentDetails($this->version, $this->paymentDetailsSchoolId, $feeType)
                 : collect(),
             'canWaiveFees' => $this->canWaiveFees(),
             'waivableFeeTypes' => $this->waivableFeeTypes(),
@@ -253,7 +361,7 @@ class PaymentReconciliation extends Component
      *
      * @return Collection<int, array{transaction: PaymentTransaction, amountCents: int, allocations: Collection<int, PaymentAllocation>}>
      */
-    public static function paymentDetails(Version $version, int $schoolId): Collection
+    public static function paymentDetails(Version $version, int $schoolId, ?FeeType $feeType = null): Collection
     {
         $feeEligibleStatusValues = array_map(
             fn (CandidateStatus $s): string => $s->value,
@@ -264,7 +372,8 @@ class PaymentReconciliation extends Component
             ->whereHas('candidate', fn ($q) => $q->where('version_id', $version->id)
                 ->where('school_id', $schoolId)
                 ->whereIn('status', $feeEligibleStatusValues))
-            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
+            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value)
+                ->when($feeType !== null, fn ($fee) => $fee->where(PaymentTransaction::paysFee($feeType))))
             ->with(['candidate.student.user', 'paymentTransaction.payerTeacher.user', 'paymentTransaction.payerStudent.user', 'paymentTransaction.recordedBy'])
             ->get()
             ->sortBy(fn (PaymentAllocation $a): string => mb_strtolower($a->candidate->student->user->last_name.' '.$a->candidate->student->user->first_name))
@@ -306,7 +415,7 @@ class PaymentReconciliation extends Component
      * @param  list<int>|null  $countyIds
      * @return Collection<int, mixed>
      */
-    public static function baseRows(Version $version, ?array $countyIds): Collection
+    public static function baseRows(Version $version, ?array $countyIds, ?FeeType $feeType = null): Collection
     {
         // Broader than status=Registered alone — Ensemble Cut-offs can
         // resolve a Candidate to Accepted/NotAccepted/NoShow/Incomplete
@@ -330,12 +439,20 @@ class PaymentReconciliation extends Component
         // Registration (+ participation once closed, Accepted only), net of
         // per-student fee waivers — see CandidateFeeCalculator.
         $calculator = app(CandidateFeeCalculator::class);
+        $ledger = app(CandidateFeeLedger::class);
         $calculator->loadWaivers($feeEligibleCandidates);
-        $dueForCandidate = fn (Candidate $candidate): int => $calculator->combinedDueCents($version, $candidate);
-        $waivedForCandidate = fn (Candidate $candidate): int => $calculator->combinedWaivedCents($version, $candidate);
+        $dueForCandidate = fn (Candidate $candidate): int => $feeType === null
+            ? $calculator->combinedDueCents($version, $candidate)
+            : $ledger->dueCents($version, $candidate, $feeType);
+        $waivedForCandidate = fn (Candidate $candidate): int => match (true) {
+            $feeType === null => $calculator->combinedWaivedCents($version, $candidate),
+            $candidate->hasFeeWaived($feeType) => $calculator->configuredFeeCents($version, $feeType),
+            default => 0,
+        };
 
         $paidByCandidateId = PaymentAllocation::whereIn('candidate_id', $feeEligibleCandidates->pluck('id'))
-            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
+            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value)
+                ->when($feeType !== null, fn ($fee) => $fee->where(PaymentTransaction::paysFee($feeType))))
             ->get()
             ->groupBy('candidate_id')
             ->map(fn (Collection $g): int => (int) $g->sum('amount'));
@@ -345,7 +462,7 @@ class PaymentReconciliation extends Component
         // non-withdrawn candidate, so money paid ahead for one isn't hidden.
         $owedStatusValues = array_map(
             fn (CandidateStatus $s): string => $s->value,
-            CandidateStatus::registrationFeeOwedStates(),
+            $feeType === null ? CandidateStatus::registrationFeeOwedStates() : $version->feeOwedStates($feeType),
         );
         $owes = fn (Candidate $c): bool => in_array($c->getRawOriginal('status'), $owedStatusValues, true);
 
@@ -381,6 +498,23 @@ class PaymentReconciliation extends Component
             ->filter(fn (array $row): bool => $row['count'] > 0 || $row['paidCents'] > 0)
             ->sortBy(fn (array $row): string => mb_strtolower($row['school']->name ?? ''))
             ->values();
+    }
+
+    /**
+     * One fee's student rows, matched by student, school, or teacher.
+     *
+     * @param  Collection<int, mixed>  $rows
+     * @return Collection<int, mixed>
+     */
+    public static function filterStudentRows(Collection $rows, string $search): Collection
+    {
+        $search = mb_strtolower(trim($search));
+
+        return $rows->filter(fn (array $row): bool => $search === '' || str_contains(mb_strtolower(implode(' ', [
+            $row['candidate']->student->user->name,
+            $row['candidate']->school->name ?? '',
+            $row['candidate']->teacher->user->name,
+        ])), $search))->values();
     }
 
     /**
@@ -424,10 +558,11 @@ class PaymentReconciliation extends Component
      * @param  list<int>|null  $countyIds
      * @return Collection<int, PaymentTransaction>
      */
-    public static function unreconciledTransactions(Version $version, ?array $countyIds): Collection
+    public static function unreconciledTransactions(Version $version, ?array $countyIds, ?FeeType $feeType = null): Collection
     {
         return PaymentTransaction::where('version_id', $version->id)
             ->where('status', PaymentTransactionStatus::Completed->value)
+            ->when($feeType !== null, fn ($query) => $query->where(PaymentTransaction::paysFee($feeType)))
             ->with(['allocations', 'school', 'payerTeacher.user'])
             ->get()
             ->filter(fn (PaymentTransaction $t): bool => $t->needsReconciliation())

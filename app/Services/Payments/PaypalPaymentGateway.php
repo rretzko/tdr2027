@@ -11,11 +11,11 @@ use App\Enums\Vendor;
 use App\Models\Candidate;
 use App\Models\Event;
 use App\Models\EventEpaymentConfig;
-use App\Models\PaymentAllocation;
 use App\Models\PaymentTransaction;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\Version;
+use App\Services\PaymentAllocationService;
 use App\Services\Payments\Dto\CheckoutSession;
 use App\Services\Payments\Dto\WebhookEvent;
 use Illuminate\Http\Request;
@@ -90,7 +90,7 @@ class PaypalPaymentGateway implements PaymentGatewayContract
 
         $applicationContext = new OrderApplicationContext;
         $applicationContext->setReturnUrl($returnUrl);
-        $applicationContext->setCancelUrl($returnUrl);
+        $applicationContext->setCancelUrl($returnUrl.'&cancelled=1');
         $orderRequest->setApplicationContext($applicationContext);
 
         $response = $this->client($config)->getOrdersController()->createOrder([
@@ -127,14 +127,7 @@ class PaypalPaymentGateway implements PaymentGatewayContract
             'paid_at' => null,
         ]);
 
-        if ($candidates->count() === 1) {
-            PaymentAllocation::create([
-                'payment_transaction_id' => $transaction->id,
-                'candidate_id' => $firstCandidate->id,
-                'amount' => $amount,
-                'allocated_at' => now(),
-            ]);
-        }
+        app(PaymentAllocationService::class)->allocateCheckout($transaction, $candidates, $fees, $feeType);
 
         return new CheckoutSession(redirectUrl: $approveLink->getHref(), paymentTransactionId: $transaction->id);
     }
@@ -220,6 +213,8 @@ class PaypalPaymentGateway implements PaymentGatewayContract
                 status: PaymentTransactionStatus::Refunded,
                 amountCents: $this->centsFromAmount(data_get($resource, 'amount', [])),
                 rawPayload: $payload,
+                refundId: is_string($resource['id'] ?? null) ? $resource['id'] : null,
+                vendorCaptureId: $this->captureIdFromLinks($resource['links'] ?? []),
             );
         }
 
@@ -235,6 +230,21 @@ class PaypalPaymentGateway implements PaymentGatewayContract
                 amountCents: 0,
                 rawPayload: $payload,
             );
+        }
+
+        return null;
+    }
+
+    /**
+     * A refund payload may not name its order, but its "up" link names the
+     * capture it refunds.
+     */
+    private function captureIdFromLinks(mixed $links): ?string
+    {
+        foreach (is_array($links) ? $links : [] as $link) {
+            if (($link['rel'] ?? null) === 'up' && preg_match('~/captures/([^/]+)/?$~', (string) ($link['href'] ?? ''), $matches) === 1) {
+                return $matches[1];
+            }
         }
 
         return null;

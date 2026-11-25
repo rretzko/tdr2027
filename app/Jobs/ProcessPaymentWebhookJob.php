@@ -41,6 +41,12 @@ class ProcessPaymentWebhookJob implements ShouldQueue
             ->where('vendor_transaction_id', $this->event->vendorTransactionId)
             ->first();
 
+        if ($transaction === null && $this->event->vendorCaptureId !== null) {
+            $transaction = PaymentTransaction::where('vendor', $this->vendor)
+                ->where('raw_payload->resource->id', $this->event->vendorCaptureId)
+                ->first();
+        }
+
         if ($transaction === null) {
             // Not idempotency-relevant (§2.4's idempotency guarantee is about
             // never duplicating a row on retry) — this is a webhook for a
@@ -61,18 +67,43 @@ class ProcessPaymentWebhookJob implements ShouldQueue
         // this feature (see PaymentGatewayFactory's comment).
         $currentStatus = PaymentTransactionStatus::from($transaction->getRawOriginal('status'));
 
+        $payload = $this->event->rawPayload;
+        $refunds = $transaction->reportedPartialRefunds();
+
+        // A refund of part of a payment must not mark the whole payment
+        // refunded: that would unpay every other student in a group. It's
+        // reported to the Event Manager, who records it against a student
+        // (PaymentReconciliation).
+        if ($this->event->status === PaymentTransactionStatus::Refunded
+            && $this->event->refundId !== null
+            && $this->event->amountCents > 0
+            && $this->event->amountCents < $transaction->amount) {
+            $refunds[$this->event->refundId] = $this->event->amountCents;
+
+            // The original payload stays: its capture id is what a further
+            // refund is matched on.
+            $original = json_decode((string) $transaction->getRawOriginal('raw_payload'), true);
+            $transaction->update(['raw_payload' => [...(is_array($original) ? $original : []), 'tdr_partial_refunds' => $refunds]]);
+
+            return;
+        }
+
+        if ($refunds !== []) {
+            $payload['tdr_partial_refunds'] = $refunds;
+        }
+
         // Vendors deliver webhooks at-least-once with no ordering guarantee
         // — don't let a stale/out-of-order event regress an already-final
         // status. The payload is still recorded either way, for audit.
         if ($this->statusRank($this->event->status) < $this->statusRank($currentStatus)) {
-            $transaction->update(['raw_payload' => $this->event->rawPayload]);
+            $transaction->update(['raw_payload' => $payload]);
 
             return;
         }
 
         $transaction->update([
             'status' => $this->event->status,
-            'raw_payload' => $this->event->rawPayload,
+            'raw_payload' => $payload,
             'paid_at' => $this->event->status === PaymentTransactionStatus::Completed
                 ? ($transaction->paid_at ?? now())
                 : $transaction->paid_at,

@@ -9,6 +9,7 @@ use App\Enums\PaymentSource;
 use App\Enums\PaymentTransactionStatus;
 use App\Enums\PaymentType;
 use App\Enums\Vendor;
+use Closure;
 use Database\Factories\PaymentTransactionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -144,11 +145,42 @@ class PaymentTransaction extends Model
      * so a teacher who just paid can see the payment is in flight (and
      * doesn't pay a second time), without being able to allocate it.
      * Single-candidate transactions are auto-allocated 100% at creation
-     * (see the gateways) so they never surface here.
+     * (see the gateways) so they never surface here; a group's allocations
+     * exist from the start too, so its source identifies it.
      */
     public function isAwaitingConfirmation(): bool
     {
         return $this->getRawOriginal('status') === PaymentTransactionStatus::Pending->value
-            && $this->unallocatedAmount() > 0;
+            && ($this->getRawOriginal('source') === PaymentSource::TeacherEpayment->value || $this->unallocatedAmount() > 0);
+    }
+
+    /**
+     * where() constraint for rows paying one fee. Rows from before fee_type
+     * existed were registration. A closure rather than a scope so it also
+     * works, typed, inside whereHas().
+     */
+    public static function paysFee(FeeType $feeType): Closure
+    {
+        return function ($query) use ($feeType): void {
+            $query->where('fee_type', $feeType->value);
+
+            if ($feeType === FeeType::Registration) {
+                $query->orWhereNull('fee_type');
+            }
+        };
+    }
+
+    /**
+     * Partial refunds the vendor reported, in cents, keyed by the vendor's
+     * refund id. Kept beside the payload so a later webhook can't lose them.
+     *
+     * @return array<string, int>
+     */
+    public function reportedPartialRefunds(): array
+    {
+        $payload = json_decode((string) $this->getRawOriginal('raw_payload'), true);
+        $refunds = is_array($payload) ? ($payload['tdr_partial_refunds'] ?? []) : [];
+
+        return is_array($refunds) ? array_map(intval(...), $refunds) : [];
     }
 }
