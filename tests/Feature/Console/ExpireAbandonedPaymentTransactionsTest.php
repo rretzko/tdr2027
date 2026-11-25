@@ -51,6 +51,9 @@ class ExpireAbandonedPaymentTransactionsTest extends TestCase
 
     public function test_a_transaction_exactly_at_the_cutoff_boundary_is_not_yet_expired(): void
     {
+        // Otherwise the clock can tick past the boundary mid-test.
+        $this->freezeSecond();
+
         $version = Version::factory()->create();
         $boundary = $this->makePending($version, 'ORDER-BOUNDARY', now()->subHours(8));
 
