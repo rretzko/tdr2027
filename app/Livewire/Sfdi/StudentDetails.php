@@ -76,11 +76,18 @@ class StudentDetails extends Component
             'birthday' => ['nullable', 'date'],
             'shirt_size' => ['required', Rule::in($shirtSizeValues)],
             'height' => ['nullable', 'integer', 'min:30', 'max:84'],
-            'home_address1' => ['nullable', 'string', 'max:255'],
+            // All or nothing: an address is stored only when it's complete,
+            // so a partly filled one must be reported rather than dropped.
+            'home_address1' => ['nullable', 'required_with:home_address2,home_city,home_geo_state,home_zip_code', 'string', 'max:255'],
             'home_address2' => ['nullable', 'string', 'max:255'],
-            'home_city' => ['nullable', 'string', 'max:255'],
-            'home_geo_state' => ['nullable', 'string', 'max:2'],
-            'home_zip_code' => ['nullable', 'string', 'max:10'],
+            'home_city' => ['nullable', 'required_with:home_address1,home_address2,home_geo_state,home_zip_code', 'string', 'max:255'],
+            'home_geo_state' => ['nullable', 'required_with:home_address1,home_address2,home_city,home_zip_code', 'string', 'max:2'],
+            'home_zip_code' => ['nullable', 'required_with:home_address1,home_address2,home_city,home_geo_state', 'string', 'max:10'],
+        ], [
+            'home_address1.required_with' => 'Please enter the street address to complete your home address.',
+            'home_city.required_with' => 'Please enter the city to complete your home address.',
+            'home_geo_state.required_with' => 'Please enter the state to complete your home address.',
+            'home_zip_code.required_with' => 'Please enter the zip code to complete your home address.',
         ]);
 
         $student = $this->student();

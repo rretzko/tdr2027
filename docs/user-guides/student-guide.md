@@ -16,7 +16,7 @@ If you registered with your own email address, you may be asked to verify it fir
 
 The first time you get in, you'll land on the **School** page. This is a required first step — you can't reach your Events, or do much of anything else useful, until you've joined a school and at least one teacher there. After that, you'll land on your **Dashboard**, which lists your open Events.
 
-The sidebar takes you everywhere else. Besides the pages described below, it has **Profile** (your name, pronouns, email, cell phone, and photo), **Password**, **Feedback** (report a bug or suggest an improvement), **User Guides** (this guide), and a light/dark switch. The Dashboard, School, and Event pages each have a **Take a tour** button.
+The sidebar takes you everywhere else. Besides the pages described below, it has **Profile** (your name, pronouns, email, cell phone, and photo), **Password**, **Feedback** (report a bug or suggest an improvement), **User Guides** (this guide), a light/dark switch, and **Log out**. Profile also leads to **Email Preferences**. The Dashboard, School, and Event pages each have a **Take a tour** button.
 
 ## Walkthrough
 
@@ -27,7 +27,7 @@ This is the page that unlocks everything else. Here's how it works:
 1. Pick your **state** (defaults to New Jersey) and, optionally, a **zip code** to narrow the search.
 2. Start typing your **school name**. Matching schools appear as you type — select **"This is my school."**
 3. Choose your **grade**.
-4. Under **your teacher(s) at this school**, check the box next to each teacher you work with, and for each one, check the **subject(s)** you have with them (e.g., Chorus, General Music). You must select at least one teacher and at least one subject before you can continue.
+4. Under **your teacher(s) at this school**, check the **subject(s)** you have with each teacher you work with (e.g., Chorus, General Music). You must check at least one subject before you can continue.
 5. Select **Join School**.
 
 A few things to know:
@@ -36,6 +36,7 @@ A few things to know:
 - If you choose your school and no teachers appear, it usually means your teacher hasn't finished verifying their school email yet — check back later or ask them directly.
 - **If you're told someone with your name is already enrolled at this school**, and that's you, log out and log back in with your original account, or ask your teacher for help. Don't join again with a second account. If it really is someone else, select **That's a different person**, then **Join School**.
 - You can only be actively enrolled at **one school at a time**. If you switch schools later, come back to this page and join the new one — your prior school is deactivated automatically.
+- To add another teacher later, or to correct your grade, find your school here and join it again. This adds teachers but doesn't remove any.
 - Joining a teacher is what makes everything else happen: the moment you're linked to a teacher, you're automatically entered as a Candidate in any active Event they're already participating in that accepts your grade. You don't need to "sign up" for those separately — they'll simply appear on your **My Events** page.
 
 ### 2. Student Details — your profile
@@ -46,7 +47,7 @@ Found under **Student Details** in the sidebar. This page covers:
 - **Shirt size** — this field is required; you can't save this page without picking one
 - **Birthday**
 - **Height**, chosen from a dropdown (shown in inches with the feet/inches equivalent, e.g., "74 (6'2")")
-- **Home address** — street address, city, state, and zip. This only saves once all four of those fields are filled in; a partially filled address won't be stored.
+- **Home address** — street address, city, state, and zip. Fill in all four or leave them all blank; if any are missing, you'll be asked to complete them before the page saves.
 
 Your grade is shown at the top of this page for reference, but it's set when you join your school, not edited here.
 
@@ -82,9 +83,9 @@ This is where the real work of registering happens — one page per Event Versio
 
 **Candidate Requirements** (top card): a checklist of the basic information this specific Event needs from you before you can be registered — things like Birthday, Shirt Size, Height, Home Address, and Emergency Contact, depending on what this Event requires. Green means done and red means not done yet. Each one is a link straight to the Student Details or Emergency Contacts page where you can complete it.
 
-**Registration**: shows your **voice part** and **program name** (how your name appears in printed programs) for this specific Event, plus your teacher's name. Select the pencil icon next to either field to edit it. Your voice part is limited to the ones this Event offers to your grade, and your preferred voice part (from Student Details) is preselected automatically when it's one of the options. If you've already uploaded recordings, changing your voice part means replacing each one with a recording of the new part. Once your teacher has approved a recording, only your teacher can change your voice part. A **Withdraw from this Event** button is also here if you need to drop out — this takes effect immediately, you can't undo it yourself, and your teacher will be able to see that you've withdrawn.
+**Registration**: shows your **voice part** and **program name** (how your name appears in printed programs) for this specific Event, plus your teacher's name. Your program name is required for registration. Select the pencil icon next to either field to edit it. Your voice part is limited to the ones this Event offers to your grade, and your preferred voice part (from Student Details) is preselected automatically when it's one of the options. If you've already uploaded recordings, changing your voice part means replacing each one with a recording of the new part. Once your teacher has approved a recording, only your teacher can change your voice part. A **Withdraw from this Event** button is also here if you need to drop out — this takes effect immediately, you can't undo it yourself, and your teacher will be able to see that you've withdrawn.
 
-**Application**: appears once this Event has published an application. Select **View** to read it (also available as a PDF download). If this Event uses electronic signatures ("EApplication"), you'll see two checkboxes inside the View window:
+**Application**: appears once this Event has published an application. Select **View** to read it. **Download PDF** gives you a copy, but doesn't replace signing electronically. If this Event uses electronic signatures ("EApplication"), you'll see two checkboxes inside the View window:
 
 - **"I have signed"**
 - **"My parent/guardian has reviewed and approved"**
@@ -99,8 +100,9 @@ The Application section is locked (View disabled, checkboxes unavailable) until 
 - While a recording is **Pending Review**, you can **Replace** it or **Delete** it — deleting doesn't require you to have a replacement ready.
 - A red **Recorded as** badge means the recording was uploaded for a different voice part than the one you have now. Replace it with a recording of your current part. You can't be registered while it's there.
 - Once your teacher **Approves** a recording, it locks — you can only listen to it, not delete or replace it. If it needs to change after approval, you'll need to ask your teacher.
+- If your teacher **rejects** a recording, it's deleted and that slot goes back to **Not Uploaded**, so you can upload a new one.
 
-**Pitch Files**: select the **Pitch Files** button near the top of the page to open reference audio/PDFs for your own voice part (plus anything marked for all voice parts). If you haven't confirmed your voice part yet, you may be asked to do that first. This is reference material only, and isn't part of any checklist. It's available from the start of the registration period until the Event's final deadline for teacher changes, which can be later than your own. If nothing shows up, either no files have been added yet for your voice part, or your teacher has chosen not to share pitch files with candidates for this Event.
+**Pitch Files**: select the **Pitch Files** button near the top of the page to open reference audio/PDFs for your own voice part (plus anything marked for all voice parts). If you haven't confirmed your voice part yet, you may be asked to do that first. Select **Listen** to open the audio player, or **Read** for a file named "pdf"; videos play as audio only. This is reference material only, and isn't part of any checklist. It's available from the start of the registration period until the Event's final deadline for teacher changes, which can be later than your own; outside those dates, the button shows a message instead. If nothing shows up, either no files have been added yet for your voice part, or your teacher has chosen not to share pitch files with candidates for this Event.
 
 **Payment**: if this Event takes electronic payment from students, and your specific teacher has opted in to it, you'll see **Pay Registration Fee** here while that fee is due. You can pay it from the start of the registration period until the final deadline for teacher changes or the start of adjudication, whichever comes first. If an Event also charges participation or housing fees, your teacher will tell you how they're paid. Your payment history is listed below, read-only. You may also see:
 
@@ -138,6 +140,9 @@ Electronic payment only appears when both (a) the Event has turned it on for stu
 
 **I withdrew from an Event by mistake — can I undo it?**
 Not from your own account — withdrawing is immediate and self-service, but there's no self-service "undo." Tell your teacher as soon as you can. They can't reverse a withdrawal you made yourself, but they can contact the Event's organizer for you.
+
+**My recording disappeared — why?**
+Your teacher may have rejected it, or may have changed your voice part and removed your recordings, which deletes them all. Upload a new recording of your current voice part. If you can't, ask your teacher.
 
 **My recording upload got flagged — what does that mean?**
 A flag just means the system noticed something about the file (for example, the file name mentions a different recording, or it's unusually short or long) and is asking your teacher to take a second look — it isn't a rejection, and you don't need to do anything unless your teacher asks you to re-upload.
