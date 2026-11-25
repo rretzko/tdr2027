@@ -137,7 +137,7 @@ This is where you'll spend most of your time during a registration window. It ha
 
 Each candidate row shows the student's name and email, voice part, and:
 
-- **Checklist** — a strip of green/amber/red pills, one per requirement this Version collects (Program name, Voice part valid for grade, Emergency contact, Home address, signatures, recordings, and so on). Green means done, amber means partially done, red means not started. This is designed to answer "why isn't this student Registered yet?" at a glance — whatever's still red or amber is what's blocking them.
+- **Checklist** — a strip of green/amber/red pills, one per requirement this Version collects (Program name, Voice part valid for grade, Emergency contact, Home address, signatures, recordings, recordings that match the voice part, and so on). Green means done, amber means partially done, red means not started. This is designed to answer "why isn't this student Registered yet?" at a glance — whatever's still red or amber is what's blocking them.
 - **Waiver badge** — shown when the event has waived a fee for this student (§8).
 - **Status** — Eligible, Pending, Registered, or Withdrawn (see the FAQ for the full list).
 - **Paid** — what's been credited toward that candidate so far, less any refunds.
@@ -168,16 +168,20 @@ Some Versions accept online payment only. A notice here and on the Estimate Form
 This is the record for one student's registration into one Version. It's organized as a set of cards, each with its own Edit button that opens a small form — nothing is left in an always-open edit state, so the page stays readable even once everything's filled in.
 
 - **Registration Checklist** — the same checklist from the dashboard row, shown in full here.
-- **Student** — name, and this Candidate's voice part (not the student's general-profile voice part — you can set a different one specifically for this audition), birthday, and height. Only voice parts offered to the student's grade can be chosen. If the current one isn't offered, you'll see a warning; choose the part that matches the recordings.
+- **Student** — name, and this Candidate's voice part (not the student's general-profile voice part — you can set a different one specifically for this audition), birthday, and height. Only voice parts offered to the student's grade can be chosen. If the current one isn't offered, you'll see a warning; choose the part that matches the recordings. If the candidate already has recordings, changing the voice part asks whether they match the new part:
+  - **Yes** keeps the recordings. Any you've already approved stay approved, and the approval is recorded again in your name, so listen first.
+  - **No, remove them** permanently deletes every recording for this candidate. They must be uploaded and approved again, so a Registered candidate drops to Pending.
+  - Once a judge has entered a score, the voice part can't be changed here. Contact the Event Manager.
 - **Home Address** — only shown if this Version requires it.
 - **Emergency Contacts** — add or edit any number of contacts; which fields are required (cell, email) depends on this Version's settings.
 - **Program Name** — how the student's name should appear in the printed program. Defaults to their real name but is freely editable.
 - **Application** — click View to see the actual merged application document (the real legal form students/parents/teachers sign), along with the sign-off checkboxes. Two modes exist:
   - **PDF mode** — signatures happen on paper. You check one box, certifying that the student, parent/guardian, teacher, and principal signatures are present, complete, and have integrity, once you've reviewed the physical form.
   - **eApplication mode** — signatures happen digitally. If your student has their own StudentFolder.info account, they and their parent sign it themselves there. If a student hasn't set up their own account yet, you can still check "Candidate signed" / "Parent signed" on their behalf as a stopgap — whichever of you (teacher or student) acts last is what counts.
-- **Recordings** — for a remote audition, upload each required audio or video file here, or review what the student uploaded. Every file needs your **Approve**, including ones you upload yourself. Audio can be MP3, WAV, or M4A; video can be MP4 or MOV; the limit is 50 MB per file.
-  - **Approve** makes the file available to the judges. Students can no longer change or remove it.
+- **Recordings** — for a remote audition, upload each required audio or video file here, or review what the student uploaded. Before the first upload, you or the student may be asked to confirm the candidate's voice part, and each upload asks you to check that the file is that part. Every file needs your **Approve**, including ones you upload yourself. Audio can be MP3, WAV, or M4A; video can be MP4 or MOV; the limit is 50 MB per file.
+  - **Approve as** (followed by the voice part) opens a window with the recording and, if this Version shares them with teachers, the pitch files for that part, so you can compare. Approving states that the recording is that part and makes it available to the judges. Students can no longer change or remove it, or change their own voice part.
   - **Replace** swaps in a new file, even for an approved recording. The old file is deleted and the new one needs approval again, so a Registered candidate drops to Pending until you approve it.
+  - **Recorded as** is a red badge on a file uploaded for a different voice part than the candidate's current one. The candidate can't be Registered until you replace it, reject it, or, if it really is the current part, approve it.
   - **Reject** (or **Remove**, once approved) deletes the file outright and re-opens that slot.
   - **Review Suggested** is a flag for a possible misfile, such as the wrong slot or an unusual length. It never rejects anything on your behalf.
 - **Payment** — if teacher e-payment is on, **Pay Registration Fee** (or, once the Version closes, Participation or Housing) sends you to a secure checkout for this one student. While the payment service confirms it, the button is replaced by "payment being confirmed"; there's no need to pay again. A fee waived by the event is marked **Waived**, with nothing to pay, and an overpayment is shown too. Use **Record Payment** for a registration fee you collected by check, purchase order, cash, or another way, or for a refund; it doesn't charge anyone. Payment history is listed below.
@@ -241,6 +245,8 @@ Participation and housing fees, where a Version charges them, become payable for
 **Can I enroll a new student manually?** No — there's no manual "enroll" button. Enrollment happens automatically the moment a student becomes eligible: when you add them to your roster, when you're invited to a Version they qualify for, or when that Version becomes Active. Add the student on the Students page (or claim/accept an invitation), and they'll appear on the Version Dashboard on their own.
 
 **A recording I approved needs to be replaced — how?** Select **Replace** and upload the new file, then approve it. This must be done before the deadline for teacher changes (§8).
+
+**My student can't change their own voice part — why?** Once you've approved a recording, only you can change it, on the student's Candidate Detail page (§8). Before that, the student can change it on StudentFolder.info during the student registration period, but must then replace any recordings already uploaded.
 
 **I paid for a group, but my students still show $0.00. Why?** The payment is either still being confirmed or hasn't been allocated. Look for it under Pending Payments or Your Unreconciled Payments (§7).
 

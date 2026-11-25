@@ -82,7 +82,7 @@ This is where the real work of registering happens — one page per Event Versio
 
 **Candidate Requirements** (top card): a checklist of the basic information this specific Event needs from you before you can be registered — things like Birthday, Shirt Size, Height, Home Address, and Emergency Contact, depending on what this Event requires. Green means done and red means not done yet. Each one is a link straight to the Student Details or Emergency Contacts page where you can complete it.
 
-**Registration**: shows your **voice part** and **program name** (how your name appears in printed programs) for this specific Event, plus your teacher's name. Select the pencil icon next to either field to edit it — your voice part is limited to the ones this Event offers to your grade, and your preferred voice part (from Student Details) is preselected automatically when it's one of the options. A **Withdraw from this Event** button is also here if you need to drop out — this takes effect immediately, you can't undo it yourself, and your teacher will be able to see that you've withdrawn.
+**Registration**: shows your **voice part** and **program name** (how your name appears in printed programs) for this specific Event, plus your teacher's name. Select the pencil icon next to either field to edit it. Your voice part is limited to the ones this Event offers to your grade, and your preferred voice part (from Student Details) is preselected automatically when it's one of the options. If you've already uploaded recordings, changing your voice part means replacing each one with a recording of the new part. Once your teacher has approved a recording, only your teacher can change your voice part. A **Withdraw from this Event** button is also here if you need to drop out — this takes effect immediately, you can't undo it yourself, and your teacher will be able to see that you've withdrawn.
 
 **Application**: appears once this Event has published an application. Select **View** to read it (also available as a PDF download). If this Event uses electronic signatures ("EApplication"), you'll see two checkboxes inside the View window:
 
@@ -93,13 +93,14 @@ Because there's no separate parent account in StudentFolder.info yet, you check 
 
 The Application section is locked (View disabled, checkboxes unavailable) until every Candidate Requirement above is met — finish those first.
 
-**Recordings**: appears only for Events that use remote (recorded) auditions. For each required recording slot:
+**Recordings**: appears only for Events that use remote (recorded) auditions. Before your first upload, you may be asked to confirm your voice part: select **Yes** if it's right, or **Change voice part** if it isn't. Then, for each required recording slot:
 
-- **Upload** a file if nothing's there yet (audio: mp3/wav/m4a, or video: mp4/mov, depending on what this Event asks for; up to 50MB).
+- **Upload** a file if nothing's there yet (audio: mp3/wav/m4a, or video: mp4/mov, depending on what this Event asks for; up to 50MB). Each time, check the box confirming that the recording is your voice part.
 - While a recording is **Pending Review**, you can **Replace** it or **Delete** it — deleting doesn't require you to have a replacement ready.
+- A red **Recorded as** badge means the recording was uploaded for a different voice part than the one you have now. Replace it with a recording of your current part. You can't be registered while it's there.
 - Once your teacher **Approves** a recording, it locks — you can only listen to it, not delete or replace it. If it needs to change after approval, you'll need to ask your teacher.
 
-**Pitch Files**: select the **Pitch Files** button near the top of the page to open reference audio/PDFs for your own voice part (plus anything marked for all voice parts). This is reference material only, and isn't part of any checklist. It's available from the start of the registration period until the Event's final deadline for teacher changes, which can be later than your own. If nothing shows up, either no files have been added yet for your voice part, or your teacher has chosen not to share pitch files with candidates for this Event.
+**Pitch Files**: select the **Pitch Files** button near the top of the page to open reference audio/PDFs for your own voice part (plus anything marked for all voice parts). If you haven't confirmed your voice part yet, you may be asked to do that first. This is reference material only, and isn't part of any checklist. It's available from the start of the registration period until the Event's final deadline for teacher changes, which can be later than your own. If nothing shows up, either no files have been added yet for your voice part, or your teacher has chosen not to share pitch files with candidates for this Event.
 
 **Payment**: if this Event takes electronic payment from students, and your specific teacher has opted in to it, you'll see **Pay Registration Fee** here while that fee is due. You can pay it from the start of the registration period until the final deadline for teacher changes or the start of adjudication, whichever comes first. If an Event also charges participation or housing fees, your teacher will tell you how they're paid. Your payment history is listed below, read-only. You may also see:
 
@@ -124,10 +125,10 @@ Students can only join a school and teacher that are already set up in the syste
 That teacher hasn't finished verifying their school email yet. Check back later, or ask them directly to complete setup.
 
 **Why can't I edit my voice part, sign my application, or change a recording anymore?**
-Look at the banner at the top of the page. Most often the student registration period hasn't opened yet or has closed. It can also be that you've withdrawn or moved past registration, or that your teacher hasn't accepted the Event's requirements yet. If something needs to change after your registration period closes, ask your teacher right away; they may have a little more time than you do.
+Look at the banner at the top of the page. If there's no banner, your teacher has probably approved a recording: that locks the recording, and only your teacher can change your voice part from then on. If there is one, most often the student registration period hasn't opened yet or has closed. It can also be that you've withdrawn or moved past registration, or that your teacher hasn't accepted the Event's requirements yet. If something needs to change after your registration period closes, ask your teacher right away; they may have a little more time than you do.
 
 **I've finished everything, but I'm still "Pending" — why?**
-Your teacher may still need to approve your recordings, certify your paper application, or refresh your status, so check with them. It can also be that the final deadline for registering has passed, or that your school has reached this Event's limit on how many students may audition.
+Check your recordings for a red **Recorded as** badge, which means that one is for a different voice part and needs to be replaced. Otherwise, your teacher may still need to approve your recordings, certify your paper application, or refresh your status, so check with them. It can also be that the final deadline for registering has passed, or that your school has reached this Event's limit on how many students may audition.
 
 **There's no parent account — how does my parent actually sign the application?**
 There isn't a separate parent login. On an Event that uses electronic signatures, you check both boxes yourself — one for your own signature, and one confirming your parent/guardian has reviewed and approved it on your behalf.
