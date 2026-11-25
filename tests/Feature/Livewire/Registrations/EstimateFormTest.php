@@ -15,7 +15,9 @@ use App\Models\VersionEpaymentConfig;
 use App\Models\VersionInvitation;
 use App\Models\VersionMembershipRequirement;
 use App\Models\VersionObligation;
+use App\Models\VoicePart;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
@@ -268,4 +270,37 @@ test('the online-only notice never shows when teachers cannot pay online', funct
 
     Livewire::test(EstimateForm::class, ['version' => $version])
         ->assertDontSee('This event accepts online payment only');
+});
+
+test('the limit notice appears for either cap without quoting a number', function (string $cap) {
+    $teacher = makeEstimateFormTeacher();
+    $version = Version::factory()->create([$cap => 1]);
+    $school = School::factory()->create();
+    actingAs($teacher->user);
+    inviteEstimateFormTeacher($teacher, $version);
+    // VoicePartSeeder's id 2 is an upper voice (EstimateFormData::UPPER_VOICE_PART_IDS).
+    $upperVoice = VoicePart::find(2) ?? VoicePart::factory()->create(['id' => 2]);
+    foreach (range(1, 2) as $ignored) {
+        registerEstimateFormCandidate($teacher, $version, $school)->update(['voice_part_id' => $upperVoice->id]);
+    }
+
+    Livewire::test(EstimateForm::class, ['version' => $version])
+        ->assertSee('This Version limits how many students the Estimate Form lists')
+        ->assertDontSee('Only the first');
+})->with(['max_registrants', 'max_upper_voice_registrants']);
+
+test('with several schools, the limit notice appears only for the school over the limit', function () {
+    $teacher = makeEstimateFormTeacher();
+    $version = Version::factory()->create(['max_registrants' => 1]);
+    $overLimit = School::factory()->create(['name' => 'Aspen High']);
+    $within = School::factory()->create(['name' => 'Birch High']);
+    actingAs($teacher->user);
+    inviteEstimateFormTeacher($teacher, $version);
+    registerEstimateFormCandidate($teacher, $version, $overLimit);
+    registerEstimateFormCandidate($teacher, $version, $overLimit);
+    registerEstimateFormCandidate($teacher, $version, $within);
+
+    Livewire::test(EstimateForm::class, ['version' => $version])
+        ->assertViewHas('truncatedSchoolIds', fn (Collection $ids): bool => $ids->all() === [$overLimit->id])
+        ->assertSeeInOrder(['Aspen High', 'This Version limits how many students the Estimate Form lists', 'Birch High']);
 });

@@ -75,7 +75,7 @@
         </table>
 
         @if ($data->truncated)
-            <p class="truncated-note">Only the first {{ $version->max_registrants }} registered candidates (this Version's maximum) are listed above.</p>
+            <p class="truncated-note">This Version limits how many students the Estimate Form lists, so not all of your registered candidates appear, and its totals cover only those listed.</p>
         @endif
 
         <table class="totals-table">

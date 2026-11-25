@@ -67,7 +67,7 @@
 
             @if ($singleSchoolData->truncated)
                 <flux:callout variant="warning" icon="exclamation-triangle" class="mb-4">
-                    <flux:callout.text>Only the first {{ $version->max_registrants }} registered candidates (this Version's maximum) appear on the Estimate Form — contact your Event Manager if this doesn't look right.</flux:callout.text>
+                    <flux:callout.text>This Version limits how many students the Estimate Form lists, so not all of your registered candidates appear, and its totals cover only those listed. Contact your Event Manager if this doesn't look right.</flux:callout.text>
                 </flux:callout>
             @endif
 
@@ -96,6 +96,11 @@
                             Download PDF
                         </flux:button>
                     </div>
+                    @if ($truncatedSchoolIds->contains($school->id))
+                        <flux:callout variant="warning" icon="exclamation-triangle" class="mt-3">
+                            <flux:callout.text>This Version limits how many students the Estimate Form lists, so not all of your registered candidates appear, and its totals cover only those listed. Contact your Event Manager if this doesn't look right.</flux:callout.text>
+                        </flux:callout>
+                    @endif
                 </flux:card>
             @endforeach
         </div>
