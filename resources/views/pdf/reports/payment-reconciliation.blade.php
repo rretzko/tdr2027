@@ -5,7 +5,7 @@
     @include('pdf.partials.report-styles')
 </head>
 <body>
-    <h1>Payment Reconciliation</h1>
+    <h1>Payment Reconciliation{{ isset($feeType) ? ': '.$feeType->label() : '' }}</h1>
     <p class="subheading">{{ $version->event->name }} &mdash; {{ $version->name }}</p>
 
     <p>
@@ -32,7 +32,7 @@
                 <tr>
                     <th>School</th>
                     <th>Teacher</th>
-                    <th>Registered</th>
+                    <th>Students</th>
                     <th>Due</th>
                     @if ($hasWaivers = ($versionTotals['waivedCents'] ?? 0) > 0)
                         <th>Waived</th>

@@ -22,6 +22,7 @@
                     $statusLabel = $candidate->status->label();
                     $candidateDate = $candidate->version->candidateDate();
                     [$windowLabel, $windowColor] = match (true) {
+                        $candidate->version->isClosed() => ['Participation fee', 'sky'],
                         ! $candidate->version->candidateWindowHasOpened() => ['Opens '.$candidateDate->start_at->forDisplay()->format('M j, g:i A'), 'sky'],
                         $candidate->version->candidateWindowHasClosed() => ['Registration closed', 'zinc'],
                         $candidateDate?->end_at !== null => ['Closes '.$candidateDate->end_at->forDisplay()->format('M j, g:i A'), 'green'],

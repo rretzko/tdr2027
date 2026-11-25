@@ -17,6 +17,7 @@
                     <th>Candidate</th>
                     <th>Date</th>
                     <th>Type</th>
+                    <th>Fee</th>
                     <th>Amount</th>
                     <th>Reference</th>
                     <th>Status</th>
@@ -28,6 +29,7 @@
                         <td>{{ $row['candidate']->student->user->sort_name }}</td>
                         <td>{{ $row['paidAt']->format('M j, Y') }}</td>
                         <td>{{ $row['type'] }}</td>
+                        <td>{{ $row['feeType']->label() }}</td>
                         <td>{{ $row['amountCents'] < 0 ? '-' : '' }}${{ number_format(abs($row['amountCents']) / 100, 2) }}</td>
                         <td>{{ $row['referenceNumber'] ?? '—' }}</td>
                         <td>{{ $row['status']->label() }}</td>

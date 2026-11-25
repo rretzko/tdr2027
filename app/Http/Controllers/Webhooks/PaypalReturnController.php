@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Webhooks;
 
+use App\Enums\PaymentTransactionStatus;
 use App\Enums\Vendor;
 use App\Http\Controllers\Controller;
 use App\Models\Candidate;
 use App\Models\PaymentTransaction;
 use App\Models\Version;
 use App\Services\Payments\PaypalPaymentGateway;
+use App\Support\CheckoutReturnUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -35,7 +37,15 @@ class PaypalReturnController extends Controller
             ->where('vendor_transaction_id', $token)
             ->firstOrFail();
 
-        $gateway->captureOrder($transaction);
+        // Cancelled at PayPal: nothing was approved, so there's nothing to
+        // capture. Expiring the row lets the payer try again right away.
+        if ($request->boolean('cancelled')) {
+            PaymentTransaction::where('id', $transaction->id)
+                ->where('status', PaymentTransactionStatus::Pending->value)
+                ->update(['status' => PaymentTransactionStatus::Expired->value]);
+        } else {
+            $gateway->captureOrder($transaction);
+        }
 
         $version = Version::findOrFail((int) $request->query('version'));
 
@@ -53,9 +63,9 @@ class PaypalReturnController extends Controller
             // through the PayPal return URL.
             return $transaction->payer_student_id !== null
                 ? redirect()->route('sfdi.events.candidate', ['candidate' => $candidate])
-                : redirect()->route('registrations.candidate', ['version' => $version, 'candidate' => $candidate]);
+                : redirect()->to(CheckoutReturnUrl::teacher($version, $candidate));
         }
 
-        return redirect()->route('registrations.version', ['version' => $version]);
+        return redirect()->to(CheckoutReturnUrl::teacher($version, null));
     }
 }

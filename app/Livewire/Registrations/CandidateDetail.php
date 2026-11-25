@@ -34,6 +34,7 @@ use App\Models\VersionUploadFile;
 use App\Models\VoicePart;
 use App\Services\AuditionCapService;
 use App\Services\CandidateFeeCalculator;
+use App\Services\CandidateFeeLedger;
 use App\Services\CandidateService;
 use App\Services\CoTeacherAccessService;
 use App\Services\Payments\CheckoutInProgressGuard;
@@ -136,6 +137,8 @@ class CandidateDetail extends Component
     public ?string $reviewUrl = null;
 
     // Payment form
+    public string $payment_fee_type = 'registration';
+
     public string $payment_type = '';
 
     public string $payment_amount = '';
@@ -762,15 +765,12 @@ class CandidateDetail extends Component
 
         abort_unless($this->version->epaymentTeacherReady(), 403);
         abort_unless(match ($feeType) {
-            FeeType::Registration => $this->version->registrationFeePayable(),
-            FeeType::Participation => $this->version->participationFeePayable(),
+            FeeType::Registration => $this->version->registrationFeePayableByTeacher(),
+            FeeType::Participation => $this->version->participationFeePayableOnline(),
             FeeType::Housing => $this->version->housingFeePayable(),
         }, 403);
 
-        $eligibleStates = match ($feeType) {
-            FeeType::Registration => CandidateStatus::registrationFeeEligibleStates(),
-            FeeType::Participation, FeeType::Housing => [CandidateStatus::Accepted],
-        };
+        $eligibleStates = $this->version->feePayableStates($feeType);
         // getRawOriginal(), not the magic-cast property — Larastan can't
         // infer the enum cast through this method-based casts() return here
         // (cataloged Larastan quirk; see PHPStan-quirks memory).
@@ -827,52 +827,17 @@ class CandidateDetail extends Component
         // (cataloged Larastan quirk; see PHPStan-quirks memory).
         $candidateStatus = CandidateStatus::from((string) $this->candidate->getRawOriginal('status'));
 
-        // Balance due mirrors PaymentReconciliation::baseRows() — due accrues
-        // the registration fee once fee-eligible, plus the participation fee
-        // once that window opens and the candidate was Accepted; paid is
-        // every Completed allocation on this candidate regardless of which
-        // fee it satisfied (registration/participation are never both
-        // payable at once — see FeeType). A zero or negative balance
-        // (fully paid, or an overpayment) suppresses the button.
-        // Net of per-student fee waivers — see CandidateFeeCalculator.
-        $feeCalculator = app(CandidateFeeCalculator::class);
-        $dueCents = $feeCalculator->combinedDueCents($this->version, $this->candidate);
-        $paidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
-            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value))
-            ->sum('amount');
-        $balanceDue = $dueCents - $paidCents > 0;
-        $overpaymentCents = max(0, $paidCents - $dueCents);
+        // Each fee has its own balance (CandidateFeeLedger); a fully paid or
+        // overpaid fee suppresses its own button only.
+        $ledger = app(CandidateFeeLedger::class);
+        $owed = fn (FeeType $type): bool => $epaymentTeacherReady
+            && in_array($candidateStatus, $this->version->feePayableStates($type), true)
+            && $ledger->balanceCents($this->version, $this->candidate, $type) > 0;
 
-        $registrationFeeDue = $epaymentTeacherReady
-            && $this->version->registrationFeePayable()
-            && in_array($candidateStatus, CandidateStatus::registrationFeeEligibleStates(), true)
-            && $balanceDue;
-
-        $participationFeeDue = $epaymentTeacherReady
-            && $this->version->participationFeePayable()
-            && $candidateStatus === CandidateStatus::Accepted
-            && $balanceDue;
-
-        // Housing deliberately stays OUTSIDE the combined registration+
-        // participation balance above (confirmed with the product owner,
-        // studentfolder-module.md §0 second pass, 2026-08-18 — the
-        // already-confirmed reconciliation formula, epayment-integration.md
-        // §5, does not change) — it gets its own independent due/paid pair,
-        // matched via payment_transactions.fee_type (written only by the
-        // electronic gateways at checkout; a manually recorded payment
-        // isn't attributable to a specific fee type, so it can't satisfy
-        // this balance — flag if that gap needs closing later).
-        $housingCents = $feeCalculator->feeCents($this->version, $this->candidate, FeeType::Housing);
-        $housingPaidCents = (int) PaymentAllocation::where('candidate_id', $this->candidate->id)
-            ->whereHas('paymentTransaction', fn ($q) => $q->where('status', PaymentTransactionStatus::Completed->value)
-                ->where('fee_type', FeeType::Housing->value))
-            ->sum('amount');
-        $housingBalanceDue = $housingCents - $housingPaidCents > 0;
-
-        $housingFeeDue = $epaymentTeacherReady
-            && $this->version->housingFeePayable()
-            && $candidateStatus === CandidateStatus::Accepted
-            && $housingBalanceDue;
+        $registrationFeeDue = $this->version->registrationFeePayableByTeacher() && $owed(FeeType::Registration);
+        $participationFeeDue = $this->version->participationFeePayableOnline() && $owed(FeeType::Participation);
+        $housingFeeDue = $this->version->housingFeePayable() && $owed(FeeType::Housing);
+        $overpaymentCents = $ledger->overpaymentCents($this->version, $this->candidate);
 
         return [
             'registrationFeeDue' => $registrationFeeDue,
@@ -898,14 +863,24 @@ class CandidateDetail extends Component
         }
     }
 
+    private function defaultPaymentFeeType(): FeeType
+    {
+        return $this->version->isClosed()
+            && $this->candidate->getRawOriginal('status') === CandidateStatus::Accepted->value
+            && (int) $this->version->fees?->participation > 0
+                ? FeeType::Participation
+                : FeeType::Registration;
+    }
+
     public function recordPayment(): void
     {
+        $this->payment_fee_type = $this->defaultPaymentFeeType()->value;
         $this->payment_type = '';
         $this->payment_amount = '';
         $this->payment_reference_number = '';
         $this->payment_comments = '';
         $this->payment_paid_at = now()->format('Y-m-d');
-        $this->resetErrorBag(['payment_type', 'payment_amount', 'payment_reference_number', 'payment_comments', 'payment_paid_at']);
+        $this->resetErrorBag(['payment_fee_type', 'payment_type', 'payment_amount', 'payment_reference_number', 'payment_comments', 'payment_paid_at']);
         $this->modal('record-payment')->show();
     }
 
@@ -923,6 +898,7 @@ class CandidateDetail extends Component
         $modalPaymentTypes = [PaymentType::Check->value, PaymentType::PurchaseOrder->value, PaymentType::Cash->value, PaymentType::Other->value, PaymentType::Refund->value];
 
         $validated = $this->validate([
+            'payment_fee_type' => ['required', Rule::enum(FeeType::class)],
             'payment_type' => ['required', 'string', Rule::in($modalPaymentTypes)],
             'payment_amount' => ['required', 'numeric', 'min:0.01', 'max:99999.99'],
             'payment_reference_number' => ['nullable', 'string', 'max:255'],
@@ -942,10 +918,8 @@ class CandidateDetail extends Component
         $transaction = PaymentTransaction::create([
             'version_id' => $this->version->id,
             'source' => PaymentSource::Manual,
-            // The manual form only records registration fees; without this
-            // the payment is invisible to every fee_type-scoped "Paid" total
-            // (Scorecard, Director Weekly Update).
-            'fee_type' => FeeType::Registration,
+            // Without this the payment is invisible to every per-fee total.
+            'fee_type' => FeeType::from($validated['payment_fee_type']),
             'payer_teacher_id' => $this->teacher()->id,
             'school_id' => $this->candidate->school_id,
             'amount' => $amountCents,

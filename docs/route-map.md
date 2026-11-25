@@ -99,6 +99,7 @@ Additional gate: `has.active.school` — Students and Registrations both need an
 | GET | `/students` | Students index | |
 | GET | `/registrations` | Registrations index | |
 | GET | `/registrations/results` | Results index | |
+| GET | `/registrations/{version}/participation-fees` | Participation Fees (closed Version) | PDF/CSV export |
 | GET | `/registrations/{version}` | Version dashboard | |
 | GET | `/registrations/{version}/request-invitation` | Request invitation | |
 | GET | `/registrations/{version}/obligations` | Obligations | |

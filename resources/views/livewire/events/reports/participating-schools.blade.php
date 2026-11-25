@@ -170,6 +170,12 @@
                 <flux:heading size="lg">Record payment</flux:heading>
             </div>
 
+            <flux:select wire:model="paymentFeeType" label="Fee">
+                    @foreach (\App\Enums\FeeType::cases() as $type)
+                        <flux:select.option value="{{ $type->value }}">{{ $type->label() }}</flux:select.option>
+                    @endforeach
+            </flux:select>
+
             <flux:select wire:model="paymentType" label="Payment type" placeholder="Select a payment type...">
                 <flux:select.option value="check">Check</flux:select.option>
                 <flux:select.option value="purchase_order">Purchase Order</flux:select.option>

@@ -292,8 +292,8 @@
                     <div class="rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/40 p-4">
                         <flux:heading size="xs" class="text-zinc-700 dark:text-zinc-300 mb-1">Pending Payments</flux:heading>
                         <flux:text size="sm" class="text-zinc-600 dark:text-zinc-400 mb-3">
-                            These payments haven't been confirmed by the payment processor yet. You'll be able to
-                            allocate them to your candidates once they clear.
+                            These payments haven't been confirmed by the payment processor yet. They'll count
+                            toward the students you selected once they clear.
                         </flux:text>
 
                         <div class="space-y-3">
@@ -660,7 +660,7 @@
                                     <flux:heading size="base">{{ $row['candidate']->student->user->sort_name }}</flux:heading>
                                     <span class="font-medium">{{ $row['amountCents'] < 0 ? '-' : '' }}${{ number_format(abs($row['amountCents']) / 100, 2) }}</span>
                                 </div>
-                                <div class="text-sm text-zinc-500">{{ $row['paidAt']->format('M j, Y') }} &middot; {{ $row['type'] }}</div>
+                                <div class="text-sm text-zinc-500">{{ $row['paidAt']->format('M j, Y') }} &middot; {{ $row['type'] }} &middot; {{ $row['feeType']->label() }}</div>
                                 <div class="text-sm text-zinc-500">
                                     {{ $row['referenceNumber'] ?? 'No reference' }} &middot; {{ $row['status']->label() }}
                                 </div>
@@ -673,6 +673,7 @@
                             <flux:table.column>Candidate</flux:table.column>
                             <flux:table.column>Date</flux:table.column>
                             <flux:table.column>Type</flux:table.column>
+                            <flux:table.column>Fee</flux:table.column>
                             <flux:table.column>Amount</flux:table.column>
                             <flux:table.column>Reference</flux:table.column>
                             <flux:table.column>Status</flux:table.column>
@@ -683,6 +684,7 @@
                                     <flux:table.cell class="font-medium">{{ $row['candidate']->student->user->sort_name }}</flux:table.cell>
                                     <flux:table.cell>{{ $row['paidAt']->format('M j, Y') }}</flux:table.cell>
                                     <flux:table.cell>{{ $row['type'] }}</flux:table.cell>
+                                    <flux:table.cell>{{ $row['feeType']->label() }}</flux:table.cell>
                                     <flux:table.cell>{{ $row['amountCents'] < 0 ? '-' : '' }}${{ number_format(abs($row['amountCents']) / 100, 2) }}</flux:table.cell>
                                     <flux:table.cell>{{ $row['referenceNumber'] ?? '—' }}</flux:table.cell>
                                     <flux:table.cell>{{ $row['status']->label() }}</flux:table.cell>

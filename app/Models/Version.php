@@ -6,8 +6,10 @@ namespace App\Models;
 
 use App\Enums\ApplicationType;
 use App\Enums\AuditionType;
+use App\Enums\CandidateStatus;
 use App\Enums\CutoffStrategy;
 use App\Enums\EventStatus;
+use App\Enums\FeeType;
 use App\Enums\PaymentEnvironment;
 use App\Enums\PitchFileVisibility;
 use App\Enums\ScoreOrder;
@@ -225,6 +227,87 @@ class Version extends Model
     public function participationFeePayable(): bool
     {
         return $this->getRawOriginal('status') === EventStatus::Closed->value;
+    }
+
+    /**
+     * The Participation Fee Payment dates, as a window on online payment
+     * only: manual payments can still be recorded outside it. No configured
+     * date (or no end) leaves that side open.
+     */
+    public function participationFeeWindowIsOpen(): bool
+    {
+        $date = $this->participationFeeDate();
+
+        return ($date?->start_at === null || ! $date->start_at->isFuture())
+            && ! $this->participationFeeWindowHasClosed();
+    }
+
+    public function participationFeeWindowHasClosed(): bool
+    {
+        $end = $this->participationFeeDate()?->end_at;
+
+        return $end !== null && ! $end->isFuture();
+    }
+
+    public function participationFeeDate(): ?VersionDate
+    {
+        return $this->dates->firstWhere('date_type', VersionDateType::ParticipationFee);
+    }
+
+    public function participationFeePayableOnline(): bool
+    {
+        return $this->participationFeePayable() && $this->participationFeeWindowIsOpen();
+    }
+
+    /**
+     * Closed, results released and a Participation fee configured: when the
+     * payment and reconciliation pages are linked. Waits for release so no
+     * page gives away an outcome early.
+     */
+    public function collectsParticipationFees(): bool
+    {
+        return $this->isClosed()
+            && $this->results_released_at !== null
+            && (int) $this->fees?->participation > 0;
+    }
+
+    /**
+     * Teachers may settle overdue registration fees alongside participation
+     * once the Version closes; students may not (registrationFeePayableByStudent()).
+     */
+    public function registrationFeePayableByTeacher(): bool
+    {
+        return $this->registrationFeePayable()
+            || ($this->collectsParticipationFees() && $this->participationFeeWindowIsOpen());
+    }
+
+    /**
+     * Candidate statuses that owe a fee on a balance report.
+     *
+     * @return list<CandidateStatus>
+     */
+    public function feeOwedStates(FeeType $feeType): array
+    {
+        return match (true) {
+            $feeType === FeeType::Registration => CandidateStatus::registrationFeeOwedStates(),
+            $this->isClosed() => [CandidateStatus::Accepted],
+            default => [],
+        };
+    }
+
+    /**
+     * Candidate statuses a fee may be paid for. Once closed, registration is
+     * only payable for candidates who actually registered.
+     *
+     * @return list<CandidateStatus>
+     */
+    public function feePayableStates(FeeType $feeType): array
+    {
+        return match (true) {
+            $feeType !== FeeType::Registration => [CandidateStatus::Accepted],
+            $this->isClosed() => CandidateStatus::registrationFeeOwedStates(),
+            default => CandidateStatus::registrationFeeEligibleStates(),
+        };
     }
 
     /**

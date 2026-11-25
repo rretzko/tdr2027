@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Livewire\Sfdi\Events;
 
-use App\Enums\EventStatus;
 use App\Models\Candidate;
 use App\Models\Student;
 use Illuminate\Support\Collection;
@@ -34,7 +33,7 @@ class Index extends Component
     {
         /** @var Collection<int, Candidate> $candidates */
         $candidates = Candidate::where('student_id', $this->student()->id)
-            ->whereHas('version', fn ($query) => $query->where('status', EventStatus::Active->value))
+            ->visibleToStudent()
             ->with(['version.event', 'version.dates', 'teacher.user'])
             ->get();
 
