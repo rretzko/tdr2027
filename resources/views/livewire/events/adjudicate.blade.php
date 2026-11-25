@@ -122,7 +122,7 @@
                             <div wire:key="recording-{{ $recording->id }}">
                                 <flux:text class="font-medium capitalize">{{ $recording->file_type }}</flux:text>
                                 {{-- Playback and length are logged for adjudication analytics (Adjudicate::trackRecording/recordDuration — both renderless). A pause fires just before ended, so it's skipped there. --}}
-                                <audio controls preload="metadata" class="w-full"
+                                <{{ $mediaTag }} controls preload="metadata" class="w-full"
                                     x-data="{ id: {{ $recording->id }}, needsDuration: @js($recording->duration_seconds === null), track(event) { $wire.trackRecording(this.id, event, $el.currentTime || 0) } }"
                                     x-on:play="track('recording_played')"
                                     x-on:pause="if (! $el.ended) track('recording_paused')"
@@ -130,7 +130,7 @@
                                     x-on:loadedmetadata="if (needsDuration && isFinite($el.duration) && $el.duration > 0) { needsDuration = false; $wire.recordDuration(id, $el.duration) }"
                                 >
                                     <source src="{{ \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($recording->url, now()->addHour()) }}">
-                                </audio>
+                                </{{ $mediaTag }}>
                             </div>
                         @endforeach
                     </div>
@@ -192,7 +192,7 @@
 
                     @if ($errors->any())
                         <flux:callout variant="danger" icon="exclamation-triangle">
-                            <flux:callout.text>Select a score for every factor before saving.</flux:callout.text>
+                            <flux:callout.text>{{ $errors->first('judging_ended') ?: 'Select a score for every factor before saving.' }}</flux:callout.text>
                         </flux:callout>
                     @endif
 
