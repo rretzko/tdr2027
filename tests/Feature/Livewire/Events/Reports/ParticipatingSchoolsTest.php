@@ -181,6 +181,42 @@ test('togglePacket creates a received packet row and toggling again clears it', 
     expect($packet->refresh()->isReceived())->toBeFalse();
 });
 
+test('packets and payments can still be recorded once every candidate is resolved by cut-offs', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    ['school' => $school, 'teacher' => $teacher] = makeParticipatingSchoolPair($version);
+    Candidate::where('version_id', $version->id)->update(['status' => CandidateStatus::NotAccepted->value]);
+
+    Livewire::actingAs($founder)
+        ->test(ParticipatingSchools::class, ['version' => $version])
+        ->assertSee($school->name)
+        ->call('togglePacket', $school->id, $teacher->id)
+        ->call('openPayment', $school->id, $teacher->id)
+        ->set('paymentType', 'check')
+        ->set('amount', '20.00')
+        ->call('savePayment')
+        ->assertHasNoErrors();
+
+    expect(VersionTeacherPacket::where('school_id', $school->id)->first()?->isReceived())->toBeTrue();
+    expect(PaymentTransaction::where('school_id', $school->id)->count())->toBe(1);
+});
+
+test('packets and payments are refused for a school/teacher pair that is not listed', function () {
+    $founder = makeFounder();
+    actingAs($founder);
+    $version = Version::factory()->create();
+    ['school' => $school, 'teacher' => $teacher] = makeParticipatingSchoolPair($version);
+    Candidate::where('version_id', $version->id)->update(['status' => CandidateStatus::Withdrew->value]);
+
+    foreach (['togglePacket', 'openPayment'] as $action) {
+        Livewire::actingAs($founder)
+            ->test(ParticipatingSchools::class, ['version' => $version])
+            ->call($action, $school->id, $teacher->id)
+            ->assertStatus(403);
+    }
+});
+
 test('togglePacket aborts with 403 for a school/teacher pair outside the acting Co-Registration Manager\'s county', function () {
     actingAs(makeFounder());
     $version = Version::factory()->create();
