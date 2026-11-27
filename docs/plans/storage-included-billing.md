@@ -1,7 +1,7 @@
 # Storage-included billing: plan
 
 **Branch:** `feature/storage-included-billing` (off `dev` at fd48be5)
-**Status:** approved 2026-11-25; on hold until the next session. No code written.
+**Status:** approved 2026-11-25; built 2026-11-27 on this branch (not yet merged).
 **Builds on:** `docs/plans/close-audition-invoice.md`
 
 ## Goal

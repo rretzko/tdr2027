@@ -37,7 +37,7 @@ season or school year, change `PlatformInvoiceNumberer` (a one-line change).
 | Question | Decision |
 |---|---|
 | What is "virtual" | `versions.audition_type = remote` **and** `versions.upload_type` is `audio` or `video` (`PlatformInvoiceService::isVirtual()`) |
-| Rate | **$24.95/month** (`config('billing.storage_fee_per_month_cents')` = 2495, env `BILLING_STORAGE_FEE_CENTS`); no per-Event override |
+| Rate | **$24.95/month** (`config('billing.storage_fee_per_month_cents')` = 2495, env `BILLING_STORAGE_FEE_CENTS`); no per-Event storage rate, but an Event's rate can be marked **storage included** (all-in), which drops the line; see [storage-included-billing.md](storage-included-billing.md) |
 | Window | one month before the Version's **Candidate** date `start_at` (`version_dates.date_type=candidate`, unique per Version; switched from the Teacher date on 2026-11-16 because Teacher dates vary too much) → one month after `versions.results_released_at` (no-overflow month math) |
 | Counting | **partial months round up**, minimum 1 (`StorageCharge::monthsRoundedUp()`); e.g. Aug 15 → Mar 20 = 7 mo 5 days → **8 months** |
 | No Candidate date | **held for attention**: not sent, `needs_attention` + `attention_reason`, founder alert (`no_candidate_date` mail variant); Founder Resend re-runs every check |
@@ -51,6 +51,11 @@ window, because the PDF prints them verbatim ("Candidate Access Date (mm/dd/yyyy
 `StorageCharge::startsAt()/endsAt()` derive the window (migration `2026_11_16_000003`, which also adds `attention_reason`).
 `amount_cents` is the total (registrant line + storage line). Founder test sends include the storage
 line, or omit it with a warning toast when the virtual Version has no Candidate date.
+
+**Storage included (added 2026-11-27):** when the Event's `platform_fee_includes_storage` is on, a virtual
+Version's invoice has no storage line, shows "Virtual audition file storage included" instead, and is sent
+even with no Candidate date. The term is snapshotted as `version_platform_invoices.storage_included`
+(migration `2026_11_25_000001`). Details: [storage-included-billing.md](storage-included-billing.md).
 
 ## Why a scheduler and not a delayed job
 
@@ -106,6 +111,8 @@ Version-owned, so it gets the `version_` prefix (naming convention).
 - `payment_note`: string, nullable (e.g. "check #1234")
 - `last_resent_at`: timestamp, nullable; `resend_count`: unsigned smallint, default 0
 - `voided_reason`: string, nullable
+- `storage_access_at`, `storage_close_at`, `storage_months`, `storage_rate_cents`, `attention_reason` (2026-11-16, above)
+- `storage_included`: boolean, default false (2026-11-27, [storage-included-billing.md](storage-included-billing.md))
 - timestamps
 
 **Invoice numbering**: allocate inside the send transaction. Take
@@ -113,7 +120,8 @@ Version-owned, so it gets the `version_` prefix (naming convention).
 unique index on `number` is the final guard against a collision.
 
 **Rate storage**: `events.platform_fee_per_registrant_cents` (unsigned int, nullable), falling back
-to `config('billing.platform_fee_per_registrant_cents')` = **275**. It's per Event because the
+to `config('billing.platform_fee_per_registrant_cents')` = **275**. Next to it,
+`events.platform_fee_includes_storage` (boolean, default false) marks the rate all-in; it requires a typed rate. It's per Event because the
 organization is the customer. Only the Founder can edit it, from the Founder invoices screen (see
 below), so it isn't exposed in VersionEdit for Event Managers.
 

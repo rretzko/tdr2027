@@ -28,6 +28,9 @@ Thank you for using TheDirectorsRoom.com for **{{ $data->versionName }}**. Your 
 | | |
 |:--|--:|
 | Registrants: {{ number_format($data->registrantCount) }} × {{ PlatformInvoiceData::money($data->rateCents) }} | {{ PlatformInvoiceData::money($data->registrantAmountCents) }} |
+@if ($data->storageIncluded)
+| File storage: included | |
+@endif
 @if ($data->storage)
 | File storage: {{ $data->storage->months }} {{ Str::plural('month', $data->storage->months) }} × {{ PlatformInvoiceData::money($data->storage->rateCents) }} | {{ PlatformInvoiceData::money($data->storage->amountCents()) }} |
 @endif
