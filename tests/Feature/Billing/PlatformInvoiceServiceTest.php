@@ -402,3 +402,170 @@ test('a virtual Version with zero registrants is still voided', function () {
     expect(platformInvoiceService()->send($invoice))->toBe(PlatformInvoiceSendOutcome::Voided);
     Mail::assertNothingSent();
 });
+
+// Storage-included (all-in) billing: docs/plans/storage-included-billing.md
+
+function platformInvoiceAllInVersion(?string $candidateStart = '2026-09-15 12:00:00', int $rateCents = 400): Version
+{
+    $version = platformInvoiceVirtualVersion($candidateStart);
+    Event::whereKey($version->event_id)->update(['platform_fee_per_registrant_cents' => $rateCents, 'platform_fee_includes_storage' => true]);
+
+    return $version->fresh();
+}
+
+test('an all-in virtual Version bills registrants only and snapshots storage included', function () {
+    Mail::fake();
+    $version = platformInvoiceAllInVersion();
+    platformInvoiceRegistrants($version, 35);
+    platformInvoiceManager($version, 'em@example.com');
+    $invoice = platformInvoiceService()->scheduleOnClose($version, null);
+
+    expect(platformInvoiceService()->send($invoice))->toBe(PlatformInvoiceSendOutcome::Sent);
+    $invoice->refresh();
+
+    expect($invoice->rate_cents)->toBe(400);
+    expect($invoice->amount_cents)->toBe(35 * 400);
+    expect($invoice->storage_included)->toBeTrue();
+    expect($invoice->storage_access_at)->toBeNull();
+    expect($invoice->storage_close_at)->toBeNull();
+    expect($invoice->storage_months)->toBeNull();
+    expect($invoice->storage_rate_cents)->toBeNull();
+});
+
+test('the all-in PDF and email show the included note and no storage charge', function () {
+    Mail::fake();
+    $version = platformInvoiceAllInVersion();
+    platformInvoiceRegistrants($version, 3);
+    platformInvoiceManager($version, 'em@example.com');
+    $invoice = platformInvoiceService()->scheduleOnClose($version, null);
+    platformInvoiceService()->send($invoice);
+
+    $sent = Mail::sent(PlatformInvoiceMail::class)->first();
+    expect($sent->data->storageIncluded)->toBeTrue();
+    expect($sent->data->storage)->toBeNull();
+
+    $html = view('pdf.platform-invoice', ['data' => PlatformInvoiceData::fromInvoice($invoice->fresh())])->render();
+    expect($html)->toContain('Virtual audition file storage included')->toContain('$12.00');
+    expect(str_contains($html, 'Candidate Access Date'))->toBeFalse();
+    expect(str_contains($html, '/mo'))->toBeFalse();
+
+    $mail = $sent->render();
+    expect($mail)->toContain('File storage: included');
+    expect(str_contains($mail, '$24.95'))->toBeFalse();
+});
+
+test('an all-in virtual Version with no Candidate date is sent without a founder alert', function () {
+    Mail::fake();
+    $version = platformInvoiceAllInVersion(null);
+    platformInvoiceRegistrants($version, 2);
+    platformInvoiceManager($version, 'em@example.com');
+    $invoice = platformInvoiceService()->scheduleOnClose($version, null);
+
+    expect(platformInvoiceService()->send($invoice))->toBe(PlatformInvoiceSendOutcome::Sent);
+
+    Mail::assertSent(PlatformInvoiceMail::class, 1);
+    Mail::assertSent(PlatformInvoiceMail::class, fn (PlatformInvoiceMail $mail): bool => $mail->hasTo('em@example.com')
+        && $mail->variant === PlatformInvoiceMail::VARIANT_INVOICE);
+    expect($invoice->fresh()->amount_cents)->toBe(800);
+});
+
+test('an invoice held for a missing Candidate date sends once its Event includes storage', function () {
+    Mail::fake();
+    $version = platformInvoiceVirtualVersion(null);
+    platformInvoiceRegistrants($version, 2);
+    platformInvoiceManager($version, 'em@example.com');
+    $invoice = platformInvoiceService()->scheduleOnClose($version, null);
+
+    expect(platformInvoiceService()->send($invoice))->toBe(PlatformInvoiceSendOutcome::NoCandidateDate);
+
+    Event::whereKey($version->event_id)->update(['platform_fee_per_registrant_cents' => 400, 'platform_fee_includes_storage' => true]);
+
+    expect(platformInvoiceService()->send($invoice->fresh()))->toBe(PlatformInvoiceSendOutcome::Sent);
+    $invoice->refresh();
+    expect($invoice->storage_included)->toBeTrue();
+    expect($invoice->needs_attention)->toBeFalse();
+    expect($invoice->attention_reason)->toBeNull();
+});
+
+test('an all-in Event on a non-virtual Version snapshots storage included false and shows no note', function () {
+    Mail::fake();
+    $version = platformInvoiceVersion(['audition_type' => 'in_person', 'upload_type' => 'none'], ['platform_fee_per_registrant_cents' => 400, 'platform_fee_includes_storage' => true]);
+    platformInvoiceRegistrants($version, 2);
+    platformInvoiceManager($version, 'em@example.com');
+    $invoice = platformInvoiceService()->scheduleOnClose($version, null);
+
+    platformInvoiceService()->send($invoice);
+    $invoice->refresh();
+
+    expect($invoice->storage_included)->toBeFalse();
+    expect($invoice->amount_cents)->toBe(800);
+    $html = view('pdf.platform-invoice', ['data' => PlatformInvoiceData::fromInvoice($invoice)])->render();
+    expect(str_contains($html, 'file storage included'))->toBeFalse();
+});
+
+test('changing the Event flag after sending does not change a resent invoice', function (bool $startIncluded) {
+    Mail::fake();
+    $version = $startIncluded ? platformInvoiceAllInVersion() : platformInvoiceVirtualVersion();
+    platformInvoiceRegistrants($version, 2);
+    platformInvoiceManager($version, 'em@example.com');
+    $invoice = platformInvoiceService()->scheduleOnClose($version, null);
+    platformInvoiceService()->send($invoice);
+    $before = $invoice->fresh();
+
+    Event::whereKey($version->event_id)->update(['platform_fee_per_registrant_cents' => 400, 'platform_fee_includes_storage' => ! $startIncluded]);
+    platformInvoiceService()->resend($before);
+
+    $resent = Mail::sent(PlatformInvoiceMail::class, fn (PlatformInvoiceMail $mail): bool => $mail->variant === PlatformInvoiceMail::VARIANT_RESEND)->first();
+    expect($resent->data->storageIncluded)->toBe($startIncluded);
+    expect($resent->data->amountCents)->toBe($before->amount_cents);
+    expect($resent->data->storage === null)->toBe($startIncluded);
+})->with(['turned off after an all-in send' => [true], 'turned on after a storage-billed send' => [false]]);
+
+test('turning the flag on while pending applies at send time', function () {
+    Mail::fake();
+    $version = platformInvoiceVirtualVersion();
+    platformInvoiceRegistrants($version, 2);
+    platformInvoiceManager($version, 'em@example.com');
+    $invoice = platformInvoiceService()->scheduleOnClose($version, null);
+
+    Event::whereKey($version->event_id)->update(['platform_fee_per_registrant_cents' => 400, 'platform_fee_includes_storage' => true]);
+    Carbon::setTestNow(Carbon::now()->addDay()->addMinute());
+    artisan('invoices:send-due')->assertSuccessful();
+
+    $invoice->refresh();
+    expect($invoice->statusEnum())->toBe(PlatformInvoiceStatus::Sent);
+    expect($invoice->storage_included)->toBeTrue();
+    expect($invoice->storage_months)->toBeNull();
+    expect($invoice->amount_cents)->toBe(800);
+});
+
+test('sendTest on an all-in Version with no Candidate date reports no missing storage line', function () {
+    Mail::fake();
+    $version = platformInvoiceAllInVersion(null);
+    platformInvoiceRegistrants($version, 2);
+
+    expect(platformInvoiceService()->sendTest($version))->toBeFalse();
+    Mail::assertSent(PlatformInvoiceMail::class, fn (PlatformInvoiceMail $mail): bool => $mail->variant === PlatformInvoiceMail::VARIANT_TEST
+        && $mail->data->storageIncluded
+        && $mail->data->storage === null
+        && $mail->data->amountCents === 800);
+
+    // The storage-billed path still warns.
+    expect(platformInvoiceService()->sendTest(platformInvoiceVirtualVersion(null)))->toBeTrue();
+});
+
+test('a 3.00 override without the flag still bills storage (Missouri terms)', function () {
+    Mail::fake();
+    $version = platformInvoiceVirtualVersion();
+    Event::whereKey($version->event_id)->update(['platform_fee_per_registrant_cents' => 300]);
+    platformInvoiceRegistrants($version, 10);
+    platformInvoiceManager($version, 'em@example.com');
+    $invoice = platformInvoiceService()->scheduleOnClose($version, null);
+
+    platformInvoiceService()->send($invoice);
+    $invoice->refresh();
+
+    expect($invoice->storage_included)->toBeFalse();
+    expect($invoice->storage_months)->toBe(8);
+    expect($invoice->amount_cents)->toBe(10 * 300 + 8 * 2495);
+});

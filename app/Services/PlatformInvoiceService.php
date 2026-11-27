@@ -40,6 +40,9 @@ use Throwable;
  * Virtual Versions (Remote + Audio/Video uploads) get a second line for file
  * storage — see storageCharge(). A virtual Version with no Candidate date is
  * held for the Founder's attention rather than sent without that line.
+ * An Event whose rate is all-in (platform_fee_includes_storage) bills no
+ * storage line and needs no Candidate date — see billsStorage()
+ * (docs/plans/storage-included-billing.md).
  */
 final class PlatformInvoiceService
 {
@@ -171,13 +174,14 @@ final class PlatformInvoiceService
             }
 
             $storage = null;
+            $storageIncluded = $this->storageIncluded($version);
 
-            if ($this->isVirtual($version)) {
+            if ($this->billsStorage($version)) {
                 $storage = $this->storageCharge($version);
 
                 if ($storage === null) {
                     $locked->update(['send_at' => null, 'needs_attention' => true, 'attention_reason' => self::ATTENTION_NO_CANDIDATE_DATE]);
-                    $founderAlert = [PlatformInvoiceData::preview($version, $registrantCount, $rateCents, null, 'PENDING', false), PlatformInvoiceMail::VARIANT_NO_CANDIDATE_DATE];
+                    $founderAlert = [PlatformInvoiceData::preview($version, $registrantCount, $rateCents, null, 'PENDING', false, false), PlatformInvoiceMail::VARIANT_NO_CANDIDATE_DATE];
 
                     return PlatformInvoiceSendOutcome::NoCandidateDate;
                 }
@@ -187,7 +191,7 @@ final class PlatformInvoiceService
 
             if ($recipients === []) {
                 $locked->update(['send_at' => null, 'needs_attention' => true, 'attention_reason' => self::ATTENTION_NO_RECIPIENTS]);
-                $founderAlert = [PlatformInvoiceData::preview($version, $registrantCount, $rateCents, $storage, 'PENDING', false), PlatformInvoiceMail::VARIANT_NO_RECIPIENTS];
+                $founderAlert = [PlatformInvoiceData::preview($version, $registrantCount, $rateCents, $storage, 'PENDING', false, $storageIncluded), PlatformInvoiceMail::VARIANT_NO_RECIPIENTS];
 
                 return PlatformInvoiceSendOutcome::NoRecipients;
             }
@@ -206,6 +210,7 @@ final class PlatformInvoiceService
                 'storage_close_at' => $storage?->closeAt,
                 'storage_months' => $storage?->months,
                 'storage_rate_cents' => $storage?->rateCents,
+                'storage_included' => $storageIncluded,
                 'amount_cents' => $registrantCount * $rateCents + ($storage?->amountCents() ?? 0),
                 'recipients' => $recipients,
                 'needs_attention' => false,
@@ -264,13 +269,14 @@ final class PlatformInvoiceService
     /**
      * Founder "Send test invoice": live numbers, TEST watermark, founder
      * only. Persists nothing. A virtual Version with no Candidate date is
-     * previewed without its storage line.
+     * previewed without its storage line (unless its storage is included).
      *
      * @return bool whether the storage line was left off a virtual Version for lack of a Candidate date
      */
     public function sendTest(Version $version): bool
     {
-        $storage = $this->isVirtual($version) ? $this->storageCharge($version) : null;
+        $billsStorage = $this->billsStorage($version);
+        $storage = $billsStorage ? $this->storageCharge($version) : null;
 
         $data = PlatformInvoiceData::preview(
             $version,
@@ -279,11 +285,30 @@ final class PlatformInvoiceService
             $storage,
             'TDR-TEST-PREVIEW',
             true,
+            $this->storageIncluded($version),
         );
 
         Mail::to($this->founderEmail())->send(new PlatformInvoiceMail($data, PlatformInvoiceMail::VARIANT_TEST));
 
-        return $this->isVirtual($version) && $storage === null;
+        return $billsStorage && $storage === null;
+    }
+
+    /**
+     * A virtual Version whose Event rate is all-in: no storage line, a
+     * "storage included" note instead. A missing or soft-deleted Event
+     * means false, as in rateCents().
+     */
+    public function storageIncluded(Version $version): bool
+    {
+        return $this->isVirtual($version) && $version->event?->platform_fee_includes_storage === true;
+    }
+
+    /**
+     * Whether this Version's invoice carries a file-storage line.
+     */
+    public function billsStorage(Version $version): bool
+    {
+        return $this->isVirtual($version) && ! $this->storageIncluded($version);
     }
 
     /**

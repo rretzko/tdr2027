@@ -34,6 +34,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $storage_close_at
  * @property int|null $storage_months
  * @property int|null $storage_rate_cents
+ * @property bool $storage_included
  * @property string|null $attention_reason
  * @property list<string>|null $recipients
  * @property bool $needs_attention
@@ -42,7 +43,7 @@ use Illuminate\Support\Carbon;
     'version_id', 'number', 'status', 'closed_by_user_id',
     'send_at', 'sent_at', 'issued_at', 'due_at',
     'registrant_count', 'rate_cents', 'amount_cents', 'recipients', 'needs_attention', 'attention_reason',
-    'storage_access_at', 'storage_close_at', 'storage_months', 'storage_rate_cents',
+    'storage_access_at', 'storage_close_at', 'storage_months', 'storage_rate_cents', 'storage_included',
     'paid_at', 'paid_by_user_id', 'payment_note',
     'last_resent_at', 'resend_count', 'voided_reason',
 ])]
@@ -72,6 +73,7 @@ class VersionPlatformInvoice extends Model
             'storage_close_at' => 'datetime',
             'storage_months' => 'integer',
             'storage_rate_cents' => 'integer',
+            'storage_included' => 'boolean',
             'recipients' => 'array',
             'needs_attention' => 'boolean',
         ];

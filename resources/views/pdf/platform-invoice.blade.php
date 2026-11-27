@@ -69,7 +69,12 @@
         </thead>
         <tbody>
             <tr>
-                <td>TheDirectorsRoom.com platform usage: {{ $data->versionName }}</td>
+                <td>
+                    TheDirectorsRoom.com platform usage: {{ $data->versionName }}
+                    @if ($data->storageIncluded)
+                        <br><span class="muted">Virtual audition file storage included</span>
+                    @endif
+                </td>
                 <td class="num">{{ number_format($data->registrantCount) }} {{ Str::plural('registrant', $data->registrantCount) }}</td>
                 <td class="num">{{ PlatformInvoiceData::money($data->rateCents) }}</td>
                 <td class="num">{{ PlatformInvoiceData::money($data->registrantAmountCents) }}</td>

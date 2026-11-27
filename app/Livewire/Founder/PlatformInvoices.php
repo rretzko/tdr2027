@@ -23,7 +23,8 @@ use Livewire\Component;
 /**
  * Founder screen for TDR's platform-usage invoices
  * (docs/plans/close-audition-invoice.md): list, mark paid/unpaid, resend,
- * test send (founder only) and per-Event rate overrides. Guarded actions
+ * test send (founder only) and per-Event billing terms (rate override and
+ * "storage included", docs/plans/storage-included-billing.md). Guarded actions
  * stay visible on every row and explain themselves in a toast when they
  * don't apply.
  */
@@ -50,6 +51,13 @@ class PlatformInvoices extends Component
      * @var array<int, string>
      */
     public array $rates = [];
+
+    /**
+     * Event id => whether its rate includes virtual file storage.
+     *
+     * @var array<int, bool>
+     */
+    public array $storageIncluded = [];
 
     /**
      * @return Collection<int, VersionPlatformInvoice>
@@ -243,12 +251,18 @@ class PlatformInvoices extends Component
     public function openRates(): void
     {
         $this->resetErrorBag();
-        $this->rates = Event::orderBy('name')->get()
+        $events = Event::orderBy('name')->get();
+
+        $this->rates = $events
             ->mapWithKeys(fn (Event $event): array => [
                 $event->id => $event->platform_fee_per_registrant_cents === null
                     ? ''
                     : number_format($event->platform_fee_per_registrant_cents / 100, 2, '.', ''),
             ])
+            ->all();
+
+        $this->storageIncluded = $events
+            ->mapWithKeys(fn (Event $event): array => [$event->id => $event->platform_fee_includes_storage])
             ->all();
 
         $this->modal('event-rates')->show();
@@ -257,25 +271,46 @@ class PlatformInvoices extends Component
     public function saveRates(): void
     {
         $this->validate(
-            ['rates.*' => ['nullable', 'numeric', 'min:0', 'max:1000']],
+            ['rates.*' => ['nullable', 'numeric', 'min:0', 'max:1000'], 'storageIncluded.*' => ['boolean']],
             ['rates.*.numeric' => 'Each rate must be a dollar amount.', 'rates.*.max' => 'A rate cannot exceed $1,000.', 'rates.*.min' => 'A rate cannot be negative.'],
         );
 
+        $events = Event::whereIn('id', array_unique([...array_keys($this->rates), ...array_keys($this->storageIncluded)]))->orderBy('name')->get();
+        $terms = [];
+
+        // An all-in rate must be typed, so nobody silently gets the default
+        // rate with storage included. A typed 0 is allowed.
+        foreach ($events as $event) {
+            $typed = trim((string) ($this->rates[$event->id] ?? ''));
+            $included = (bool) ($this->storageIncluded[$event->id] ?? false);
+
+            if ($included && $typed === '') {
+                $this->addError("rates.{$event->id}", "Enter a rate for {$event->name} to include storage.");
+
+                continue;
+            }
+
+            $terms[$event->id] = [$typed === '' ? null : (int) round(((float) $typed) * 100), $included];
+        }
+
+        if ($this->getErrorBag()->isNotEmpty()) {
+            return;
+        }
+
         $changed = 0;
 
-        foreach (Event::whereIn('id', array_keys($this->rates))->get() as $event) {
-            $typed = trim((string) ($this->rates[$event->id] ?? ''));
-            $cents = $typed === '' ? null : (int) round(((float) $typed) * 100);
+        foreach ($events as $event) {
+            [$cents, $included] = $terms[$event->id];
 
-            if ($event->platform_fee_per_registrant_cents !== $cents) {
-                $event->update(['platform_fee_per_registrant_cents' => $cents]);
+            if ($event->platform_fee_per_registrant_cents !== $cents || $event->platform_fee_includes_storage !== $included) {
+                $event->update(['platform_fee_per_registrant_cents' => $cents, 'platform_fee_includes_storage' => $included]);
                 $changed++;
             }
         }
 
         $this->modal('event-rates')->close();
 
-        Flux::toast(text: $changed === 0 ? 'No rate changes to save.' : "Saved per-registrant rates for {$changed} ".str('event')->plural($changed).'.', variant: 'success');
+        Flux::toast(text: $changed === 0 ? 'No billing changes to save.' : "Saved billing terms for {$changed} ".str('event')->plural($changed).'.', variant: 'success');
     }
 
     public function render(): View

@@ -197,3 +197,82 @@ test('resend on an invoice held for a missing Candidate date sends it once the d
     expect($invoice->attention_reason)->toBeNull();
     Mail::assertSent(PlatformInvoiceMail::class, fn (PlatformInvoiceMail $mail): bool => $mail->hasTo('virtual-em@example.com'));
 });
+
+test('saving storage included stores and clears the flag, and an unchanged save reports no changes', function () {
+    $event = Event::factory()->create(['platform_fee_per_registrant_cents' => 400]);
+
+    Livewire::actingAs(makeFounder())
+        ->test(PlatformInvoices::class)
+        ->call('openRates')
+        ->set("storageIncluded.{$event->id}", true)
+        ->call('saveRates')
+        ->assertHasNoErrors();
+
+    expect($event->fresh()->platform_fee_includes_storage)->toBeTrue();
+    expect($event->fresh()->platform_fee_per_registrant_cents)->toBe(400);
+
+    Livewire::actingAs(makeFounder())
+        ->test(PlatformInvoices::class)
+        ->call('openRates')
+        ->call('saveRates')
+        ->assertHasNoErrors()
+        ->assertDispatched('toast-show', fn (string $name, array $params): bool => ($params['slots']['text'] ?? '') === 'No billing changes to save.');
+
+    Livewire::actingAs(makeFounder())
+        ->test(PlatformInvoices::class)
+        ->call('openRates')
+        ->set("storageIncluded.{$event->id}", false)
+        ->call('saveRates');
+
+    expect($event->fresh()->platform_fee_includes_storage)->toBeFalse();
+});
+
+test('storage included with a blank rate errors and saves nothing; a typed 0 saves', function () {
+    $event = Event::factory()->create(['name' => 'All-In Chapter']);
+    $other = Event::factory()->create();
+
+    Livewire::actingAs(makeFounder())
+        ->test(PlatformInvoices::class)
+        ->call('openRates')
+        ->set("rates.{$other->id}", '3.50')
+        ->set("storageIncluded.{$event->id}", true)
+        ->call('saveRates')
+        ->assertHasErrors(["rates.{$event->id}"])
+        ->assertSee('Enter a rate for All-In Chapter to include storage.');
+
+    expect($event->fresh()->platform_fee_includes_storage)->toBeFalse();
+    expect($other->fresh()->platform_fee_per_registrant_cents)->toBeNull();
+
+    Livewire::actingAs(makeFounder())
+        ->test(PlatformInvoices::class)
+        ->call('openRates')
+        ->set("rates.{$event->id}", '0')
+        ->set("storageIncluded.{$event->id}", true)
+        ->call('saveRates')
+        ->assertHasNoErrors();
+
+    expect($event->fresh()->platform_fee_includes_storage)->toBeTrue();
+    expect($event->fresh()->platform_fee_per_registrant_cents)->toBe(0);
+});
+
+test('the Rates modal loads stored rates and storage flags', function () {
+    $allIn = Event::factory()->create(['platform_fee_per_registrant_cents' => 400, 'platform_fee_includes_storage' => true]);
+    $plain = Event::factory()->create();
+
+    Livewire::actingAs(makeFounder())
+        ->test(PlatformInvoices::class)
+        ->call('openRates')
+        ->assertSet("rates.{$allIn->id}", '4.00')
+        ->assertSet("storageIncluded.{$allIn->id}", true)
+        ->assertSet("rates.{$plain->id}", '')
+        ->assertSet("storageIncluded.{$plain->id}", false)
+        ->assertSee('Rates and storage');
+});
+
+test('the invoice list shows Storage included for a snapshotted invoice', function () {
+    $version = Version::factory()->create(['status' => 'closed']);
+    VersionPlatformInvoice::factory()->sent('TDR-2026-0001', 4)->create(['version_id' => $version->id, 'storage_included' => true]);
+    actingAs(makeFounder());
+
+    get(route('founder.invoices'))->assertOk()->assertSee('Storage included');
+});

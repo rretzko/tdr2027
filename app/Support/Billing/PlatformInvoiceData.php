@@ -19,6 +19,8 @@ use Illuminate\Support\Carbon;
  *
  * Lines: registrants × rate, plus — for virtual Versions only — file storage
  * months × monthly rate ($storage). amountCents is the invoice total.
+ * $storageIncluded marks a virtual Version billed at an all-in rate: no
+ * storage line, a note under the registrant line instead.
  */
 final readonly class PlatformInvoiceData
 {
@@ -41,6 +43,7 @@ final readonly class PlatformInvoiceData
         public string $eventName,
         public string $versionName,
         public array $company,
+        public bool $storageIncluded = false,
     ) {
         $this->registrantAmountCents = $registrantCount * $rateCents;
         $this->amountCents = $this->registrantAmountCents + ($storage?->amountCents() ?? 0);
@@ -68,10 +71,11 @@ final readonly class PlatformInvoiceData
             eventName: $eventName,
             versionName: $version->name,
             company: self::company(),
+            storageIncluded: $invoice->storage_included,
         );
     }
 
-    public static function preview(Version $version, int $registrantCount, int $rateCents, ?StorageCharge $storage, string $number, bool $isTest): self
+    public static function preview(Version $version, int $registrantCount, int $rateCents, ?StorageCharge $storage, string $number, bool $isTest, bool $storageIncluded): self
     {
         [$organizationName, $eventName] = self::names($version);
         $issuedAt = Carbon::now();
@@ -88,6 +92,7 @@ final readonly class PlatformInvoiceData
             eventName: $eventName,
             versionName: $version->name,
             company: self::company(),
+            storageIncluded: $storageIncluded,
         );
     }
 

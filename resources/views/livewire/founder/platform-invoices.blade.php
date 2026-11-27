@@ -71,6 +71,10 @@
                 <dl class="mb-3 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
                     <dt class="text-zinc-500">Amount</dt>
                     <dd>{{ $invoice->amount_cents === null ? '—' : PlatformInvoiceData::money($invoice->amount_cents).' ('.number_format((int) $invoice->registrant_count).')' }}</dd>
+                    @if ($invoice->storage_included || $invoice->storage_months)
+                        <dt class="text-zinc-500">Storage</dt>
+                        <dd>{{ $invoice->storage_included ? 'Storage included' : 'Incl. '.$invoice->storage_months.' mo storage' }}</dd>
+                    @endif
                     <dt class="text-zinc-500">{{ $status === \App\Enums\PlatformInvoiceStatus::Pending ? 'Sends' : 'Sent' }}</dt>
                     <dd>{{ ($status === \App\Enums\PlatformInvoiceStatus::Pending ? $invoice->send_at : $invoice->sent_at)?->forDisplay()->format('M j, Y g:i A') ?? '—' }}</dd>
                     <dt class="text-zinc-500">Due</dt>
@@ -126,7 +130,9 @@
                             @if ($invoice->needs_attention && $invoice->attention_reason)
                                 <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $invoice->attention_reason }}</flux:text>
                             @endif
-                            @if ($invoice->storage_months)
+                            @if ($invoice->storage_included)
+                                <flux:text size="sm" class="text-zinc-500">Storage included</flux:text>
+                            @elseif ($invoice->storage_months)
                                 <flux:text size="sm" class="text-zinc-500">Incl. {{ $invoice->storage_months }} mo storage</flux:text>
                             @endif
                         </flux:table.cell>
@@ -237,14 +243,17 @@
     {{-- Per-Event rates --}}
     <flux:modal name="event-rates" class="w-full max-w-lg">
         <form wire:submit="saveRates" class="space-y-4">
-            <flux:heading>Per-registrant rates</flux:heading>
-            <flux:text>Leave a rate blank to use the default of {{ $defaultRate }}. A change applies to invoices that haven't been sent yet; sent invoices keep their rate.</flux:text>
-            <div class="max-h-96 space-y-2 overflow-y-auto pr-1">
+            <flux:heading>Rates and storage</flux:heading>
+            <flux:text>Leave a rate blank to use the default of {{ $defaultRate }}. Check "Storage included" when the rate is all-in: that Event's virtual auditions get no file-storage line, and a rate must be entered. Changes apply to invoices that haven't been sent yet; sent invoices keep their terms.</flux:text>
+            <div class="max-h-96 space-y-3 overflow-y-auto pr-1">
                 @foreach ($rateEvents as $event)
-                    <div wire:key="rate-{{ $event->id }}" class="flex items-center justify-between gap-3">
+                    <div wire:key="rate-{{ $event->id }}" class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                         <flux:text class="min-w-0 truncate">{{ $event->name }}</flux:text>
-                        <div class="w-32 shrink-0">
-                            <flux:input wire:model="rates.{{ $event->id }}" size="sm" icon="currency-dollar" placeholder="{{ ltrim($defaultRate, '$') }}" />
+                        <div class="flex shrink-0 items-center gap-3">
+                            <div class="w-32">
+                                <flux:input wire:model="rates.{{ $event->id }}" size="sm" icon="currency-dollar" placeholder="{{ ltrim($defaultRate, '$') }}" />
+                            </div>
+                            <flux:checkbox wire:model="storageIncluded.{{ $event->id }}" label="Storage included" />
                         </div>
                     </div>
                 @endforeach
@@ -258,7 +267,7 @@
                 <flux:modal.close>
                     <flux:button variant="ghost">Cancel</flux:button>
                 </flux:modal.close>
-                <flux:button type="submit" variant="primary">Save rates</flux:button>
+                <flux:button type="submit" variant="primary">Save</flux:button>
             </div>
         </form>
     </flux:modal>
